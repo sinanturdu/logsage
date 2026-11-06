@@ -14,10 +14,16 @@ import (
 
 	"github.com/sinanturdu/logsage/backend/internal/config"
 	"github.com/sinanturdu/logsage/backend/internal/health"
+	"github.com/sinanturdu/logsage/backend/internal/ingest"
 	"github.com/sinanturdu/logsage/backend/internal/logging"
 )
 
-const shutdownTimeout = 10 * time.Second
+const (
+	shutdownTimeout = 10 * time.Second
+	// memoryPublisherCap bounds the in-memory publisher used until the Redis
+	// Streams publisher exists.
+	memoryPublisherCap = 10_000
+)
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -36,8 +42,29 @@ func run(ctx context.Context) error {
 	}
 	log := logging.New(os.Stdout, cfg.LogLevel, cfg.LogFormat)
 
+	if cfg.IngestAPIKey == "" {
+		return errors.New("INGEST_API_KEY must be set")
+	}
+	ingestHandler, err := ingest.NewHandler(
+		ingest.NewMemoryPublisher(memoryPublisherCap),
+		cfg.IngestAPIKey,
+		ingest.Limits{
+			MaxBodyBytes:      cfg.Ingest.MaxBodyBytes,
+			MaxEvents:         cfg.Ingest.MaxEvents,
+			MaxMessageBytes:   cfg.Ingest.MaxMessageBytes,
+			MaxAttributes:     cfg.Ingest.MaxAttributes,
+			MaxAttrKeyChars:   cfg.Ingest.MaxAttrKeyChars,
+			MaxAttrValueChars: cfg.Ingest.MaxAttrValueChars,
+		},
+		log,
+	)
+	if err != nil {
+		return fmt.Errorf("ingest handler: %w", err)
+	}
+
 	mux := http.NewServeMux()
 	health.Register(mux)
+	ingestHandler.Register(mux)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -51,7 +78,7 @@ func run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("http server starting", "addr", cfg.HTTPAddr)
+		log.Info("http server starting", "addr", cfg.HTTPAddr, "publisher", "memory")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

@@ -26,6 +26,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	addr := freeAddr(t)
 	t.Setenv("HTTP_ADDR", addr)
 	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("INGEST_API_KEY", "test-key")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -76,5 +77,17 @@ func TestRunGracefulShutdown(t *testing.T) {
 	if err == nil {
 		_ = resp.Body.Close()
 		t.Fatalf("request after shutdown succeeded with status %d, want error", resp.StatusCode)
+	}
+}
+
+func TestRunRequiresAPIKey(t *testing.T) {
+	t.Setenv("HTTP_ADDR", freeAddr(t))
+	t.Setenv("INGEST_API_KEY", "")
+
+	// Cancel up front so a regression returns promptly instead of serving forever.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := run(ctx); err == nil {
+		t.Fatal("run() = nil, want error when INGEST_API_KEY is unset")
 	}
 }
