@@ -8,6 +8,15 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -16,6 +25,9 @@ jobs:
       - name: Vet, build, test
         if: ${{ hashFiles('backend/go.mod') != '' }}
         working-directory: backend
+        env:
+          # Enables the Redis integration tests in internal/ingest.
+          REDIS_TEST_ADDR: localhost:6379
         run: |
           go vet ./...
           go build ./...

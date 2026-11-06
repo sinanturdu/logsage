@@ -17,4 +17,12 @@ services:
 
   redis:
     image: redis:7
+    # AOF persistence so queued events survive a container restart.
+    command: ["redis-server", "--appendonly", "yes"]
     ports: ["6379:6379"]
+    volumes: ["./data/redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
