@@ -263,3 +263,20 @@ func TestLagWarning(t *testing.T) {
 		})
 	}
 }
+
+func TestIsOOM(t *testing.T) {
+	tests := []struct {
+		err  error
+		want bool
+	}{
+		{errors.New("OOM command not allowed when used memory > 'maxmemory'."), true},
+		{errors.New("BUSYGROUP Consumer Group name already exists"), false},
+		{errors.New("xgroup create: OOM command not allowed"), false}, // only Redis' own reply starts with OOM
+		{nil, false},
+	}
+	for _, tt := range tests {
+		if got := isOOM(tt.err); got != tt.want {
+			t.Errorf("isOOM(%v) = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}

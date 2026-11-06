@@ -33,7 +33,10 @@ services:
   redis:
     image: redis:7
     # AOF persistence so queued events survive a container restart.
-    command: ["redis-server", "--appendonly", "yes"]
+    # Memory safety net (ADR 0010): at 1 GB Redis refuses new writes instead
+    # of evicting keys, so ingest answers 503 and no queued event is dropped.
+    # Reads, XACK and XTRIM keep working, so the processor can still drain.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
     ports: ["127.0.0.1:6379:6379"]
     # Named volume: AOF rewrites and RDB snapshots on a Docker Desktop bind
     # mount from a Windows filesystem stalled Redis (see docs/benchmarks.md).

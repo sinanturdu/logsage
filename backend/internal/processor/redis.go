@@ -70,14 +70,37 @@ func (r *RedisStream) withTimeout(ctx context.Context, extra time.Duration) (con
 
 // EnsureGroup runs XGROUP CREATE <stream> <group> 0 MKSTREAM, ignoring
 // BUSYGROUP (group already exists).
+//
+// Under maxmemory-policy noeviction Redis rejects XGROUP with OOM before it
+// checks whether the group exists. A processor restarting while Redis is
+// full must still start draining, so on OOM it checks with the read-only
+// XINFO GROUPS whether the group is already there.
 func (r *RedisStream) EnsureGroup(ctx context.Context) error {
 	ctx, cancel := r.withTimeout(ctx, 0)
 	defer cancel()
 	err := r.c.XGroupCreateMkStream(ctx, r.opts.Stream, r.opts.Group, "0").Err()
-	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
+	switch {
+	case err == nil, strings.HasPrefix(err.Error(), "BUSYGROUP"):
+		return nil
+	case isOOM(err):
+		groups, ierr := r.c.XInfoGroups(ctx, r.opts.Stream).Result()
+		if ierr == nil {
+			for _, g := range groups {
+				if g.Name == r.opts.Group {
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("xgroup create: %w", err)
+	default:
 		return fmt.Errorf("xgroup create: %w", err)
 	}
-	return nil
+}
+
+// isOOM reports whether err is Redis refusing a write because maxmemory is
+// reached (maxmemory-policy noeviction).
+func isOOM(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "OOM ")
 }
 
 // ReadPending reads this consumer's pending entries after ID after.
