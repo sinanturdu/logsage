@@ -135,7 +135,9 @@ func TestRunRedisPublisherUnreachable(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- run(ctx) }()
 
-	client := &http.Client{Timeout: 3 * time.Second}
+	// No keep-alive: a spare client connection that never sends a request
+	// would make the server's Shutdown wait for it.
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	base := "http://" + addr
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -164,6 +166,7 @@ func TestRunRedisPublisherUnreachable(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, base+"/v1/ingest", strings.NewReader(body))
 	req.Header.Set("X-API-Key", "test-key")
 	req.Header.Set("Content-Type", "application/json")
+	start := time.Now()
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -172,6 +175,13 @@ func TestRunRedisPublisherUnreachable(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("/v1/ingest status = %d, want 503", resp.StatusCode)
 	}
+	// REDIS_TIMEOUT is 300ms; allow for go-redis dial retries and a loaded
+	// machine, but a 503 that takes seconds would be a real problem.
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("503 took %v with REDIS_TIMEOUT=300ms, want well under 5s", d)
+	} else {
+		t.Logf("503 after %v", d)
+	}
 
 	cancel()
 	select {
@@ -179,7 +189,7 @@ func TestRunRedisPublisherUnreachable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("run() = %v, want nil", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second): // shutdown budget is 10s
 		t.Fatal("run did not return after cancel")
 	}
 }

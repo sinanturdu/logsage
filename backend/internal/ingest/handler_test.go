@@ -241,3 +241,32 @@ func deref(p *int) any {
 	}
 	return *p
 }
+
+func TestParseBatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantN     int
+		wantError string
+	}{
+		{name: "valid", body: batchJSON(3), wantN: 3},
+		{name: "unknown field", body: `{"events":[],"x":1}`, wantError: "unknown field"},
+		{name: "invalid event", body: `{"events":[{"timestamp":"now","level":"info","service":"s","message":"m"}]}`, wantError: "events[0]: timestamp"},
+		{name: "trailing data", body: batchJSON(1) + "{}", wantError: "unexpected data"},
+		{name: "empty", body: "", wantError: "empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evs, err := ParseBatch([]byte(tt.body), DefaultLimits())
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("ParseBatch() error = %v, want %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil || len(evs) != tt.wantN {
+				t.Fatalf("ParseBatch() = %d events, %v; want %d", len(evs), err, tt.wantN)
+			}
+		})
+	}
+}

@@ -1,0 +1,26 @@
+# Changelog
+
+All notable changes to LogSage. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
+
+## [v0.1.0] - unreleased
+
+First milestone: ingest and search. Release notes: [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md).
+
+### Added
+- Go backend skeleton: environment config with fail-fast validation, structured logging (`log/slog`), `/healthz` and `/readyz` on every service.
+- `POST /v1/ingest` (`cmd/ingest`): strict JSON batch validation with configurable limits, static API key compared in constant time, JSON errors with the failing event index.
+- Redis Streams publisher (one pipelined `XADD MAXLEN ~` per batch), selectable with `PUBLISHER=memory|redis`.
+- Processor (`cmd/processor`): consumer group with own-pending recovery and `XAUTOCLAIM`, batched `INSERT ... FORMAT JSONEachRow` over HTTP, ack after write, retry with backoff and backpressure, dead-letter stream, `/stats`, graceful shutdown.
+- ClickHouse schema (`logsage.logs`, `ReplacingMergeTree` keyed by `event_id`) applied idempotently on startup.
+- `GET /v1/logs` (`cmd/query`): time range, level, service, text and trace filters; keyset cursor pagination; separate read key; single project-scoped query builder with server-side parameters, `readonly=1` and execution limits.
+- Docker image for the three services and a Compose `app` profile (`infra/docker-compose.app.yml`) for a one-command local stack.
+- `cmd/loadgen`: realistic ingest load, query benchmark scenarios and a demo stream with a simulated incident.
+- Benchmarks on a local Docker setup ([docs/benchmarks.md](docs/benchmarks.md)) and ADRs 0001–0009.
+- CI: vet, build and race-enabled tests with Redis and ClickHouse services; Docker image build and Compose config validation.
+
+### Fixed
+- ClickHouse and Redis data moved to named Docker volumes: bind mounts from a Windows filesystem broke ClickHouse part renames and stalled Redis persistence.
+- Processor HTTP shutdown is bounded (force-close after 5 s).
+
+### Known limitations
+See [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md#known-limitations).

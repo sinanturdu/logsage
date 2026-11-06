@@ -11,13 +11,15 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 - `docs/`: requirements, architecture, ADRs, roadmap
 
 ## Commands (update as the project grows)
-- Start dependencies: `docker compose -f infra/docker-compose.yml up -d`
+- Start dependencies: `docker compose -f infra/docker-compose.yml up -d redis clickhouse` (no `.env` needed)
+- Full stack in Docker: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build` (copy `.env.example` to `.env` first; keys and the ClickHouse password are required)
 - Backend: `cd backend && go vet ./... && go build ./... && go test ./...`
   - Locally on Windows, run `go test ./...` without `-race` (the race detector crashes with the MinGW toolchain on PATH).
   - CI runs `go test ./... -race` on Linux, with Redis and ClickHouse services.
 - Integration tests: `docker compose -f infra/docker-compose.yml up -d redis clickhouse`, then `cd backend && REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1` (skipped when unset).
 - Run ingest API: `cd backend && INGEST_API_KEY=dev-key go run ./cmd/ingest` (health check: `GET /healthz`; ingest: `POST /v1/ingest`)
 - Run processor: `cd backend && REDIS_ADDR=localhost:6379 CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/processor` (`GET :8081/healthz`, `/readyz`, `/stats`)
+- Load generator: `cd backend && LOADGEN_INGEST_KEY=... go run ./cmd/loadgen ingest|demo`, `LOADGEN_QUERY_KEY=... go run ./cmd/loadgen query` (local targets only unless `--allow-remote`); benchmark procedure in `docs/benchmarks.md`
 - Run query API: `cd backend && QUERY_API_KEY=dev-read-key CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/query` (`GET :8082/v1/logs`, `/healthz`, `/readyz`); the query key must differ from the ingest key.
 
 ## Conventions

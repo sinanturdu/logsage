@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -116,10 +117,25 @@ func (h *Handler) authorized(key string) bool {
 	return subtle.ConstantTimeCompare(got[:], h.keyDigest[:]) == 1
 }
 
-// decode reads exactly one JSON object from the size-limited body. Unknown
-// fields and trailing data are rejected.
+// decode reads exactly one JSON object from the size-limited body.
 func (h *Handler) decode(w http.ResponseWriter, r *http.Request) (batchRequest, error) {
-	body := http.MaxBytesReader(w, r.Body, h.lim.MaxBodyBytes)
+	return decodeBatch(http.MaxBytesReader(w, r.Body, h.lim.MaxBodyBytes))
+}
+
+// ParseBatch decodes and validates body exactly like POST /v1/ingest
+// (strict JSON, then the event rules in lim), without the HTTP layer and
+// the body size check. Tools such as cmd/loadgen use it to check payloads.
+func ParseBatch(body []byte, lim Limits) ([]Event, error) {
+	req, err := decodeBatch(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	return validateBatch(req, lim)
+}
+
+// decodeBatch reads exactly one JSON object. Unknown fields and trailing
+// data are rejected.
+func decodeBatch(body io.Reader) (batchRequest, error) {
 	dec := json.NewDecoder(body)
 	dec.DisallowUnknownFields()
 
