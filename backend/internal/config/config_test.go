@@ -13,6 +13,7 @@ func TestLoad(t *testing.T) {
 		Redis:      RedisConfig{Stream: "logsage:events", MaxLen: 100000, Timeout: 2 * time.Second},
 		ClickHouse: DefaultClickHouseConfig(),
 		Processor:  DefaultProcessorConfig(),
+		Query:      DefaultQueryConfig(),
 	}
 	with := func(f func(*Config)) Config {
 		c := base

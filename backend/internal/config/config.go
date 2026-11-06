@@ -26,6 +26,7 @@ type Config struct {
 
 	ClickHouse ClickHouseConfig
 	Processor  ProcessorConfig
+	Query      QueryConfig
 }
 
 // RedisConfig configures the Redis Streams publisher.
@@ -90,6 +91,7 @@ func Load(getenv func(string) string) (Config, error) {
 		},
 		ClickHouse: DefaultClickHouseConfig(),
 		Processor:  DefaultProcessorConfig(),
+		Query:      DefaultQueryConfig(),
 	}
 
 	if v := strings.TrimSpace(getenv("HTTP_ADDR")); v != "" {
@@ -143,6 +145,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if err := loadProcessor(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadQuery(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
 
