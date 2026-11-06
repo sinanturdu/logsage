@@ -17,6 +17,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8
+        ports: ["8123:8123"]
+        env:
+          # Throwaway CI container: keep the passwordless default user
+          # reachable over the network instead of creating credentials.
+          CLICKHOUSE_SKIP_USER_SETUP: "1"
+        options: >-
+          --ulimit nofile=262144:262144
+          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,8 +39,9 @@ jobs:
         if: ${{ hashFiles('backend/go.mod') != '' }}
         working-directory: backend
         env:
-          # Enables the Redis integration tests in internal/ingest.
+          # Enable the Redis and ClickHouse integration tests.
           REDIS_TEST_ADDR: localhost:6379
+          CLICKHOUSE_TEST_URL: http://localhost:8123
         run: |
           go vet ./...
           go build ./...

@@ -10,10 +10,23 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
+    environment:
+      # Creates the logsage database and a user reachable from the host on
+      # first start (the processor also creates the database idempotently).
+      CLICKHOUSE_DB: logsage
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-logsage}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-change-me}
     ports: ["8123:8123", "9000:9000"]
     ulimits:
       nofile: { soft: 262144, hard: 262144 }
-    volumes: ["./data/clickhouse:/var/lib/clickhouse"]
+    # Named volume: ClickHouse renames files while writing parts, which fails
+    # on Docker Desktop bind mounts from a Windows filesystem.
+    volumes: ["clickhouse-data:/var/lib/clickhouse"]
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   redis:
     image: redis:7
@@ -26,3 +39,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+volumes:
+  clickhouse-data:
