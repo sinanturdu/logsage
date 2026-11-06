@@ -9,7 +9,21 @@
 - [x] ClickHouse migration for `logs`
 - [x] `GET /v1/logs` search (time range, level, service, text)
 - [x] Unit and integration tests, CI green
-- [ ] Load test script and first benchmark numbers in docs
+- [x] Load test script and first benchmark numbers in docs ([benchmarks](benchmarks.md))
+
+## Known follow-ups
+Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and the [v0.1.0 known limitations](releases/v0.1.0.md#known-limitations)).
+
+- [ ] **Ingest backpressure:** with `XADD MAXLEN ~`, a burst faster than the processor silently trims unread entries (23% lost in the benchmark). Reject or slow ingest (429/503) when the group lag nears the cap, and/or trim only acknowledged entries (`XTRIM MINID`).
+- [ ] Rename `failed_batches_total` to `failed_attempts_total` (it counts failed insert attempts).
+- [ ] Periodic cleanup of stale Redis consumers (`XGROUP DELCONSUMER`); `hostname-pid` names pile up after restarts.
+- [ ] Processor recreates the consumer group when it gets `NOGROUP` (today the stream or group being deleted while it runs needs a restart).
+- [ ] Route go-redis internal logs through `slog`.
+- [ ] Decide a Go version upgrade for the module and CI (go-redis is pinned to v9.18.0 because v9.19+ needs Go 1.24+).
+- [ ] Revisit strict rejection of unknown JSON fields for SDK clients.
+- [ ] Evaluate query speedups from the benchmark results: a skip index or projection on `timestamp` (queries without `service` read the whole window; N4 would not hold at N2 volume), `do_not_merge_across_partitions_select_final` for `FINAL`, a token bloom filter for text search.
+- [ ] Processor throughput: overlap reading the next batch with the insert, more consumers, fewer allocations in parse/encode (serial loop at about 24.5 ms per 1000-event batch).
+- [ ] Re-measure N1 (ingest p99 < 50 ms) on a machine with free disk and review Redis `appendfsync` and AOF rewrite settings.
 
 ## v0.2: Accounts and dashboard
 - [ ] PostgreSQL migrations, users, projects, hashed API keys

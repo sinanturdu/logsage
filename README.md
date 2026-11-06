@@ -1,89 +1,119 @@
 # LogSage
 
-Log and incident analysis platform: collects application logs, groups similar errors, detects anomalies, and suggests likely root causes when an incident opens. Think "mini Datadog + AI".
+[![CI](https://github.com/sinanturdu/logsage/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanturdu/logsage/actions/workflows/ci.yml)
 
-> Status: early development (pre-v0.1). See [docs/roadmap.md](docs/roadmap.md).
+LogSage is a log and incident analysis platform. Applications send their logs to an ingest API; LogSage stores them in ClickHouse and lets you search them. Later milestones group similar errors, detect anomalies and suggest likely root causes when an incident opens ("mini Datadog + AI").
 
-## Why
+> **Status: v0.1 (ingest and search).** Ingest, queue, processor, storage and search work end to end and run with one Docker Compose command. Accounts, the dashboard, alerting and AI features are planned: see [docs/roadmap.md](docs/roadmap.md) and the [v0.1.0 release notes](docs/releases/v0.1.0.md).
 
-When production breaks, the answer is hidden in millions of log lines. LogSage ingests them at high volume, makes them searchable, groups them into distinct problems, and links incidents to recent changes.
-
-## Architecture (planned)
+## Architecture
 
 ```mermaid
 flowchart LR
-  A[Applications / SDK] -->|HTTPS + API key| B[Ingestion API]
-  B --> C[(Redis Streams)]
-  C --> D[Log Processor]
-  C --> E[Alert Engine]
-  D --> F[(ClickHouse)]
-  E --> G[(PostgreSQL)]
-  H[Query API] --> F
-  H --> G
-  H -->|WebSocket| I[React Dashboard]
-  J[AI Service - Python] --> F
-  J --> G
+  A[Applications] -->|POST /v1/ingest + API key| B[Ingest API<br/>cmd/ingest]
+  B -->|XADD| C[(Redis Stream)]
+  C -->|consumer group| D[Processor<br/>cmd/processor]
+  D -->|batched INSERT, ack after write| F[(ClickHouse)]
+  Q[Query API<br/>cmd/query] -->|parameterized SELECT ... FINAL| F
+  U[Clients] -->|GET /v1/logs + read key| Q
+  C -. planned .-> E[Alert engine]
+  F -. planned .-> J[AI service]
+  Q -. planned .-> I[Dashboard]
 ```
 
-Details: [docs/architecture.md](docs/architecture.md) and [docs/adr](docs/adr).
+- **Ingest** validates batches, authenticates with a static key (constant-time comparison) and publishes to a Redis Stream.
+- **Processor** reads through a consumer group, writes batches to ClickHouse, acks only after the write succeeds, dead-letters unusable entries and deduplicates redeliveries (`event_id` + `ReplacingMergeTree`).
+- **Query** is read-only search with a separate key. Every query is scoped to a project, values are sent as server-side parameters, and pagination uses a keyset cursor.
 
-## Tech stack
+Details: [docs/architecture.md](docs/architecture.md) and the decision records in [docs/adr](docs/adr).
 
-Go (backend) · ClickHouse (logs/metrics) · PostgreSQL (relational data) · Redis Streams (queue) · React + TypeScript (dashboard) · Python + FastAPI (AI service) · Docker Compose · GitHub Actions
+## Quick start
 
-## Getting started
+Requirements: Docker with Compose v2. On Windows use Docker Desktop.
 
 ```bash
-cp .env.example .env
-docker compose -f infra/docker-compose.yml up -d
+cp .env.example .env    # then replace the change-me keys and password in .env
 ```
 
-Run the backend (Go 1.23+). By default accepted events are kept in memory:
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build
+```
 
 ```bash
-cd backend
-INGEST_API_KEY=dev-key go run ./cmd/ingest   # listens on HTTP_ADDR, default :8080
-curl localhost:8080/healthz                    # {"status":"ok"}  (liveness)
-curl localhost:8080/readyz                     # {"status":"ready"} (readiness)
-curl -X POST localhost:8080/v1/ingest -H "X-API-Key: dev-key" -H "Content-Type: application/json"   -d '{"events":[{"timestamp":"2026-11-06T10:15:30Z","level":"info","service":"demo","message":"hello"}]}'
+cd backend && LOADGEN_INGEST_KEY=<INGEST_API_KEY from .env> go run ./cmd/loadgen demo --duration 30s
+```
+
+This starts Redis, ClickHouse, PostgreSQL (unused until v0.2) and the three LogSage services. Their ports are bound to 127.0.0.1 only: ingest on `:8080`, processor stats on `:8081`, query on `:8082`. Compose refuses to start the app profile if a key or the ClickHouse password is missing from `.env`. The third command sends a realistic stream of events for 30 seconds; it needs Go 1.23+, or send single events with curl as below.
+
+To stop: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down` (add `-v` to delete the stored data).
+
+## API examples
+
+Send events (bash, curl):
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/ingest \
+  -H "X-API-Key: $INGEST_API_KEY" -H "Content-Type: application/json" \
+  -d '{"events":[{"timestamp":"2026-11-06T10:15:30Z","level":"error","service":"checkout","message":"payment gateway timeout","trace_id":"abc123","attributes":{"env":"prod"}}]}'
 # {"accepted":1}
 ```
 
-To run the full pipeline (ingest -> Redis Stream -> processor -> ClickHouse):
+Search (bash, curl). The query key is different from the ingest key:
+
+```bash
+curl -H "X-API-Key: $QUERY_API_KEY" \
+  "http://127.0.0.1:8082/v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-07T00:00:00Z&level=error,fatal&service=checkout&q=timeout&limit=50"
+# {"events":[{"event_id":"...","timestamp":"2026-11-06T10:15:30.000Z","level":"error",...}],"next_cursor":null,"took_ms":7}
+```
+
+Windows PowerShell (`curl.exe`, body from a file to avoid quoting problems, and the URL in quotes because it contains `&`):
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8080/v1/ingest -H "X-API-Key: $env:INGEST_API_KEY" -H "Content-Type: application/json" --data-binary "@event.json"
+curl.exe -H "X-API-Key: $env:QUERY_API_KEY" "http://127.0.0.1:8082/v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-07T00:00:00Z&level=error"
+```
+
+Pass `next_cursor` back as `&cursor=...` to get the next page. Every parameter, limit and status code is documented in [docs/architecture.md](docs/architecture.md). Health endpoints: `GET /healthz` and `GET /readyz` on each service; the processor also serves `GET /stats` (stream length, pending, lag, counters).
+
+## Benchmarks
+
+Measured on a Windows laptop with everything in Docker Desktop. This is not a production benchmark; read [docs/benchmarks.md](docs/benchmarks.md) for the conditions and caveats.
+
+| | Result | Target |
+|---|---|---|
+| Ingest throughput (accepted) | 15k–70k events/s for 1–64 concurrent senders | N2: 10k events/s ✓ |
+| End-to-end through the processor | 20k–27k events/s under load, 41k events/s draining a backlog | N2 ✓ |
+| Ingest p99 at a steady 10k events/s | p50 3–5 ms; p99 8–43 ms in half the runs, 76–326 ms in the others (I/O stalls) | N1: < 50 ms, **not reliably met here** |
+| 24h search, 1M rows | p99 76 ms with a service filter, ≤ 342 ms without | N4: < 2 s ✓ (for this dataset) |
+
+Known issue found by the benchmarks: with the default `REDIS_STREAM_MAXLEN=100000`, a burst faster than the processor loses events silently (stream trimming). See [known limitations](docs/releases/v0.1.0.md#known-limitations).
+
+## Development
+
+Go 1.23+ for the backend. Infrastructure only (without `.env`):
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d redis clickhouse
-cd backend
-PUBLISHER=redis REDIS_ADDR=localhost:6379 INGEST_API_KEY=dev-key go run ./cmd/ingest
-# in a second terminal:
-REDIS_ADDR=localhost:6379 CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/processor
-curl localhost:8081/stats      # stream length, pending, lag, counters
-# after sending events (read with FINAL: delivery is at-least-once, duplicates collapse):
-docker compose -f infra/docker-compose.yml exec clickhouse clickhouse-client --query "SELECT count() FROM logsage.logs FINAL"
 ```
-
-Search the stored logs with the read-only query API (its key must differ from the ingest key):
 
 ```bash
-cd backend
-QUERY_API_KEY=dev-read-key CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/query   # :8082
-curl -H "X-API-Key: dev-read-key" "localhost:8082/v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-07T00:00:00Z&level=error&limit=50"
-# {"events":[...],"next_cursor":"..." or null,"took_ms":N}; pass next_cursor back as &cursor=... for the next page
+cd backend && go vet ./... && go build ./... && go test ./...
 ```
 
-Run the integration tests (skipped unless the variables are set):
+Integration tests run when these variables are set (CI sets them):
 
 ```bash
-cd backend
-REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
+cd backend && REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
 ```
 
-Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`), the `REDIS_*` settings, for the processor `CLICKHOUSE_*` and `PROCESSOR_*`, and for the query API `QUERY_*`. See `.env.example` and the ingest and query contracts in `docs/architecture.md`.
+Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.
 
 ## Documentation
 
-- [Requirements](docs/requirements.md)
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
-- [Claude Code workflow](docs/claude-code-workflow.md)
-- [Architecture decisions](docs/adr)
+- [Requirements](docs/requirements.md) · [Architecture](docs/architecture.md) · [Decision records](docs/adr)
+- [Roadmap](docs/roadmap.md) · [Changelog](CHANGELOG.md) · [v0.1.0 release notes](docs/releases/v0.1.0.md)
+- [Benchmarks](docs/benchmarks.md) · [Claude Code workflow](docs/claude-code-workflow.md)
+
+## Tech stack
+
+Go (standard library plus go-redis) · Redis Streams · ClickHouse · Docker Compose · GitHub Actions. Planned: PostgreSQL, React + TypeScript dashboard, Python + FastAPI AI service.
