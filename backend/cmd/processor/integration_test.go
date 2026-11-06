@@ -38,13 +38,15 @@ func TestIntegrationEndToEnd(t *testing.T) {
 	db := "logsage_e2e_" + suffix
 
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
-	defer rdb.Close()
 	ch, err := clickhouse.New(clickhouse.Options{URL: chURL, Database: db, User: chUser, Password: chPassword, Timeout: 10 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Close the client inside the cleanup: a deferred Close would run first
+	// and make the DEL fail silently.
 	t.Cleanup(func() {
 		_ = rdb.Del(context.Background(), stream, stream+":dead").Err()
+		_ = rdb.Close()
 		_ = ch.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db)
 	})
 
