@@ -160,9 +160,12 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 				}
 				body, _ := json.Marshal(gen.Batch(n, time.Now(), o.Spread))
 				t0 := time.Now()
-				code, got, err := postBatch(runCtx, client, o.URL, o.Key, body)
-				if err != nil && runCtx.Err() != nil {
-					return // cut off by --duration; not a server error
+				// The request uses ctx, not runCtx: a batch already in flight
+				// when --duration ends completes and is counted, so the
+				// accepted total matches what the server accepted.
+				code, got, err := postBatch(ctx, client, o.URL, o.Key, body)
+				if err != nil && ctx.Err() != nil {
+					return // interrupted (Ctrl-C)
 				}
 				local = append(local, time.Since(t0))
 				requests.Add(1)
