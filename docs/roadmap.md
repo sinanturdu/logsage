@@ -7,8 +7,8 @@
 - [x] Redis Stream producer
 - [x] Processor: consumer group, batch insert to ClickHouse, ack after write
 - [x] ClickHouse migration for `logs`
-- [ ] `GET /v1/logs` search (time range, level, service, text)
-- [ ] Unit and integration tests, CI green
+- [x] `GET /v1/logs` search (time range, level, service, text)
+- [x] Unit and integration tests, CI green
 - [ ] Load test script and first benchmark numbers in docs
 
 ## v0.2: Accounts and dashboard

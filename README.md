@@ -62,6 +62,15 @@ curl localhost:8081/stats      # stream length, pending, lag, counters
 docker compose -f infra/docker-compose.yml exec clickhouse clickhouse-client --query "SELECT count() FROM logsage.logs FINAL"
 ```
 
+Search the stored logs with the read-only query API (its key must differ from the ingest key):
+
+```bash
+cd backend
+QUERY_API_KEY=dev-read-key CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/query   # :8082
+curl -H "X-API-Key: dev-read-key" "localhost:8082/v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-07T00:00:00Z&level=error&limit=50"
+# {"events":[...],"next_cursor":"..." or null,"took_ms":N}; pass next_cursor back as &cursor=... for the next page
+```
+
 Run the integration tests (skipped unless the variables are set):
 
 ```bash
@@ -69,7 +78,7 @@ cd backend
 REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
 ```
 
-Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`), the `REDIS_*` settings, and for the processor `CLICKHOUSE_*` and `PROCESSOR_*`. See `.env.example` and the ingest contract in `docs/architecture.md`.
+Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`), the `REDIS_*` settings, for the processor `CLICKHOUSE_*` and `PROCESSOR_*`, and for the query API `QUERY_*`. See `.env.example` and the ingest and query contracts in `docs/architecture.md`.
 
 ## Documentation
 
