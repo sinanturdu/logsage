@@ -44,10 +44,11 @@ func TestLoad(t *testing.T) {
 				"INGEST_MAX_ATTRIBUTES":       "4",
 				"INGEST_MAX_ATTR_KEY_CHARS":   "8",
 				"INGEST_MAX_ATTR_VALUE_CHARS": "16",
+				"INGEST_MAX_TRACE_ID_LEN":     "32",
 			},
 			want: with(func(c *Config) {
 				c.IngestAPIKey = "secret"
-				c.Ingest = IngestLimits{MaxBodyBytes: 2048, MaxEvents: 10, MaxMessageBytes: 100, MaxAttributes: 4, MaxAttrKeyChars: 8, MaxAttrValueChars: 16}
+				c.Ingest = IngestLimits{MaxBodyBytes: 2048, MaxEvents: 10, MaxMessageBytes: 100, MaxAttributes: 4, MaxAttrKeyChars: 8, MaxAttrValueChars: 16, MaxTraceIDChars: 32}
 			}),
 		},
 		{name: "invalid log level", env: map[string]string{"LOG_LEVEL": "verbose"}, wantErr: true},
@@ -55,6 +56,7 @@ func TestLoad(t *testing.T) {
 		{name: "non-numeric limit", env: map[string]string{"INGEST_MAX_EVENTS": "many"}, wantErr: true},
 		{name: "zero limit", env: map[string]string{"INGEST_MAX_ATTRIBUTES": "0"}, wantErr: true},
 		{name: "negative limit", env: map[string]string{"INGEST_MAX_BODY_BYTES": "-1"}, wantErr: true},
+		{name: "zero trace id limit", env: map[string]string{"INGEST_MAX_TRACE_ID_LEN": "0"}, wantErr: true},
 	}
 
 	for _, tt := range tests {

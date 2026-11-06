@@ -28,6 +28,7 @@ type IngestLimits struct {
 	MaxAttributes     int   // INGEST_MAX_ATTRIBUTES
 	MaxAttrKeyChars   int   // INGEST_MAX_ATTR_KEY_CHARS
 	MaxAttrValueChars int   // INGEST_MAX_ATTR_VALUE_CHARS
+	MaxTraceIDChars   int   // INGEST_MAX_TRACE_ID_LEN
 }
 
 // Defaults used when a variable is unset or empty.
@@ -46,6 +47,7 @@ func DefaultIngestLimits() IngestLimits {
 		MaxAttributes:     32,
 		MaxAttrKeyChars:   64,
 		MaxAttrValueChars: 1024,
+		MaxTraceIDChars:   128,
 	}
 }
 
@@ -86,6 +88,7 @@ func Load(getenv func(string) string) (Config, error) {
 		{"INGEST_MAX_ATTRIBUTES", &cfg.Ingest.MaxAttributes},
 		{"INGEST_MAX_ATTR_KEY_CHARS", &cfg.Ingest.MaxAttrKeyChars},
 		{"INGEST_MAX_ATTR_VALUE_CHARS", &cfg.Ingest.MaxAttrValueChars},
+		{"INGEST_MAX_TRACE_ID_LEN", &cfg.Ingest.MaxTraceIDChars},
 	}
 	for _, it := range ints {
 		n, ok, err := positiveInt(getenv, it.name)

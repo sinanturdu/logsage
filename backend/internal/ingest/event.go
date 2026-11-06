@@ -25,6 +25,7 @@ type Limits struct {
 	MaxAttributes     int
 	MaxAttrKeyChars   int
 	MaxAttrValueChars int
+	MaxTraceIDChars   int
 }
 
 // DefaultLimits returns the v0.1 contract defaults.
@@ -36,6 +37,7 @@ func DefaultLimits() Limits {
 		MaxAttributes:     32,
 		MaxAttrKeyChars:   64,
 		MaxAttrValueChars: 1024,
+		MaxTraceIDChars:   128,
 	}
 }
 
@@ -118,6 +120,9 @@ func validateEvent(er eventRequest, lim Limits) (Event, string) {
 	}
 	if len(er.Message) > lim.MaxMessageBytes {
 		return Event{}, fmt.Sprintf("message exceeds %d bytes", lim.MaxMessageBytes)
+	}
+	if utf8.RuneCountInString(er.TraceID) > lim.MaxTraceIDChars {
+		return Event{}, fmt.Sprintf("trace_id exceeds %d characters", lim.MaxTraceIDChars)
 	}
 	if len(er.Attributes) > lim.MaxAttributes {
 		return Event{}, fmt.Sprintf("too many attributes: %d, max %d", len(er.Attributes), lim.MaxAttributes)

@@ -55,6 +55,7 @@ func run(ctx context.Context) error {
 			MaxAttributes:     cfg.Ingest.MaxAttributes,
 			MaxAttrKeyChars:   cfg.Ingest.MaxAttrKeyChars,
 			MaxAttrValueChars: cfg.Ingest.MaxAttrValueChars,
+			MaxTraceIDChars:   cfg.Ingest.MaxTraceIDChars,
 		},
 		log,
 	)
