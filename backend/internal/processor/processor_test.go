@@ -326,16 +326,16 @@ func TestStatsHandler(t *testing.T) {
 			name: "stream available",
 			info: StreamInfo{Length: 10, Pending: 2, Lag: 3},
 			wantJSON: map[string]any{
-				"stream_length": 10.0, "group_pending": 2.0, "group_lag": 3.0,
-				"processed_total": 0.0, "failed_batches_total": 0.0, "dead_lettered_total": 0.0,
+				"stream_length": 10.0, "group_pending": 2.0, "group_lag": 3.0, "oldest_unprocessed_age_s": 0.0,
+				"processed_total": 0.0, "failed_batches_total": 0.0, "dead_lettered_total": 0.0, "trimmed_total": 0.0,
 			},
 		},
 		{
 			name:    "stream unavailable",
 			infoErr: errors.New("dial tcp: refused"),
 			wantJSON: map[string]any{
-				"stream_length": nil, "group_pending": nil, "group_lag": nil, "stream_error": "stream unavailable",
-				"processed_total": 0.0, "failed_batches_total": 0.0, "dead_lettered_total": 0.0,
+				"stream_length": nil, "group_pending": nil, "group_lag": nil, "oldest_unprocessed_age_s": nil, "stream_error": "stream unavailable",
+				"processed_total": 0.0, "failed_batches_total": 0.0, "dead_lettered_total": 0.0, "trimmed_total": 0.0,
 			},
 		},
 	}

@@ -92,6 +92,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 		RetryInitial:    cfg.Processor.RetryInitial,
 		RetryMax:        cfg.Processor.RetryMax,
 		ShutdownTimeout: cfg.Processor.ShutdownTimeout,
+		LagWarnAge:      cfg.Processor.LagWarnAge,
 	}, log)
 	if err != nil {
 		return err
@@ -142,6 +143,9 @@ func run(ctx context.Context, getenv func(string) string) error {
 		"options", fmt.Sprint(processorOptions(cfg)))
 
 	go proc.LogStats(ctx, cfg.Processor.StatsInterval)
+	// Safe trimming replaces publish-time MAXLEN (ADR 0010): only entries
+	// every consumer group has acknowledged are removed.
+	go proc.RunTrimmer(ctx, stream, cfg.Processor.TrimInterval)
 	if err := proc.Run(ctx); err != nil {
 		return err
 	}
