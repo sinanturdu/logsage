@@ -42,11 +42,13 @@ Run the backend (Go 1.23+):
 
 ```bash
 cd backend
-go run ./cmd/ingest              # listens on HTTP_ADDR, default :8080
-curl localhost:8080/healthz      # {"status":"ok"}
+INGEST_API_KEY=dev-key go run ./cmd/ingest   # listens on HTTP_ADDR, default :8080
+curl localhost:8080/healthz                    # {"status":"ok"}
+curl -X POST localhost:8080/v1/ingest -H "X-API-Key: dev-key" -H "Content-Type: application/json"   -d '{"events":[{"timestamp":"2026-11-06T10:15:30Z","level":"info","service":"demo","message":"hello"}]}'
+# {"accepted":1}
 ```
 
-Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`). See `.env.example`.
+Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required) and the `INGEST_MAX_*` limits. See `.env.example` and the ingest contract in `docs/architecture.md`.
 
 ## Documentation
 
