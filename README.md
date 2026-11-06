@@ -107,6 +107,20 @@ Integration tests run when these variables are set (CI sets them):
 cd backend && REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
 ```
 
+Projects and per-project API keys (v0.2 foundation; ingest and query still use the static keys until package H):
+
+```bash
+docker compose -f infra/docker-compose.yml up -d postgres
+cd backend
+export DATABASE_URL='postgres://logsage:change-me@localhost:5432/logsage?sslmode=disable'
+go run ./cmd/admin migrate
+go run ./cmd/admin create-project --name "Demo app" --slug demo
+KEY=$(go run ./cmd/admin create-key --project demo --kind ingest --name ci --expires-in 720h)   # shown once
+go run ./cmd/admin list-keys --project demo
+printf '%s\n' "$KEY" | go run ./cmd/admin verify-key          # valid project=demo kind=ingest
+go run ./cmd/admin revoke-key --prefix <8-char prefix from list-keys>
+```
+
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.
 
 ## Documentation

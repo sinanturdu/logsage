@@ -29,9 +29,9 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [ ] Review Redis `appendfsync` and AOF rewrite settings for large backlogs (the earlier N1 tail coincided with big AOF rewrites).
 
 ## v0.2: Accounts and dashboard
-- [ ] PostgreSQL migrations, users, projects, hashed API keys
-- [ ] Auth (JWT), project-scoped queries
-- [ ] React dashboard: login, log explorer, charts
+- [x] **Package G:** PostgreSQL foundation: migrations, projects, hashed per-project API keys, admin CLI (ADR 0011)
+- [ ] **Package H:** users and login (JWT); ingest and query verify per-project keys and scope data by project
+- [ ] **Package I:** React dashboard: login, log explorer, charts
 
 ## v0.3: Live tail
 - [ ] WebSocket streaming with filters
