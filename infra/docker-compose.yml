@@ -8,7 +8,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-logsage}
     ports: ["127.0.0.1:5432:5432"]
-    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    # Named volume, like ClickHouse and Redis: bind mounts from a Windows
+    # filesystem are slow and unreliable for database files.
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -50,3 +57,4 @@ services:
 volumes:
   clickhouse-data:
   redis-data:
+  postgres-data:
