@@ -7,14 +7,15 @@ import (
 	"unicode/utf8"
 )
 
-// Event is a validated log event ready to be published.
+// Event is a validated log event ready to be published. Its JSON form is the
+// payload written to the queue (timestamp as RFC3339 in UTC).
 type Event struct {
-	Timestamp  time.Time
-	Level      string
-	Service    string
-	Message    string
-	TraceID    string
-	Attributes map[string]string
+	Timestamp  time.Time         `json:"timestamp"`
+	Level      string            `json:"level"`
+	Service    string            `json:"service"`
+	Message    string            `json:"message"`
+	TraceID    string            `json:"trace_id,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Limits bounds what a single ingest request may contain.
@@ -25,6 +26,7 @@ type Limits struct {
 	MaxAttributes     int
 	MaxAttrKeyChars   int
 	MaxAttrValueChars int
+	MaxTraceIDChars   int
 }
 
 // DefaultLimits returns the v0.1 contract defaults.
@@ -36,6 +38,7 @@ func DefaultLimits() Limits {
 		MaxAttributes:     32,
 		MaxAttrKeyChars:   64,
 		MaxAttrValueChars: 1024,
+		MaxTraceIDChars:   128,
 	}
 }
 
@@ -118,6 +121,9 @@ func validateEvent(er eventRequest, lim Limits) (Event, string) {
 	}
 	if len(er.Message) > lim.MaxMessageBytes {
 		return Event{}, fmt.Sprintf("message exceeds %d bytes", lim.MaxMessageBytes)
+	}
+	if utf8.RuneCountInString(er.TraceID) > lim.MaxTraceIDChars {
+		return Event{}, fmt.Sprintf("trace_id exceeds %d characters", lim.MaxTraceIDChars)
 	}
 	if len(er.Attributes) > lim.MaxAttributes {
 		return Event{}, fmt.Sprintf("too many attributes: %d, max %d", len(er.Attributes), lim.MaxAttributes)

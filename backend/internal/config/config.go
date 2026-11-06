@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds runtime settings shared by the backend binaries.
@@ -18,6 +19,18 @@ type Config struct {
 	// It is a secret: never log it.
 	IngestAPIKey string
 	Ingest       IngestLimits
+
+	// Publisher selects where accepted events go: "memory" or "redis".
+	Publisher string
+	Redis     RedisConfig
+}
+
+// RedisConfig configures the Redis Streams publisher.
+type RedisConfig struct {
+	Addr    string        // REDIS_ADDR, required when Publisher is "redis"
+	Stream  string        // REDIS_STREAM
+	MaxLen  int64         // REDIS_STREAM_MAXLEN, approximate (XADD MAXLEN ~)
+	Timeout time.Duration // REDIS_TIMEOUT, per operation
 }
 
 // IngestLimits bounds the size of ingest requests.
@@ -28,6 +41,7 @@ type IngestLimits struct {
 	MaxAttributes     int   // INGEST_MAX_ATTRIBUTES
 	MaxAttrKeyChars   int   // INGEST_MAX_ATTR_KEY_CHARS
 	MaxAttrValueChars int   // INGEST_MAX_ATTR_VALUE_CHARS
+	MaxTraceIDChars   int   // INGEST_MAX_TRACE_ID_LEN
 }
 
 // Defaults used when a variable is unset or empty.
@@ -35,6 +49,14 @@ const (
 	DefaultHTTPAddr  = ":8080"
 	DefaultLogLevel  = slog.LevelInfo
 	DefaultLogFormat = "json"
+
+	PublisherMemory = "memory"
+	PublisherRedis  = "redis"
+
+	DefaultPublisher    = PublisherMemory
+	DefaultRedisStream  = "logsage:events"
+	DefaultRedisMaxLen  = 100_000
+	DefaultRedisTimeout = 2 * time.Second
 )
 
 // DefaultIngestLimits returns the default ingest limits.
@@ -46,6 +68,7 @@ func DefaultIngestLimits() IngestLimits {
 		MaxAttributes:     32,
 		MaxAttrKeyChars:   64,
 		MaxAttrValueChars: 1024,
+		MaxTraceIDChars:   128,
 	}
 }
 
@@ -56,6 +79,12 @@ func Load(getenv func(string) string) (Config, error) {
 		LogLevel:  DefaultLogLevel,
 		LogFormat: DefaultLogFormat,
 		Ingest:    DefaultIngestLimits(),
+		Publisher: DefaultPublisher,
+		Redis: RedisConfig{
+			Stream:  DefaultRedisStream,
+			MaxLen:  DefaultRedisMaxLen,
+			Timeout: DefaultRedisTimeout,
+		},
 	}
 
 	if v := strings.TrimSpace(getenv("HTTP_ADDR")); v != "" {
@@ -86,6 +115,7 @@ func Load(getenv func(string) string) (Config, error) {
 		{"INGEST_MAX_ATTRIBUTES", &cfg.Ingest.MaxAttributes},
 		{"INGEST_MAX_ATTR_KEY_CHARS", &cfg.Ingest.MaxAttrKeyChars},
 		{"INGEST_MAX_ATTR_VALUE_CHARS", &cfg.Ingest.MaxAttrValueChars},
+		{"INGEST_MAX_TRACE_ID_LEN", &cfg.Ingest.MaxTraceIDChars},
 	}
 	for _, it := range ints {
 		n, ok, err := positiveInt(getenv, it.name)
@@ -104,7 +134,49 @@ func Load(getenv func(string) string) (Config, error) {
 		cfg.Ingest.MaxBodyBytes = n
 	}
 
+	if err := loadPublisher(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// loadPublisher reads PUBLISHER and the REDIS_* settings. Redis values are
+// validated even when the memory publisher is selected, so typos fail fast.
+func loadPublisher(getenv func(string) string, cfg *Config) error {
+	if v := strings.ToLower(strings.TrimSpace(getenv("PUBLISHER"))); v != "" {
+		if v != PublisherMemory && v != PublisherRedis {
+			return fmt.Errorf("config: invalid PUBLISHER %q: want memory or redis", v)
+		}
+		cfg.Publisher = v
+	}
+
+	cfg.Redis.Addr = strings.TrimSpace(getenv("REDIS_ADDR"))
+
+	if v := strings.TrimSpace(getenv("REDIS_STREAM")); v != "" {
+		cfg.Redis.Stream = v
+	}
+
+	if v := strings.TrimSpace(getenv("REDIS_STREAM_MAXLEN")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("config: invalid REDIS_STREAM_MAXLEN %q: want a positive integer", v)
+		}
+		cfg.Redis.MaxLen = n
+	}
+
+	if v := strings.TrimSpace(getenv("REDIS_TIMEOUT")); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("config: invalid REDIS_TIMEOUT %q: want a positive duration such as 2s or 500ms", v)
+		}
+		cfg.Redis.Timeout = d
+	}
+
+	if cfg.Publisher == PublisherRedis && cfg.Redis.Addr == "" {
+		return fmt.Errorf("config: REDIS_ADDR is required when PUBLISHER=redis")
+	}
+	return nil
 }
 
 // positiveInt reads name and parses it as an integer > 0. ok is false when unset.

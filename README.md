@@ -38,17 +38,35 @@ cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Run the backend (Go 1.23+):
+Run the backend (Go 1.23+). By default accepted events are kept in memory:
 
 ```bash
 cd backend
 INGEST_API_KEY=dev-key go run ./cmd/ingest   # listens on HTTP_ADDR, default :8080
-curl localhost:8080/healthz                    # {"status":"ok"}
+curl localhost:8080/healthz                    # {"status":"ok"}  (liveness)
+curl localhost:8080/readyz                     # {"status":"ready"} (readiness)
 curl -X POST localhost:8080/v1/ingest -H "X-API-Key: dev-key" -H "Content-Type: application/json"   -d '{"events":[{"timestamp":"2026-11-06T10:15:30Z","level":"info","service":"demo","message":"hello"}]}'
 # {"accepted":1}
 ```
 
-Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required) and the `INGEST_MAX_*` limits. See `.env.example` and the ingest contract in `docs/architecture.md`.
+To publish to a Redis Stream instead:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d redis
+cd backend
+PUBLISHER=redis REDIS_ADDR=localhost:6379 INGEST_API_KEY=dev-key go run ./cmd/ingest
+# after sending events:
+docker compose -f infra/docker-compose.yml exec redis redis-cli XLEN logsage:events
+```
+
+Run the Redis integration tests (skipped when `REDIS_TEST_ADDR` is unset):
+
+```bash
+cd backend
+REDIS_TEST_ADDR=localhost:6379 go test ./internal/ingest -count=1
+```
+
+Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`) and the `REDIS_*` settings. See `.env.example` and the ingest contract in `docs/architecture.md`.
 
 ## Documentation
 

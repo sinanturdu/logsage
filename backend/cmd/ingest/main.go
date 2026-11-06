@@ -45,8 +45,15 @@ func run(ctx context.Context) error {
 	if cfg.IngestAPIKey == "" {
 		return errors.New("INGEST_API_KEY must be set")
 	}
+
+	pub, readiness, closePub, err := newPublisher(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer closePub()
+
 	ingestHandler, err := ingest.NewHandler(
-		ingest.NewMemoryPublisher(memoryPublisherCap),
+		pub,
 		cfg.IngestAPIKey,
 		ingest.Limits{
 			MaxBodyBytes:      cfg.Ingest.MaxBodyBytes,
@@ -55,6 +62,7 @@ func run(ctx context.Context) error {
 			MaxAttributes:     cfg.Ingest.MaxAttributes,
 			MaxAttrKeyChars:   cfg.Ingest.MaxAttrKeyChars,
 			MaxAttrValueChars: cfg.Ingest.MaxAttrValueChars,
+			MaxTraceIDChars:   cfg.Ingest.MaxTraceIDChars,
 		},
 		log,
 	)
@@ -64,6 +72,7 @@ func run(ctx context.Context) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux)
+	health.RegisterReady(mux, log, readiness...)
 	ingestHandler.Register(mux)
 
 	srv := &http.Server{
@@ -78,7 +87,7 @@ func run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("http server starting", "addr", cfg.HTTPAddr, "publisher", "memory")
+		log.Info("http server starting", "addr", cfg.HTTPAddr, "publisher", cfg.Publisher)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -102,4 +111,37 @@ func run(ctx context.Context) error {
 	}
 	log.Info("stopped")
 	return nil
+}
+
+// newPublisher builds the publisher selected by cfg.Publisher, the readiness
+// checks it needs, and a function that releases it.
+func newPublisher(ctx context.Context, cfg config.Config, log *slog.Logger) (ingest.Publisher, []health.ReadinessChecker, func(), error) {
+	switch cfg.Publisher {
+	case config.PublisherMemory:
+		return ingest.NewMemoryPublisher(memoryPublisherCap), nil, func() {}, nil
+	case config.PublisherRedis:
+		rp, err := ingest.NewRedisPublisher(ingest.RedisOptions{
+			Addr:    cfg.Redis.Addr,
+			Stream:  cfg.Redis.Stream,
+			MaxLen:  cfg.Redis.MaxLen,
+			Timeout: cfg.Redis.Timeout,
+		})
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("redis publisher: %w", err)
+		}
+		// Not fatal: /readyz reports 503 until Redis is reachable.
+		if err := rp.Ready(ctx); err != nil {
+			log.Warn("redis not reachable at startup", "addr", cfg.Redis.Addr, "err", err)
+		} else {
+			log.Info("redis publisher ready", "addr", cfg.Redis.Addr, "stream", cfg.Redis.Stream)
+		}
+		closeFn := func() {
+			if err := rp.Close(); err != nil {
+				log.Warn("close redis publisher", "err", err)
+			}
+		}
+		return rp, []health.ReadinessChecker{rp}, closeFn, nil
+	default:
+		return nil, nil, nil, fmt.Errorf("unknown publisher %q", cfg.Publisher)
+	}
 }
