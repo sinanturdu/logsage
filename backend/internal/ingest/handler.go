@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
+	"sync/atomic"
 )
 
 // Path is the route served by Handler.
@@ -28,7 +30,14 @@ type Handler struct {
 	keyDigest [sha256.Size]byte
 	lim       Limits
 	log       *slog.Logger
+
+	accepted         atomic.Int64 // events answered with 202
+	rejectedOverload atomic.Int64 // requests answered with 429
+	publishErrors    atomic.Int64 // requests answered with 503
 }
+
+// RetryAfterSeconds is the Retry-After value sent with 429 responses.
+const RetryAfterSeconds = 1
 
 // NewHandler returns a Handler that accepts requests carrying apiKey in the
 // X-API-Key header. apiKey must not be empty.
@@ -98,13 +107,63 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.pub.Publish(r.Context(), events); err != nil {
+		if errors.Is(err, ErrOverloaded) {
+			// Backpressure: nothing was written; the client should slow down.
+			h.rejectedOverload.Add(1)
+			w.Header().Set("Retry-After", strconv.Itoa(RetryAfterSeconds))
+			writeError(w, http.StatusTooManyRequests, "ingest queue is full, retry after the Retry-After delay", -1)
+			return
+		}
+		h.publishErrors.Add(1)
 		h.log.ErrorContext(r.Context(), "publish events", "count", len(events), "err", err)
 		writeError(w, http.StatusServiceUnavailable, "events could not be accepted, retry later", -1)
 		return
 	}
 
+	h.accepted.Add(int64(len(events)))
 	h.log.DebugContext(r.Context(), "events accepted", "count", len(events))
 	writeJSON(w, http.StatusAccepted, map[string]int{"accepted": len(events)})
+}
+
+// Stats is the ingest state reported on GET /stats.
+type Stats struct {
+	AcceptedTotal         int64  `json:"accepted_total"`          // events answered with 202
+	RejectedOverloadTotal int64  `json:"rejected_overload_total"` // requests answered with 429
+	PublishErrorsTotal    int64  `json:"publish_errors_total"`    // requests answered with 503
+	StreamLengthCached    *int64 `json:"stream_length_cached"`    // last XLEN seen; null before the first refresh or with the memory publisher
+	MaxStreamLen          *int64 `json:"max_stream_len"`          // backpressure limit; null with the memory publisher
+}
+
+// lengthReporter is implemented by publishers with backpressure.
+type lengthReporter interface {
+	CachedStreamLength() (int64, bool)
+}
+
+// Stats returns the counters and, for the Redis publisher, the cached length.
+func (h *Handler) Stats() Stats {
+	s := Stats{
+		AcceptedTotal:         h.accepted.Load(),
+		RejectedOverloadTotal: h.rejectedOverload.Load(),
+		PublishErrorsTotal:    h.publishErrors.Load(),
+	}
+	if lr, ok := h.pub.(lengthReporter); ok {
+		if n, known := lr.CachedStreamLength(); known {
+			s.StreamLengthCached = &n
+		}
+	}
+	if rp, ok := h.pub.(*RedisPublisher); ok {
+		limit := rp.opts.MaxStreamLen
+		s.MaxStreamLen = &limit
+	}
+	return s
+}
+
+// RegisterStats mounts GET /stats on mux. Like /healthz it needs no key and
+// holds no secrets; in Docker it is only published on 127.0.0.1.
+func (h *Handler) RegisterStats(mux *http.ServeMux) {
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, h.Stats())
+	})
 }
 
 // authorized compares key with the configured key in constant time. Hashing

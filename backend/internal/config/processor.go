@@ -34,6 +34,9 @@ type ProcessorConfig struct {
 	RetryMax        time.Duration // PROCESSOR_RETRY_MAX, backoff cap
 	StatsInterval   time.Duration // PROCESSOR_STATS_INTERVAL
 	ShutdownTimeout time.Duration // PROCESSOR_SHUTDOWN_TIMEOUT, final flush budget
+	TrimInterval    time.Duration // PROCESSOR_TRIM_INTERVAL, safe XTRIM MINID cadence
+	LagWarnAge      time.Duration // PROCESSOR_LAG_WARN_AGE, warn when the oldest unprocessed entry is older
+	DeadMaxLen      int64         // PROCESSOR_DEAD_MAXLEN, approximate cap on the dead-letter stream
 }
 
 // Processor and ClickHouse defaults.
@@ -62,6 +65,9 @@ func DefaultProcessorConfig() ProcessorConfig {
 		RetryMax:        30 * time.Second,
 		StatsInterval:   10 * time.Second,
 		ShutdownTimeout: 10 * time.Second,
+		TrimInterval:    5 * time.Second,
+		LagWarnAge:      30 * time.Second,
+		DeadMaxLen:      100_000,
 	}
 }
 
@@ -146,11 +152,21 @@ func loadProcessor(getenv func(string) string, cfg *Config) error {
 		{"PROCESSOR_RETRY_MAX", &p.RetryMax},
 		{"PROCESSOR_STATS_INTERVAL", &p.StatsInterval},
 		{"PROCESSOR_SHUTDOWN_TIMEOUT", &p.ShutdownTimeout},
+		{"PROCESSOR_TRIM_INTERVAL", &p.TrimInterval},
+		{"PROCESSOR_LAG_WARN_AGE", &p.LagWarnAge},
 	}
 	for _, d := range durations {
 		if err := positiveDuration(getenv, d.name, d.dst); err != nil {
 			return err
 		}
+	}
+
+	n, ok, err := positiveInt(getenv, "PROCESSOR_DEAD_MAXLEN")
+	if err != nil {
+		return err
+	}
+	if ok {
+		p.DeadMaxLen = n
 	}
 
 	if p.ReadBlock < time.Millisecond {

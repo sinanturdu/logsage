@@ -73,7 +73,7 @@ curl.exe -X POST http://127.0.0.1:8080/v1/ingest -H "X-API-Key: $env:INGEST_API_
 curl.exe -H "X-API-Key: $env:QUERY_API_KEY" "http://127.0.0.1:8082/v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-07T00:00:00Z&level=error"
 ```
 
-Pass `next_cursor` back as `&cursor=...` to get the next page. Every parameter, limit and status code is documented in [docs/architecture.md](docs/architecture.md). Health endpoints: `GET /healthz` and `GET /readyz` on each service; the processor also serves `GET /stats` (stream length, pending, lag, counters).
+Pass `next_cursor` back as `&cursor=...` to get the next page. Ingest answers `429` with `Retry-After` when the queue backlog is at its limit (nothing is written; retry with backoff) and `503` when the queue is unavailable. Every parameter, limit and status code is documented in [docs/architecture.md](docs/architecture.md). Health endpoints: `GET /healthz` and `GET /readyz` on each service; ingest and the processor also serve `GET /stats` (accepted, rejected and failed counts; stream length, pending, lag, oldest unprocessed age, trimmed).
 
 ## Benchmarks
 
@@ -83,10 +83,11 @@ Measured on a Windows laptop with everything in Docker Desktop. This is not a pr
 |---|---|---|
 | Ingest throughput (accepted) | 15k–70k events/s for 1–64 concurrent senders | N2: 10k events/s ✓ |
 | End-to-end through the processor | 20k–27k events/s under load, 41k events/s draining a backlog | N2 ✓ |
-| Ingest p99 at a steady 10k events/s | p50 3–5 ms; p99 8–43 ms in half the runs, 76–326 ms in the others (I/O stalls) | N1: < 50 ms, **not reliably met here** |
+| Ingest p99 at a steady 10k events/s | p50 about 3 ms; p99 5.9–7.9 ms in 8 of 8 runs after the no-loss fix (earlier runs on a nearly full disk: 7 of 14 above 50 ms) | N1: < 50 ms ✓ in the re-run |
+| Bursts at maximum rate | accepted == stored, lost 0; `429` backpressure above 500k queued events | no silent loss ✓ |
 | 24h search, 1M rows | p99 76 ms with a service filter, ≤ 342 ms without | N4: < 2 s ✓ (for this dataset) |
 
-Known issue found by the benchmarks: with the default `REDIS_STREAM_MAXLEN=100000`, a burst faster than the processor loses events silently (stream trimming). See [known limitations](docs/releases/v0.1.0.md#known-limitations).
+The first benchmark found that bursts faster than the processor lost events silently (stream trimming). That is fixed: see [ADR 0010](docs/adr/0010-no-loss-under-bursts.md).
 
 ## Development
 

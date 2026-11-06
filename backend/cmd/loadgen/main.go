@@ -21,6 +21,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 )
 
 func main() {
@@ -71,6 +73,10 @@ func cmdIngest(ctx context.Context, args []string, getenv func(string) string, o
 	fs.DurationVar(&o.Spread, "time-spread", 0, "spread event timestamps uniformly over the last DURATION (0 = now)")
 	fs.StringVar(&o.WaitDrain, "wait-drain", "", "processor /stats URL; after sending, wait until processed_total covers what was accepted")
 	fs.DurationVar(&o.DrainTimeout, "drain-timeout", 10*time.Minute, "give up waiting for the processor after this long")
+	fs.BoolVar(&o.RetryOn429, "retry-on-429", false, "retry batches answered 429 with capped exponential backoff and jitter")
+	fs.IntVar(&o.RetryMax, "retry-max", 20, "retries per batch after a 429")
+	fs.DurationVar(&o.RetryMaxBackoff, "retry-max-backoff", 2*time.Second, "cap of the retry backoff")
+	verify := fs.Bool("verify", false, "tag events with a run id and, after --wait-drain, count this run's rows in ClickHouse (LOADGEN_CLICKHOUSE_URL/USER/PASSWORD/DB)")
 	asJSON := fs.Bool("json", false, "print the result as JSON")
 	allowRemote := fs.Bool("allow-remote", false, "allow non-localhost targets")
 	if err := fs.Parse(args); err != nil {
@@ -89,6 +95,16 @@ func cmdIngest(ctx context.Context, args []string, getenv func(string) string, o
 		return err
 	}
 	o.Key = key
+	if *verify {
+		if o.WaitDrain == "" {
+			return errors.New("--verify needs --wait-drain so the processor has caught up before counting")
+		}
+		v, err := newVerifierFromEnv(getenv, *allowRemote)
+		if err != nil {
+			return err
+		}
+		o.Verify, o.RunID = v, newRunID()
+	}
 	res, err := runIngest(ctx, o)
 	if err != nil {
 		return err
@@ -172,4 +188,29 @@ func emit(w io.Writer, asJSON bool, v any, human func(io.Writer)) error {
 	}
 	human(w)
 	return nil
+}
+
+// newVerifierFromEnv builds the ClickHouse client for --verify from
+// LOADGEN_CLICKHOUSE_URL (default http://127.0.0.1:8123), _USER (default),
+// _PASSWORD and _DB (logsage). Credentials never come from flags.
+func newVerifierFromEnv(getenv func(string) string, allowRemote bool) (*verifier, error) {
+	or := func(k, def string) string {
+		if v := strings.TrimSpace(getenv(k)); v != "" {
+			return v
+		}
+		return def
+	}
+	url := or("LOADGEN_CLICKHOUSE_URL", "http://127.0.0.1:8123")
+	if err := checkTarget(url, allowRemote); err != nil {
+		return nil, err
+	}
+	ch, err := clickhouse.New(clickhouse.Options{
+		URL: url, Database: or("LOADGEN_CLICKHOUSE_DB", "logsage"),
+		User: or("LOADGEN_CLICKHOUSE_USER", "default"), Password: getenv("LOADGEN_CLICKHOUSE_PASSWORD"),
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &verifier{ch: ch, timeout: 30 * time.Second}, nil
 }

@@ -19,6 +19,8 @@ First milestone: ingest and search. Release notes: [docs/releases/v0.1.0.md](doc
 - CI: vet, build and race-enabled tests with Redis and ClickHouse services; Docker image build and Compose config validation.
 
 ### Fixed
+- No silent log loss under bursts (ADR 0010): `XADD` no longer uses `MAXLEN` (which trimmed unread entries, 22.9% of a burst in the benchmark); the processor trims only entries every consumer group acknowledged (`XTRIM MINID`, `PROCESSOR_TRIM_INTERVAL`); ingest answers `429` with `Retry-After` at `INGEST_MAX_STREAM_LEN`; Redis runs with a 1 GB `noeviction` cap so overload becomes `503`, never `202`. `REDIS_STREAM_MAXLEN` is removed (startup error if set). New: ingest `/stats`, processor `trimmed_total` and `oldest_unprocessed_age_s`, loadgen `--retry-on-429` and `--verify`.
+- Ingest HTTP shutdown is bounded like the other services.
 - ClickHouse and Redis data moved to named Docker volumes: bind mounts from a Windows filesystem broke ClickHouse part renames and stalled Redis persistence.
 - Processor HTTP shutdown is bounded (force-close after 5 s).
 

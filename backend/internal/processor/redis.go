@@ -70,14 +70,37 @@ func (r *RedisStream) withTimeout(ctx context.Context, extra time.Duration) (con
 
 // EnsureGroup runs XGROUP CREATE <stream> <group> 0 MKSTREAM, ignoring
 // BUSYGROUP (group already exists).
+//
+// Under maxmemory-policy noeviction Redis rejects XGROUP with OOM before it
+// checks whether the group exists. A processor restarting while Redis is
+// full must still start draining, so on OOM it checks with the read-only
+// XINFO GROUPS whether the group is already there.
 func (r *RedisStream) EnsureGroup(ctx context.Context) error {
 	ctx, cancel := r.withTimeout(ctx, 0)
 	defer cancel()
 	err := r.c.XGroupCreateMkStream(ctx, r.opts.Stream, r.opts.Group, "0").Err()
-	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
+	switch {
+	case err == nil, strings.HasPrefix(err.Error(), "BUSYGROUP"):
+		return nil
+	case isOOM(err):
+		groups, ierr := r.c.XInfoGroups(ctx, r.opts.Stream).Result()
+		if ierr == nil {
+			for _, g := range groups {
+				if g.Name == r.opts.Group {
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("xgroup create: %w", err)
+	default:
 		return fmt.Errorf("xgroup create: %w", err)
 	}
-	return nil
+}
+
+// isOOM reports whether err is Redis refusing a write because maxmemory is
+// reached (maxmemory-policy noeviction).
+func isOOM(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "OOM ")
 }
 
 // ReadPending reads this consumer's pending entries after ID after.
@@ -182,7 +205,8 @@ func (r *RedisStream) DeadLetter(ctx context.Context, e Entry, reason string) er
 	return nil
 }
 
-// Info returns XLEN plus the group's pending count and lag.
+// Info returns XLEN, the group's pending count and lag, and the age of the
+// oldest entry the group has not acknowledged.
 func (r *RedisStream) Info(ctx context.Context) (StreamInfo, error) {
 	ctx, cancel := r.withTimeout(ctx, 0)
 	defer cancel()
@@ -195,11 +219,82 @@ func (r *RedisStream) Info(ctx context.Context) (StreamInfo, error) {
 		return StreamInfo{}, fmt.Errorf("xinfo groups: %w", err)
 	}
 	for _, g := range groups {
-		if g.Name == r.opts.Group {
-			return StreamInfo{Length: length, Pending: g.Pending, Lag: g.Lag}, nil
+		if g.Name != r.opts.Group {
+			continue
 		}
+		info := StreamInfo{Length: length, Pending: g.Pending, Lag: g.Lag}
+		oldest, err := r.oldestUnprocessed(ctx, g.Pending, g.LastDeliveredID)
+		if err != nil {
+			return StreamInfo{}, err
+		}
+		if oldest != "" {
+			if id, err := parseStreamID(oldest); err == nil {
+				if age := r.now().Sub(time.UnixMilli(int64(id.ms))); age > 0 {
+					info.OldestUnprocessedAge = age
+				}
+			}
+		}
+		return info, nil
 	}
 	return StreamInfo{Length: length, Pending: 0, Lag: length}, nil
+}
+
+// oldestUnprocessed returns the ID of the oldest entry the group has not
+// acknowledged: its lowest pending ID, else the first entry after
+// lastDelivered; "" when the group is caught up.
+func (r *RedisStream) oldestUnprocessed(ctx context.Context, pending int64, lastDelivered string) (string, error) {
+	if pending > 0 {
+		pi, err := r.c.XPending(ctx, r.opts.Stream, r.opts.Group).Result()
+		if err != nil {
+			return "", fmt.Errorf("xpending: %w", err)
+		}
+		if pi.Count > 0 {
+			return pi.Lower, nil
+		}
+	}
+	msgs, err := r.c.XRangeN(ctx, r.opts.Stream, "("+lastDelivered, "+", 1).Result()
+	if err != nil {
+		return "", fmt.Errorf("xrange after last delivered: %w", err)
+	}
+	if len(msgs) == 0 {
+		return "", nil
+	}
+	return msgs[0].ID, nil
+}
+
+// GroupStates reads every consumer group on the stream (XINFO GROUPS) and,
+// for groups with pending entries, the lowest pending ID (XPENDING).
+func (r *RedisStream) GroupStates(ctx context.Context) ([]GroupState, error) {
+	ctx, cancel := r.withTimeout(ctx, 0)
+	defer cancel()
+	groups, err := r.c.XInfoGroups(ctx, r.opts.Stream).Result()
+	if err != nil {
+		return nil, fmt.Errorf("xinfo groups: %w", err)
+	}
+	out := make([]GroupState, 0, len(groups))
+	for _, g := range groups {
+		st := GroupState{Name: g.Name, LastDelivered: g.LastDeliveredID}
+		// XPENDING is read after XINFO GROUPS: the lowest pending ID only
+		// moves forward, so this order can only make the boundary safer.
+		pi, err := r.c.XPending(ctx, r.opts.Stream, g.Name).Result()
+		if err != nil {
+			return nil, fmt.Errorf("xpending %s: %w", g.Name, err)
+		}
+		st.Pending = pi.Count
+		if pi.Count > 0 {
+			st.LowestPending = pi.Lower
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}
+
+// TrimMinID removes entries with an ID below minID (exact XTRIM MINID) and
+// returns how many were removed.
+func (r *RedisStream) TrimMinID(ctx context.Context, minID string) (int64, error) {
+	ctx, cancel := r.withTimeout(ctx, 0)
+	defer cancel()
+	return r.c.XTrimMinID(ctx, r.opts.Stream, minID).Result()
 }
 
 // Ready pings Redis.

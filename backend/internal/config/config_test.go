@@ -9,11 +9,13 @@ import (
 func TestLoad(t *testing.T) {
 	base := Config{
 		HTTPAddr: ":8080", LogLevel: slog.LevelInfo, LogFormat: "json", Ingest: DefaultIngestLimits(),
-		Publisher:  "memory",
-		Redis:      RedisConfig{Stream: "logsage:events", MaxLen: 100000, Timeout: 2 * time.Second},
-		ClickHouse: DefaultClickHouseConfig(),
-		Processor:  DefaultProcessorConfig(),
-		Query:      DefaultQueryConfig(),
+		Publisher: "memory",
+		Redis:     RedisConfig{Stream: "logsage:events", Timeout: 2 * time.Second},
+
+		IngestMaxStreamLen: 500000,
+		ClickHouse:         DefaultClickHouseConfig(),
+		Processor:          DefaultProcessorConfig(),
+		Query:              DefaultQueryConfig(),
 	}
 	with := func(f func(*Config)) Config {
 		c := base
@@ -63,11 +65,12 @@ func TestLoad(t *testing.T) {
 			name: "redis publisher",
 			env: map[string]string{
 				"PUBLISHER": " Redis ", "REDIS_ADDR": "localhost:6379", "REDIS_STREAM": "s",
-				"REDIS_STREAM_MAXLEN": "5000000000", "REDIS_TIMEOUT": "500ms",
+				"INGEST_MAX_STREAM_LEN": "5000000000", "REDIS_TIMEOUT": "500ms",
 			},
 			want: with(func(c *Config) {
 				c.Publisher = "redis"
-				c.Redis = RedisConfig{Addr: "localhost:6379", Stream: "s", MaxLen: 5_000_000_000, Timeout: 500 * time.Millisecond}
+				c.Redis = RedisConfig{Addr: "localhost:6379", Stream: "s", Timeout: 500 * time.Millisecond}
+				c.IngestMaxStreamLen = 5_000_000_000
 			}),
 		},
 		{
@@ -78,8 +81,10 @@ func TestLoad(t *testing.T) {
 		{name: "invalid publisher", env: map[string]string{"PUBLISHER": "kafka"}, wantErr: true},
 		{name: "redis without addr", env: map[string]string{"PUBLISHER": "redis"}, wantErr: true},
 		{name: "redis with blank addr", env: map[string]string{"PUBLISHER": "redis", "REDIS_ADDR": "  "}, wantErr: true},
-		{name: "zero maxlen", env: map[string]string{"REDIS_STREAM_MAXLEN": "0"}, wantErr: true},
-		{name: "non-numeric maxlen", env: map[string]string{"REDIS_STREAM_MAXLEN": "lots"}, wantErr: true},
+		{name: "removed REDIS_STREAM_MAXLEN fails fast", env: map[string]string{"REDIS_STREAM_MAXLEN": "100000"}, wantErr: true},
+		{name: "zero max stream len", env: map[string]string{"INGEST_MAX_STREAM_LEN": "0"}, wantErr: true},
+		{name: "negative max stream len", env: map[string]string{"INGEST_MAX_STREAM_LEN": "-5"}, wantErr: true},
+		{name: "non-numeric max stream len", env: map[string]string{"INGEST_MAX_STREAM_LEN": "lots"}, wantErr: true},
 		{name: "timeout without unit", env: map[string]string{"REDIS_TIMEOUT": "2"}, wantErr: true},
 		{name: "zero timeout", env: map[string]string{"REDIS_TIMEOUT": "0s"}, wantErr: true},
 		{name: "negative timeout", env: map[string]string{"REDIS_TIMEOUT": "-1s"}, wantErr: true},

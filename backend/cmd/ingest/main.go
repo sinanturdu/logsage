@@ -74,6 +74,7 @@ func run(ctx context.Context) error {
 	health.Register(mux)
 	health.RegisterReady(mux, log, readiness...)
 	ingestHandler.Register(mux)
+	ingestHandler.RegisterStats(mux)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -124,10 +125,10 @@ func newPublisher(ctx context.Context, cfg config.Config, log *slog.Logger) (ing
 		return ingest.NewMemoryPublisher(memoryPublisherCap), nil, func() {}, nil
 	case config.PublisherRedis:
 		rp, err := ingest.NewRedisPublisher(ingest.RedisOptions{
-			Addr:    cfg.Redis.Addr,
-			Stream:  cfg.Redis.Stream,
-			MaxLen:  cfg.Redis.MaxLen,
-			Timeout: cfg.Redis.Timeout,
+			Addr:         cfg.Redis.Addr,
+			Stream:       cfg.Redis.Stream,
+			Timeout:      cfg.Redis.Timeout,
+			MaxStreamLen: cfg.IngestMaxStreamLen,
 		})
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("redis publisher: %w", err)
@@ -136,9 +137,20 @@ func newPublisher(ctx context.Context, cfg config.Config, log *slog.Logger) (ing
 		if err := rp.Ready(ctx); err != nil {
 			log.Warn("redis not reachable at startup", "addr", cfg.Redis.Addr, "err", err)
 		} else {
-			log.Info("redis publisher ready", "addr", cfg.Redis.Addr, "stream", cfg.Redis.Stream)
+			log.Info("redis publisher ready", "addr", cfg.Redis.Addr, "stream", cfg.Redis.Stream,
+				"max_stream_len", cfg.IngestMaxStreamLen)
 		}
+		// Backpressure reads the stream length from this background refresh,
+		// never with an extra Redis call per request.
+		refreshCtx, stopRefresh := context.WithCancel(context.Background())
+		refreshDone := make(chan struct{})
+		go func() {
+			defer close(refreshDone)
+			rp.RunLengthRefresher(refreshCtx)
+		}()
 		closeFn := func() {
+			stopRefresh()
+			<-refreshDone
 			if err := rp.Close(); err != nil {
 				log.Warn("close redis publisher", "err", err)
 			}

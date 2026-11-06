@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,10 @@ type StreamInfo struct {
 	Length  int64 // XLEN
 	Pending int64 // delivered but not acknowledged
 	Lag     int64 // entries not yet delivered to the group; -1 if unknown
+	// OldestUnprocessedAge is the age of the oldest entry this group has not
+	// acknowledged (pending or undelivered), from its ID timestamp; 0 when
+	// the group is caught up.
+	OldestUnprocessedAge time.Duration
 }
 
 // Options tunes the processor loop.
@@ -57,6 +62,9 @@ type Options struct {
 	RetryInitial    time.Duration
 	RetryMax        time.Duration
 	ShutdownTimeout time.Duration
+	// LagWarnAge: LogStats warns when the oldest unprocessed entry is older.
+	// Zero disables the warning.
+	LagWarnAge time.Duration
 }
 
 func (o Options) validate() error {
@@ -96,6 +104,7 @@ type Processor struct {
 	processed     atomic.Int64
 	failedBatches atomic.Int64
 	deadLettered  atomic.Int64
+	trimmed       atomic.Int64
 
 	claimCursor string
 	lastClaim   time.Time
@@ -392,13 +401,17 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 
 // Stats is the processor state reported on /stats and in the periodic log.
 type Stats struct {
-	StreamLength  *int64 `json:"stream_length"`
-	GroupPending  *int64 `json:"group_pending"`
-	GroupLag      *int64 `json:"group_lag"`
-	StreamError   string `json:"stream_error,omitempty"`
-	Processed     int64  `json:"processed_total"`
-	FailedBatches int64  `json:"failed_batches_total"`
-	DeadLettered  int64  `json:"dead_lettered_total"`
+	StreamLength *int64 `json:"stream_length"`
+	GroupPending *int64 `json:"group_pending"`
+	GroupLag     *int64 `json:"group_lag"`
+	// OldestUnprocessedAgeS is the age in seconds of the oldest entry the
+	// group has not acknowledged; 0 when caught up, null if Redis is down.
+	OldestUnprocessedAgeS *float64 `json:"oldest_unprocessed_age_s"`
+	StreamError           string   `json:"stream_error,omitempty"`
+	Processed             int64    `json:"processed_total"`
+	FailedBatches         int64    `json:"failed_batches_total"`
+	DeadLettered          int64    `json:"dead_lettered_total"`
+	Trimmed               int64    `json:"trimmed_total"`
 }
 
 // Stats returns counters and, when Redis answers, stream figures.
@@ -407,6 +420,7 @@ func (p *Processor) Stats(ctx context.Context) Stats {
 		Processed:     p.processed.Load(),
 		FailedBatches: p.failedBatches.Load(),
 		DeadLettered:  p.deadLettered.Load(),
+		Trimmed:       p.trimmed.Load(),
 	}
 	info, err := p.stream.Info(ctx)
 	if err != nil {
@@ -414,7 +428,8 @@ func (p *Processor) Stats(ctx context.Context) Stats {
 		p.log.Debug("stream info failed", "err", err)
 		return s
 	}
-	s.StreamLength, s.GroupPending, s.GroupLag = &info.Length, &info.Pending, &info.Lag
+	age := math.Round(info.OldestUnprocessedAge.Seconds()*10) / 10
+	s.StreamLength, s.GroupPending, s.GroupLag, s.OldestUnprocessedAgeS = &info.Length, &info.Pending, &info.Lag, &age
 	return s
 }
 
@@ -427,15 +442,28 @@ func (p *Processor) LogStats(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s := p.Stats(ctx)
-			attrs := []any{"processed_total", s.Processed, "failed_batches_total", s.FailedBatches, "dead_lettered_total", s.DeadLettered}
-			if s.StreamError != "" {
-				attrs = append(attrs, "stream_error", s.StreamError)
-			} else {
-				attrs = append(attrs, "stream_length", *s.StreamLength, "group_pending", *s.GroupPending, "group_lag", *s.GroupLag)
-			}
-			p.log.Info("processor stats", attrs...)
+			p.logStatsOnce(ctx)
 		}
+	}
+}
+
+// logStatsOnce logs the stats at info level and warns when the oldest
+// unprocessed entry is older than LagWarnAge.
+func (p *Processor) logStatsOnce(ctx context.Context) {
+	s := p.Stats(ctx)
+	attrs := []any{"processed_total", s.Processed, "failed_batches_total", s.FailedBatches,
+		"dead_lettered_total", s.DeadLettered, "trimmed_total", s.Trimmed}
+	if s.StreamError != "" {
+		p.log.Info("processor stats", append(attrs, "stream_error", s.StreamError)...)
+		return
+	}
+	attrs = append(attrs, "stream_length", *s.StreamLength, "group_pending", *s.GroupPending,
+		"group_lag", *s.GroupLag, "oldest_unprocessed_age_s", *s.OldestUnprocessedAgeS)
+	p.log.Info("processor stats", attrs...)
+	if w := p.opts.LagWarnAge; w > 0 && *s.OldestUnprocessedAgeS > w.Seconds() {
+		p.log.Warn("processor is falling behind: oldest unprocessed entry is older than the threshold",
+			"oldest_unprocessed_age_s", *s.OldestUnprocessedAgeS, "threshold_s", w.Seconds(),
+			"group_pending", *s.GroupPending, "group_lag", *s.GroupLag)
 	}
 }
 
