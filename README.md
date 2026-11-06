@@ -38,7 +38,15 @@ cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Backend run instructions will be added with v0.1.
+Run the backend (Go 1.23+):
+
+```bash
+cd backend
+go run ./cmd/ingest              # listens on HTTP_ADDR, default :8080
+curl localhost:8080/healthz      # {"status":"ok"}
+```
+
+Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`). See `.env.example`.
 
 ## Documentation
 
