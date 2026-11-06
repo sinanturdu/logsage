@@ -9,8 +9,10 @@ import (
 func TestLoad(t *testing.T) {
 	base := Config{
 		HTTPAddr: ":8080", LogLevel: slog.LevelInfo, LogFormat: "json", Ingest: DefaultIngestLimits(),
-		Publisher: "memory",
-		Redis:     RedisConfig{Stream: "logsage:events", MaxLen: 100000, Timeout: 2 * time.Second},
+		Publisher:  "memory",
+		Redis:      RedisConfig{Stream: "logsage:events", MaxLen: 100000, Timeout: 2 * time.Second},
+		ClickHouse: DefaultClickHouseConfig(),
+		Processor:  DefaultProcessorConfig(),
 	}
 	with := func(f func(*Config)) Config {
 		c := base

@@ -23,6 +23,9 @@ type Config struct {
 	// Publisher selects where accepted events go: "memory" or "redis".
 	Publisher string
 	Redis     RedisConfig
+
+	ClickHouse ClickHouseConfig
+	Processor  ProcessorConfig
 }
 
 // RedisConfig configures the Redis Streams publisher.
@@ -85,6 +88,8 @@ func Load(getenv func(string) string) (Config, error) {
 			MaxLen:  DefaultRedisMaxLen,
 			Timeout: DefaultRedisTimeout,
 		},
+		ClickHouse: DefaultClickHouseConfig(),
+		Processor:  DefaultProcessorConfig(),
 	}
 
 	if v := strings.TrimSpace(getenv("HTTP_ADDR")); v != "" {
@@ -135,6 +140,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 
 	if err := loadPublisher(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadProcessor(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
 
