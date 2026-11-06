@@ -7,14 +7,15 @@ import (
 	"unicode/utf8"
 )
 
-// Event is a validated log event ready to be published.
+// Event is a validated log event ready to be published. Its JSON form is the
+// payload written to the queue (timestamp as RFC3339 in UTC).
 type Event struct {
-	Timestamp  time.Time
-	Level      string
-	Service    string
-	Message    string
-	TraceID    string
-	Attributes map[string]string
+	Timestamp  time.Time         `json:"timestamp"`
+	Level      string            `json:"level"`
+	Service    string            `json:"service"`
+	Message    string            `json:"message"`
+	TraceID    string            `json:"trace_id,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Limits bounds what a single ingest request may contain.
