@@ -37,7 +37,30 @@ Content-Type: application/json
     "message": "payment gateway timeout", "trace_id": "abc123",
     "attributes": { "env": "prod", "region": "eu-1" } } ] }
 ```
-Responses: `202` accepted, `400` invalid, `401` bad key, `413` too large, `429` rate limited.
+Responses (all bodies are JSON):
+
+| Status | When | Body |
+|--------|------|------|
+| `202` | batch accepted | `{"accepted": N}` |
+| `400` | malformed JSON, unknown field, trailing data, or an invalid event | `{"error": "events[3]: level must be one of ...", "index": 3}` (`index` only for per-event errors) |
+| `401` | `X-API-Key` missing or wrong | `{"error": "missing or invalid API key"}` |
+| `405` | method other than `POST` (`Allow: POST` is set) | `{"error": ...}` |
+| `413` | body larger than the limit (by `Content-Length` or while reading) | `{"error": ...}` |
+| `415` | `Content-Type` is not `application/json` (parameters such as `charset` are allowed) | `{"error": ...}` |
+| `429` | rate limited (planned, not in v0.1 yet) | `{"error": ...}` |
+| `503` | the publisher (queue) failed; the client should retry | `{"error": "events could not be accepted, retry later"}` |
+
+Checks run in this order: method, API key, content type, body size, then JSON and event validation. The batch is all-or-nothing: if any event is invalid nothing is published.
+
+Validation rules:
+- `timestamp` required, RFC3339 (fractional seconds and offsets allowed; stored as UTC).
+- `level` required, one of `debug`, `info`, `warn`, `error`, `fatal` (lowercase).
+- `service` and `message` required and non-blank. `trace_id` and `attributes` optional.
+- `attributes` is a flat object of string values.
+
+Limits (env var, default): body `INGEST_MAX_BODY_BYTES` 1 MiB; events per batch `INGEST_MAX_EVENTS` 1000; message `INGEST_MAX_MESSAGE_BYTES` 8 KiB; attributes per event `INGEST_MAX_ATTRIBUTES` 32; attribute key `INGEST_MAX_ATTR_KEY_CHARS` 64 characters; attribute value `INGEST_MAX_ATTR_VALUE_CHARS` 1024 characters.
+
+Authentication in v0.1 is a single static key from `INGEST_API_KEY`, compared in constant time and never logged. Per-project hashed keys replace it in v0.2. Until the Redis Streams producer lands, accepted events go to an in-memory publisher (bounded, lost on restart).
 
 ## Data model
 

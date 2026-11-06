@@ -15,7 +15,7 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 - Backend: `cd backend && go vet ./... && go build ./... && go test ./...`
   - Locally on Windows, run `go test ./...` without `-race` (the race detector crashes with the MinGW toolchain on PATH).
   - CI runs `go test ./... -race` on Linux.
-- Run ingest API: `cd backend && go run ./cmd/ingest` (health check: `GET /healthz`)
+- Run ingest API: `cd backend && INGEST_API_KEY=dev-key go run ./cmd/ingest` (health check: `GET /healthz`; ingest: `POST /v1/ingest`)
 
 ## Conventions
 - Go: standard layout, small packages, `context.Context` first parameter, errors wrapped with `%w`, no global state, table-driven tests.
