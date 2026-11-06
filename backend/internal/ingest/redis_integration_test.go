@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -13,7 +14,7 @@ import (
 
 // redisIntegration returns a raw client and options for a fresh stream key on
 // the Redis at REDIS_TEST_ADDR, or skips the test when it is not set.
-func redisIntegration(t *testing.T, maxLen int64) (*redis.Client, RedisOptions) {
+func redisIntegration(t *testing.T, maxStreamLen int64) (*redis.Client, RedisOptions) {
 	t.Helper()
 	addr := os.Getenv("REDIS_TEST_ADDR")
 	if addr == "" {
@@ -30,7 +31,7 @@ func redisIntegration(t *testing.T, maxLen int64) (*redis.Client, RedisOptions) 
 
 	stream := fmt.Sprintf("logsage:test:%s:%d", t.Name(), time.Now().UnixNano())
 	t.Cleanup(func() { _ = rdb.Del(context.Background(), stream).Err() })
-	return rdb, RedisOptions{Addr: addr, Stream: stream, MaxLen: maxLen, Timeout: 5 * time.Second}
+	return rdb, RedisOptions{Addr: addr, Stream: stream, MaxStreamLen: maxStreamLen, Timeout: 5 * time.Second, LengthRefresh: 20 * time.Millisecond}
 }
 
 func TestRedisIntegrationPublish(t *testing.T) {
@@ -80,29 +81,42 @@ func TestRedisIntegrationPublish(t *testing.T) {
 	}
 }
 
-func TestRedisIntegrationApproximateTrim(t *testing.T) {
-	rdb, opts := redisIntegration(t, 10)
+// TestRedisIntegrationBackpressure: with a tiny INGEST_MAX_STREAM_LEN and
+// no consumer reading, the publisher starts returning ErrOverloaded and the
+// stream still holds every entry that was accepted (nothing is trimmed).
+func TestRedisIntegrationBackpressure(t *testing.T) {
+	rdb, opts := redisIntegration(t, 50)
 	p, err := NewRedisPublisher(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.RunLengthRefresher(ctx)
 
-	const total = 1000
-	for i := 0; i < total/100; i++ {
-		if err := p.Publish(ctx, sampleEvents(100)); err != nil {
-			t.Fatalf("Publish batch %d: %v", i, err)
+	var accepted, overloaded int
+	for i := 0; i < 200; i++ {
+		err := p.Publish(ctx, sampleEvents(5))
+		switch {
+		case err == nil:
+			accepted += 5
+		case errors.Is(err, ErrOverloaded):
+			overloaded++
+		default:
+			t.Fatalf("Publish: %v", err)
 		}
+		time.Sleep(2 * time.Millisecond)
 	}
-
-	n, err := rdb.XLen(ctx, opts.Stream).Result()
+	if overloaded == 0 {
+		t.Fatal("never overloaded with MaxStreamLen 50")
+	}
+	n, err := rdb.XLen(context.Background(), opts.Stream).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// MAXLEN ~ trims whole radix-tree nodes, so the length stays at or above
-	// the cap but far below what was written.
-	if n < opts.MaxLen || n >= total {
-		t.Errorf("XLEN = %d, want between %d and %d", n, opts.MaxLen, total-1)
+	if n != int64(accepted) {
+		t.Fatalf("stream holds %d entries, accepted %d: accepted entries must all still be there", n, accepted)
 	}
+	t.Logf("accepted %d events, %d batches rejected, stream length %d (limit 50, soft)", accepted, overloaded, n)
 }

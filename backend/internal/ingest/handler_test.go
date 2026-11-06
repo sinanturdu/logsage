@@ -21,6 +21,15 @@ func (failingPublisher) Publish(context.Context, []Event) error {
 	return errors.New("queue unavailable")
 }
 
+// errPublisher returns err from every Publish.
+type errPublisher struct{ err error }
+
+func (p errPublisher) Publish(context.Context, []Event) error { return p.err }
+
+// redisOOM is the error Redis returns for writes under maxmemory-policy
+// noeviction once the memory limit is reached.
+var redisOOM = errors.New("redis publisher: xadd 1 entries to \"logsage:events\": OOM command not allowed when used memory > 'maxmemory'.")
+
 func batchJSON(n int) string {
 	ev := `{"timestamp":"2026-11-06T10:15:30.123Z","level":"info","service":"checkout","message":"ok","trace_id":"abc","attributes":{"env":"prod"}}`
 	parts := make([]string, n)
@@ -81,6 +90,9 @@ func TestHandler(t *testing.T) {
 		},
 
 		{name: "publisher failure", body: batchJSON(1), pub: failingPublisher{}, wantStatus: http.StatusServiceUnavailable, wantError: "retry later"},
+		{name: "redis out of memory is 503, not 202", body: batchJSON(1), pub: errPublisher{redisOOM}, wantStatus: http.StatusServiceUnavailable, wantError: "retry later"},
+		{name: "backpressure is 429", body: batchJSON(1), pub: errPublisher{ErrOverloaded}, wantStatus: http.StatusTooManyRequests, wantError: "queue is full"},
+		{name: "wrapped overload is 429", body: batchJSON(1), pub: errPublisher{fmt.Errorf("x: %w", ErrOverloaded)}, wantStatus: http.StatusTooManyRequests, wantError: "queue is full"},
 	}
 
 	for _, tt := range tests {
@@ -163,6 +175,9 @@ func TestHandler(t *testing.T) {
 			}
 			if tt.wantStatus == http.StatusMethodNotAllowed && rec.Header().Get("Allow") != http.MethodPost {
 				t.Errorf("Allow = %q, want POST", rec.Header().Get("Allow"))
+			}
+			if ra := rec.Header().Get("Retry-After"); (tt.wantStatus == http.StatusTooManyRequests) != (ra == "1") {
+				t.Errorf("Retry-After = %q for status %d, want \"1\" only on 429", ra, tt.wantStatus)
 			}
 		})
 	}
@@ -268,5 +283,97 @@ func TestParseBatch(t *testing.T) {
 				t.Fatalf("ParseBatch() = %d events, %v; want %d", len(evs), err, tt.wantN)
 			}
 		})
+	}
+}
+
+// TestHandlerBackpressureWritesNothing drives the real RedisPublisher (fake
+// Redis) through the handler: below the limit 202 and a write, at or above
+// it 429 with Retry-After and no write at all.
+func TestHandlerBackpressureWritesNothing(t *testing.T) {
+	tests := []struct {
+		name       string
+		xlen       int64
+		wantStatus int
+		wantWrites int
+	}{
+		{name: "below limit", xlen: 999, wantStatus: http.StatusAccepted, wantWrites: 1},
+		{name: "at limit", xlen: 1000, wantStatus: http.StatusTooManyRequests, wantWrites: 0},
+		{name: "far above limit", xlen: 10_000_000, wantStatus: http.StatusTooManyRequests, wantWrites: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStream{xlen: tt.xlen}
+			pub := newFakePublisher(t, f, testRedisOpts()) // MaxStreamLen 1000
+			if err := pub.RefreshLength(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			h, err := NewHandler(pub, testKey, DefaultLimits(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mux := http.NewServeMux()
+			h.Register(mux)
+			h.RegisterStats(mux)
+			req := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(batchJSON(2)))
+			req.Header.Set("X-API-Key", testKey)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (%s)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if f.pipelines() != tt.wantWrites {
+				t.Errorf("Redis writes = %d, want %d", f.pipelines(), tt.wantWrites)
+			}
+			if tt.wantStatus == http.StatusTooManyRequests {
+				if rec.Header().Get("Retry-After") != "1" {
+					t.Errorf("Retry-After = %q", rec.Header().Get("Retry-After"))
+				}
+				var body map[string]any
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body["error"] == nil {
+					t.Errorf("429 body = %s, want JSON error", rec.Body.String())
+				}
+			}
+
+			srec := httptest.NewRecorder()
+			mux.ServeHTTP(srec, httptest.NewRequest(http.MethodGet, "/stats", nil))
+			var st Stats
+			if err := json.Unmarshal(srec.Body.Bytes(), &st); err != nil {
+				t.Fatal(err)
+			}
+			if st.StreamLengthCached == nil || *st.StreamLengthCached != tt.xlen || st.MaxStreamLen == nil || *st.MaxStreamLen != 1000 {
+				t.Errorf("stats = %s", srec.Body.String())
+			}
+			wantAccepted, wantRejected := int64(0), int64(0)
+			if tt.wantStatus == http.StatusAccepted {
+				wantAccepted = 2
+			} else {
+				wantRejected = 1
+			}
+			if st.AcceptedTotal != wantAccepted || st.RejectedOverloadTotal != wantRejected || st.PublishErrorsTotal != 0 {
+				t.Errorf("counters = %+v", st)
+			}
+			if strings.Contains(srec.Body.String(), testKey) {
+				t.Error("/stats leaks the API key")
+			}
+		})
+	}
+}
+
+func TestHandlerStatsCountsPublishErrors(t *testing.T) {
+	h, err := NewHandler(errPublisher{redisOOM}, testKey, DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(batchJSON(1)))
+		req.Header.Set("X-API-Key", testKey)
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	st := h.Stats()
+	if st.PublishErrorsTotal != 3 || st.AcceptedTotal != 0 || st.StreamLengthCached != nil || st.MaxStreamLen != nil {
+		t.Errorf("stats = %+v", st)
 	}
 }

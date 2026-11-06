@@ -37,7 +37,8 @@ func TestLoadProcessor(t *testing.T) {
 				"PROCESSOR_BATCH_SIZE": "50", "PROCESSOR_READ_COUNT": "20", "PROCESSOR_READ_BLOCK": "250ms",
 				"PROCESSOR_FLUSH_INTERVAL": "500ms", "PROCESSOR_CLAIM_IDLE": "1m", "PROCESSOR_CLAIM_INTERVAL": "5s",
 				"PROCESSOR_RETRY_INITIAL": "100ms", "PROCESSOR_RETRY_MAX": "5s", "PROCESSOR_STATS_INTERVAL": "1s",
-				"PROCESSOR_SHUTDOWN_TIMEOUT": "4s",
+				"PROCESSOR_SHUTDOWN_TIMEOUT": "4s", "PROCESSOR_TRIM_INTERVAL": "2s",
+				"PROCESSOR_LAG_WARN_AGE": "1m", "PROCESSOR_DEAD_MAXLEN": "500",
 			},
 			check: func(t *testing.T, c Config) {
 				want := ClickHouseConfig{URL: "https://ch.example:8443", Database: "logs_test", User: "ingest", Password: " s3cret ", Timeout: 3 * time.Second, TTLDays: 7}
@@ -49,6 +50,7 @@ func TestLoadProcessor(t *testing.T) {
 					ReadBlock: 250 * time.Millisecond, FlushInterval: 500 * time.Millisecond, ClaimIdle: time.Minute,
 					ClaimInterval: 5 * time.Second, RetryInitial: 100 * time.Millisecond, RetryMax: 5 * time.Second,
 					StatsInterval: time.Second, ShutdownTimeout: 4 * time.Second,
+					TrimInterval: 2 * time.Second, LagWarnAge: time.Minute, DeadMaxLen: 500,
 				}
 				if c.Processor != wantP {
 					t.Errorf("Processor = %+v, want %+v", c.Processor, wantP)
@@ -66,6 +68,9 @@ func TestLoadProcessor(t *testing.T) {
 		{name: "negative claim idle", env: map[string]string{"PROCESSOR_CLAIM_IDLE": "-1s"}, wantErr: true},
 		{name: "sub-millisecond block", env: map[string]string{"PROCESSOR_READ_BLOCK": "10us"}, wantErr: true},
 		{name: "retry initial above max", env: map[string]string{"PROCESSOR_RETRY_INITIAL": "10s", "PROCESSOR_RETRY_MAX": "1s"}, wantErr: true},
+		{name: "zero trim interval", env: map[string]string{"PROCESSOR_TRIM_INTERVAL": "0s"}, wantErr: true},
+		{name: "bad lag warn age", env: map[string]string{"PROCESSOR_LAG_WARN_AGE": "30"}, wantErr: true},
+		{name: "zero dead maxlen", env: map[string]string{"PROCESSOR_DEAD_MAXLEN": "0"}, wantErr: true},
 		{name: "dead stream equals main stream", env: map[string]string{"PROCESSOR_DEAD_STREAM": "logsage:events"}, wantErr: true},
 	}
 

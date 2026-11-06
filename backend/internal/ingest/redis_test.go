@@ -15,12 +15,34 @@ import (
 
 // fakeStream records pipelines and can fail or block until the context ends.
 type fakeStream struct {
-	mu      sync.Mutex
-	calls   [][]*redis.XAddArgs
-	err     error
-	block   bool
-	pingErr error
-	closed  bool
+	mu        sync.Mutex
+	calls     [][]*redis.XAddArgs
+	err       error
+	block     bool
+	pingErr   error
+	closed    bool
+	xlen      int64
+	xlenErr   error
+	xlenCalls int
+}
+
+func (f *fakeStream) XLen(_ context.Context, _ string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.xlenCalls++
+	return f.xlen, f.xlenErr
+}
+
+func (f *fakeStream) setXLen(n int64, err error) {
+	f.mu.Lock()
+	f.xlen, f.xlenErr = n, err
+	f.mu.Unlock()
+}
+
+func (f *fakeStream) pipelines() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
 }
 
 func (f *fakeStream) XAddPipeline(ctx context.Context, entries []*redis.XAddArgs) error {
@@ -47,7 +69,7 @@ func (f *fakeStream) Close() error { f.closed = true; return nil }
 var fixedNow = time.Date(2026, 11, 6, 15, 4, 5, 123_000_000, time.FixedZone("TRT", 3*3600))
 
 func testRedisOpts() RedisOptions {
-	return RedisOptions{Addr: "fake:6379", Stream: "test:events", MaxLen: 1000, Timeout: 200 * time.Millisecond}
+	return RedisOptions{Addr: "fake:6379", Stream: "test:events", MaxStreamLen: 1000, Timeout: 200 * time.Millisecond}
 }
 
 func newFakePublisher(t *testing.T, f *fakeStream, opts RedisOptions) *RedisPublisher {
@@ -91,8 +113,9 @@ func TestRedisPublisherPublishPipeline(t *testing.T) {
 		t.Fatalf("entries = %d, want %d", len(entries), len(events))
 	}
 	for i, e := range entries {
-		if e.Stream != "test:events" || e.MaxLen != 1000 || !e.Approx {
-			t.Errorf("entry %d: stream=%q maxlen=%d approx=%v, want test:events 1000 true", i, e.Stream, e.MaxLen, e.Approx)
+		// No trimming at publish time: MAXLEN would drop unread entries.
+		if e.Stream != "test:events" || e.MaxLen != 0 || e.MinID != "" || e.Approx {
+			t.Errorf("entry %d: stream=%q maxlen=%d minid=%q approx=%v, want test:events without trimming", i, e.Stream, e.MaxLen, e.MinID, e.Approx)
 		}
 		if e.ID != "" {
 			t.Errorf("entry %d: ID = %q, want server-assigned", i, e.ID)
@@ -229,7 +252,8 @@ func TestRedisOptionsValidate(t *testing.T) {
 	}{
 		{name: "empty addr", mutate: func(o *RedisOptions) { o.Addr = "" }},
 		{name: "empty stream", mutate: func(o *RedisOptions) { o.Stream = "" }},
-		{name: "zero maxlen", mutate: func(o *RedisOptions) { o.MaxLen = 0 }},
+		{name: "zero max stream len", mutate: func(o *RedisOptions) { o.MaxStreamLen = 0 }},
+		{name: "negative refresh", mutate: func(o *RedisOptions) { o.LengthRefresh = -time.Second }},
 		{name: "zero timeout", mutate: func(o *RedisOptions) { o.Timeout = 0 }},
 	}
 	for _, tt := range tests {
@@ -271,5 +295,101 @@ func TestRedisPublisherUnreachable(t *testing.T) {
 	}
 	if d := time.Since(start); d > 3*time.Second {
 		t.Errorf("calls took %v, want them bounded by the timeout", d)
+	}
+}
+
+func TestRedisPublisherBackpressure(t *testing.T) {
+	tests := []struct {
+		name      string
+		xlen      int64
+		refresh   bool // run RefreshLength before publishing
+		wantErr   error
+		wantWrite bool
+	}{
+		{name: "no refresh yet publishes", refresh: false, wantWrite: true},
+		{name: "well below the limit", xlen: 10, refresh: true, wantWrite: true},
+		{name: "one below the limit", xlen: 999, refresh: true, wantWrite: true},
+		{name: "at the limit", xlen: 1000, refresh: true, wantErr: ErrOverloaded},
+		{name: "above the limit", xlen: 50_000, refresh: true, wantErr: ErrOverloaded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStream{xlen: tt.xlen}
+			p := newFakePublisher(t, f, testRedisOpts()) // MaxStreamLen 1000
+			if tt.refresh {
+				if err := p.RefreshLength(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := f.xlenCalls
+			err := p.Publish(context.Background(), sampleEvents(3))
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Publish() error = %v, want %v", err, tt.wantErr)
+			}
+			if got := f.pipelines() > 0; got != tt.wantWrite {
+				t.Errorf("wrote to Redis = %v, want %v", got, tt.wantWrite)
+			}
+			if f.xlenCalls != calls {
+				t.Error("Publish called XLEN; the length must come from the cache")
+			}
+		})
+	}
+}
+
+func TestRedisPublisherRefreshKeepsLastValueOnError(t *testing.T) {
+	f := &fakeStream{xlen: 2000}
+	p := newFakePublisher(t, f, testRedisOpts())
+	if n, ok := p.CachedStreamLength(); ok || n != 0 {
+		t.Fatalf("before refresh: %d %v, want unknown", n, ok)
+	}
+	if err := p.RefreshLength(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.setXLen(0, errors.New("redis down"))
+	if err := p.RefreshLength(context.Background()); err == nil {
+		t.Fatal("RefreshLength() = nil, want error")
+	}
+	if n, ok := p.CachedStreamLength(); !ok || n != 2000 {
+		t.Errorf("after failed refresh: %d %v, want last value 2000", n, ok)
+	}
+	if err := p.Publish(context.Background(), sampleEvents(1)); !errors.Is(err, ErrOverloaded) {
+		t.Errorf("Publish() = %v, want ErrOverloaded from the last known length", err)
+	}
+}
+
+func TestRedisPublisherLengthRefresher(t *testing.T) {
+	f := &fakeStream{xlen: 5}
+	opts := testRedisOpts()
+	opts.LengthRefresh = 10 * time.Millisecond
+	p := newFakePublisher(t, f, opts)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.RunLengthRefresher(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+
+	waitLen := func(want int64) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			if n, ok := p.CachedStreamLength(); ok && n == want {
+				return
+			}
+			if time.Now().After(deadline) {
+				n, ok := p.CachedStreamLength()
+				t.Fatalf("cached length = %d (known %v), want %d", n, ok, want)
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	waitLen(5)
+	f.setXLen(1500, nil)
+	waitLen(1500)
+	if err := p.Publish(context.Background(), sampleEvents(1)); !errors.Is(err, ErrOverloaded) {
+		t.Errorf("Publish() = %v, want ErrOverloaded", err)
+	}
+	f.setXLen(10, nil)
+	waitLen(10)
+	if err := p.Publish(context.Background(), sampleEvents(1)); err != nil {
+		t.Errorf("Publish() after the backlog drained = %v", err)
 	}
 }

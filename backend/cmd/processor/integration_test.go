@@ -50,7 +50,7 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		_ = ch.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db)
 	})
 
-	pub, err := ingest.NewRedisPublisher(ingest.RedisOptions{Addr: redisAddr, Stream: stream, MaxLen: 10000, Timeout: 5 * time.Second})
+	pub, err := ingest.NewRedisPublisher(ingest.RedisOptions{Addr: redisAddr, Stream: stream, MaxStreamLen: 1_000_000, Timeout: 5 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -72,7 +72,7 @@ func run(ctx context.Context, getenv func(string) string) error {
 		Addr:       cfg.Redis.Addr,
 		Stream:     cfg.Redis.Stream,
 		DeadStream: cfg.Processor.DeadStream,
-		DeadMaxLen: cfg.Redis.MaxLen,
+		DeadMaxLen: cfg.Processor.DeadMaxLen,
 		Consumer:   consumer,
 		Timeout:    cfg.Redis.Timeout,
 	})

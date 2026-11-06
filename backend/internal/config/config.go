@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -19,6 +20,9 @@ type Config struct {
 	// It is a secret: never log it.
 	IngestAPIKey string
 	Ingest       IngestLimits
+	// IngestMaxStreamLen is the stream length at which ingest answers 429
+	// (soft limit, checked against a cached XLEN). INGEST_MAX_STREAM_LEN.
+	IngestMaxStreamLen int64
 
 	// Publisher selects where accepted events go: "memory" or "redis".
 	Publisher string
@@ -33,7 +37,6 @@ type Config struct {
 type RedisConfig struct {
 	Addr    string        // REDIS_ADDR, required when Publisher is "redis"
 	Stream  string        // REDIS_STREAM
-	MaxLen  int64         // REDIS_STREAM_MAXLEN, approximate (XADD MAXLEN ~)
 	Timeout time.Duration // REDIS_TIMEOUT, per operation
 }
 
@@ -57,10 +60,10 @@ const (
 	PublisherMemory = "memory"
 	PublisherRedis  = "redis"
 
-	DefaultPublisher    = PublisherMemory
-	DefaultRedisStream  = "logsage:events"
-	DefaultRedisMaxLen  = 100_000
-	DefaultRedisTimeout = 2 * time.Second
+	DefaultPublisher          = PublisherMemory
+	DefaultRedisStream        = "logsage:events"
+	DefaultIngestMaxStreamLen = 500_000
+	DefaultRedisTimeout       = 2 * time.Second
 )
 
 // DefaultIngestLimits returns the default ingest limits.
@@ -83,10 +86,11 @@ func Load(getenv func(string) string) (Config, error) {
 		LogLevel:  DefaultLogLevel,
 		LogFormat: DefaultLogFormat,
 		Ingest:    DefaultIngestLimits(),
-		Publisher: DefaultPublisher,
+
+		IngestMaxStreamLen: DefaultIngestMaxStreamLen,
+		Publisher:          DefaultPublisher,
 		Redis: RedisConfig{
 			Stream:  DefaultRedisStream,
-			MaxLen:  DefaultRedisMaxLen,
 			Timeout: DefaultRedisTimeout,
 		},
 		ClickHouse: DefaultClickHouseConfig(),
@@ -141,6 +145,14 @@ func Load(getenv func(string) string) (Config, error) {
 		cfg.Ingest.MaxBodyBytes = n
 	}
 
+	if v := strings.TrimSpace(getenv("INGEST_MAX_STREAM_LEN")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return Config{}, fmt.Errorf("config: invalid INGEST_MAX_STREAM_LEN %q: want a positive integer", v)
+		}
+		cfg.IngestMaxStreamLen = n
+	}
+
 	if err := loadPublisher(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
@@ -170,12 +182,11 @@ func loadPublisher(getenv func(string) string, cfg *Config) error {
 		cfg.Redis.Stream = v
 	}
 
+	// REDIS_STREAM_MAXLEN was removed: trimming by length at publish time
+	// dropped unread events. Fail instead of silently ignoring an old value.
 	if v := strings.TrimSpace(getenv("REDIS_STREAM_MAXLEN")); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n <= 0 {
-			return fmt.Errorf("config: invalid REDIS_STREAM_MAXLEN %q: want a positive integer", v)
-		}
-		cfg.Redis.MaxLen = n
+		return errors.New("config: REDIS_STREAM_MAXLEN is no longer supported (length trimming lost unread events); " +
+			"remove it and use INGEST_MAX_STREAM_LEN for backpressure, see ADR 0010")
 	}
 
 	if v := strings.TrimSpace(getenv("REDIS_TIMEOUT")); v != "" {
