@@ -3,9 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -159,5 +163,97 @@ func TestLimiterCapsRate(t *testing.T) {
 	}
 	if newLimiter(0) != nil {
 		t.Error("rate 0 should mean unlimited")
+	}
+}
+
+func TestRetryBackoff(t *testing.T) {
+	tests := []struct {
+		attempt int
+		jitter  float64
+		want    time.Duration
+	}{
+		{0, 0, 25 * time.Millisecond},
+		{0, 0.999, 49_975_000},
+		{1, 0, 50 * time.Millisecond},
+		{3, 0, 200 * time.Millisecond},
+		{10, 0, time.Second}, // 51.2s capped at 2s, half is 1s
+		{100, 0.5, 1500 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		if got := retryBackoff(tt.attempt, 2*time.Second, tt.jitter); got != tt.want {
+			t.Errorf("retryBackoff(%d, %.3f) = %v, want %v", tt.attempt, tt.jitter, got, tt.want)
+		}
+	}
+}
+
+// flaky429 answers 429 to the first two attempts of every batch (keyed by
+// body), then 202.
+type flaky429 struct {
+	mu    sync.Mutex
+	seen  map[string]int
+	total int
+}
+
+func (f *flaky429) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	var b wireBatch
+	_ = json.Unmarshal(body, &b)
+	f.mu.Lock()
+	f.seen[string(body)]++
+	n := f.seen[string(body)]
+	if n > 2 {
+		f.total += len(b.Events)
+	}
+	f.mu.Unlock()
+	if n <= 2 {
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"ingest queue is full"}`)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = fmt.Fprintf(w, `{"accepted":%d}`, len(b.Events))
+}
+
+func TestIngest429Handling(t *testing.T) {
+	tests := []struct {
+		name        string
+		retry       bool
+		wantAccept  int64
+		want429     int64
+		wantRetries int64
+		wantGaveUp  int64
+	}{
+		{name: "without retry: counted and given up", retry: false, wantAccept: 0, want429: 5, wantRetries: 0, wantGaveUp: 50},
+		{name: "with retry: every batch accepted after two 429s", retry: true, wantAccept: 50, want429: 10, wantRetries: 10, wantGaveUp: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(&flaky429{seen: map[string]int{}})
+			defer srv.Close()
+			res, err := runIngest(context.Background(), ingestOptions{
+				URL: srv.URL, Key: "k", Concurrency: 1, BatchSize: 10, MaxEvents: 50, Seed: 1,
+				RetryOn429: tt.retry, RetryMax: 5, RetryMaxBackoff: 10 * time.Millisecond,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.EventsAccepted != tt.wantAccept || res.Rejected429 != tt.want429 || res.Retries429 != tt.wantRetries || res.GaveUpEvents != tt.wantGaveUp {
+				t.Errorf("accepted %d, 429s %d, retries %d, gave up %d; want %d, %d, %d, %d",
+					res.EventsAccepted, res.Rejected429, res.Retries429, res.GaveUpEvents, tt.wantAccept, tt.want429, tt.wantRetries, tt.wantGaveUp)
+			}
+			if res.Status["429"] != tt.want429 {
+				t.Errorf("status codes %v", res.Status)
+			}
+		})
+	}
+}
+
+func TestVerifyNeedsWaitDrain(t *testing.T) {
+	err := run(context.Background(), []string{"ingest", "--verify"}, func(k string) string {
+		return map[string]string{"LOADGEN_INGEST_KEY": "k"}[k]
+	}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--verify needs --wait-drain") {
+		t.Fatalf("err = %v", err)
 	}
 }

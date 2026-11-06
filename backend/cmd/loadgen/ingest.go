@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"sync"
@@ -26,6 +27,15 @@ type ingestOptions struct {
 	Spread       time.Duration // spread event timestamps over [now-spread, now)
 	WaitDrain    string        // processor /stats URL, empty: skip
 	DrainTimeout time.Duration
+
+	RetryOn429      bool          // retry a batch answered with 429
+	RetryMax        int           // attempts after the first, per batch
+	RetryMaxBackoff time.Duration // cap of the exponential backoff
+
+	// Verify tags every event with RunID and, after the drain, counts the
+	// stored rows of this run in ClickHouse (accepted vs stored).
+	Verify *verifier
+	RunID  string
 }
 
 type ingestResult struct {
@@ -43,7 +53,11 @@ type ingestResult struct {
 	Status         map[string]int64 `json:"status_codes"`
 	Errors         int64            `json:"transport_errors"`
 	ErrorSamples   []string         `json:"error_samples,omitempty"`
+	Rejected429    int64            `json:"requests_429"`
+	Retries429     int64            `json:"retries_after_429"`
+	GaveUpEvents   int64            `json:"gave_up_events"` // events of batches still answered 429 after the last retry
 	Drain          *drainResult     `json:"drain,omitempty"`
+	Verify         *verifyResult    `json:"verify,omitempty"`
 }
 
 type drainResult struct {
@@ -126,6 +140,7 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 	lim := newLimiter(o.Rate)
 	var (
 		reserved, accepted, requests, transportErrs atomic.Int64
+		rejected429, retries429, gaveUp             atomic.Int64
 		mu                                          sync.Mutex
 		latencies                                   []time.Duration
 		status                                      = map[string]int64{}
@@ -138,6 +153,7 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 		go func(worker int) {
 			defer wg.Done()
 			gen := NewGenerator(o.Seed + uint64(worker))
+			jitter := rand.New(rand.NewPCG(o.Seed, uint64(worker)))
 			var local []time.Duration
 			defer func() {
 				mu.Lock()
@@ -158,28 +174,49 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 				if lim.wait(runCtx, n) != nil {
 					return
 				}
-				body, _ := json.Marshal(gen.Batch(n, time.Now(), o.Spread))
-				t0 := time.Now()
-				// The request uses ctx, not runCtx: a batch already in flight
-				// when --duration ends completes and is counted, so the
-				// accepted total matches what the server accepted.
-				code, got, err := postBatch(ctx, client, o.URL, o.Key, body)
-				if err != nil && ctx.Err() != nil {
-					return // interrupted (Ctrl-C)
-				}
-				local = append(local, time.Since(t0))
-				requests.Add(1)
-				mu.Lock()
-				if err != nil {
-					transportErrs.Add(1)
-					if len(samples) < 3 {
-						samples = append(samples, err.Error())
+				batch := gen.Batch(n, time.Now(), o.Spread)
+				if o.RunID != "" {
+					for i := range batch.Events {
+						batch.Events[i].Attributes["loadgen_run"] = o.RunID
 					}
-				} else {
-					status[strconv.Itoa(code)]++
 				}
-				mu.Unlock()
-				accepted.Add(int64(got))
+				body, _ := json.Marshal(batch)
+				for attempt := 0; ; attempt++ {
+					t0 := time.Now()
+					// The request uses ctx, not runCtx: a batch already in
+					// flight when --duration ends completes and is counted, so
+					// the accepted total matches what the server accepted.
+					code, got, err := postBatch(ctx, client, o.URL, o.Key, body)
+					if err != nil && ctx.Err() != nil {
+						return // interrupted (Ctrl-C)
+					}
+					local = append(local, time.Since(t0))
+					requests.Add(1)
+					mu.Lock()
+					if err != nil {
+						transportErrs.Add(1)
+						if len(samples) < 3 {
+							samples = append(samples, err.Error())
+						}
+					} else {
+						status[strconv.Itoa(code)]++
+					}
+					mu.Unlock()
+					accepted.Add(int64(got))
+					if code != http.StatusTooManyRequests {
+						break
+					}
+					rejected429.Add(1)
+					if !o.RetryOn429 || attempt >= o.RetryMax || runCtx.Err() != nil {
+						gaveUp.Add(int64(n))
+						break
+					}
+					retries429.Add(1)
+					if sleepCtx(runCtx, retryBackoff(attempt, o.RetryMaxBackoff, jitter.Float64())) != nil {
+						gaveUp.Add(int64(n))
+						break
+					}
+				}
 			}
 		}(w)
 	}
@@ -195,6 +232,9 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 	res.Status = status
 	res.Errors = transportErrs.Load()
 	res.ErrorSamples = samples
+	res.Rejected429 = rejected429.Load()
+	res.Retries429 = retries429.Load()
+	res.GaveUpEvents = gaveUp.Load()
 
 	if o.WaitDrain != "" {
 		d, err := waitDrain(ctx, client, o.WaitDrain, baseline, res.EventsAccepted, sendDur, o.DrainTimeout)
@@ -203,7 +243,39 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 		}
 		res.Drain = &d
 	}
+	if o.Verify != nil {
+		v, err := o.Verify.verify(ctx, o.RunID, res.EventsAccepted)
+		if err != nil {
+			return res, fmt.Errorf("verify stored events: %w", err)
+		}
+		res.Verify = &v
+	}
 	return res, nil
+}
+
+// retryBackoff is the wait before retry number attempt (0-based) after a
+// 429: exponential from 50 ms, capped at max, with equal jitter in [d/2, d).
+func retryBackoff(attempt int, max time.Duration, jitter float64) time.Duration {
+	d := 50 * time.Millisecond
+	for i := 0; i < attempt && d < max; i++ {
+		d *= 2
+	}
+	if d > max {
+		d = max
+	}
+	half := d / 2
+	return half + time.Duration(jitter*float64(d-half))
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // postBatch sends one batch and returns the status and accepted count.
@@ -232,35 +304,50 @@ func postBatch(ctx context.Context, c *http.Client, url, key string, body []byte
 	return resp.StatusCode, out.Accepted, nil
 }
 
-func processedTotal(ctx context.Context, c *http.Client, statsURL string) (int64, error) {
+type processorStats struct {
+	Processed *int64 `json:"processed_total"`
+	Pending   *int64 `json:"group_pending"`
+	Lag       *int64 `json:"group_lag"`
+}
+
+func readProcessorStats(ctx context.Context, c *http.Client, statsURL string) (processorStats, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statsURL, nil)
 	if err != nil {
-		return 0, err
+		return processorStats{}, err
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return 0, err
+		return processorStats{}, err
 	}
 	defer resp.Body.Close()
-	var s struct {
-		Processed *int64 `json:"processed_total"`
-	}
+	var s processorStats
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil || s.Processed == nil {
-		return 0, fmt.Errorf("unexpected stats response from %s", statsURL)
+		return processorStats{}, fmt.Errorf("unexpected stats response from %s", statsURL)
+	}
+	return s, nil
+}
+
+func processedTotal(ctx context.Context, c *http.Client, statsURL string) (int64, error) {
+	s, err := readProcessorStats(ctx, c, statsURL)
+	if err != nil {
+		return 0, err
 	}
 	return *s.Processed, nil
 }
 
 // waitDrain polls the processor until it has processed everything that was
-// accepted (baseline + accepted) or timeout passes.
+// accepted (baseline + accepted) and reports no lag and nothing pending, or
+// timeout passes. Lag and pending matter because batches answered 503 may
+// still have written some entries, which also count as processed.
 func waitDrain(ctx context.Context, c *http.Client, statsURL string, baseline, accepted int64, sendDur, timeout time.Duration) (drainResult, error) {
 	d := drainResult{Baseline: baseline, Target: baseline + accepted}
 	start := time.Now()
 	for {
-		n, err := processedTotal(ctx, c, statsURL)
+		s, err := readProcessorStats(ctx, c, statsURL)
 		if err == nil {
-			d.Reached = n
-			if n >= d.Target {
+			d.Reached = *s.Processed
+			caughtUp := (s.Lag == nil || *s.Lag == 0) && (s.Pending == nil || *s.Pending == 0)
+			if d.Reached >= d.Target && caughtUp {
 				break
 			}
 		}
@@ -291,6 +378,9 @@ func (r ingestResult) print(w io.Writer) {
 	fmt.Fprintf(w, "  sent for %.2fs: %d requests (%.1f req/s), %d events accepted (%.0f events/s)\n", r.DurationS, r.Requests, r.RequestsPerS, r.EventsAccepted, r.EventsPerS)
 	fmt.Fprintf(w, "  latency %s\n", r.Latency)
 	fmt.Fprintf(w, "  status codes %v, transport errors %d\n", r.Status, r.Errors)
+	if r.Rejected429 > 0 {
+		fmt.Fprintf(w, "  429 responses %d (retried %d), events given up after retries %d\n", r.Rejected429, r.Retries429, r.GaveUpEvents)
+	}
 	for _, s := range r.ErrorSamples {
 		fmt.Fprintf(w, "    error: %s\n", s)
 	}
@@ -301,5 +391,8 @@ func (r ingestResult) print(w io.Writer) {
 		}
 		fmt.Fprintf(w, "  processor %s: processed %d/%d new events, %.2fs after sending stopped; end-to-end %.2fs = %.0f events/s\n",
 			state, d.Reached-d.Baseline, d.Target-d.Baseline, d.DrainS, d.EndToEndS, d.EndToEndEventS)
+	}
+	if v := r.Verify; v != nil {
+		fmt.Fprintf(w, "  verify (run %s): %s\n", v.RunID, v.Summary)
 	}
 }
