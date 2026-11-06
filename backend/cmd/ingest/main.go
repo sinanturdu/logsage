@@ -107,7 +107,10 @@ func run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+		// Connections still open after the budget (for example an idle
+		// keep-alive dial that never sent a request) are force-closed.
+		log.Warn("graceful shutdown timed out; closing remaining connections", "err", err)
+		_ = srv.Close()
 	}
 	log.Info("stopped")
 	return nil
