@@ -403,3 +403,15 @@ func TestNewHandlerValidation(t *testing.T) {
 		})
 	}
 }
+
+// newTestSlog routes logs to t.Log so integration failures show the cause.
+func newTestSlog(t *testing.T) *slog.Logger {
+	return slog.New(slog.NewTextHandler(tWriter{t}, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+type tWriter struct{ t *testing.T }
+
+func (w tWriter) Write(b []byte) (int, error) {
+	w.t.Log(strings.TrimSpace(string(b)))
+	return len(b), nil
+}
