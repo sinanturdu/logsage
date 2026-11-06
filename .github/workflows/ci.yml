@@ -46,3 +46,26 @@ jobs:
           go vet ./...
           go build ./...
           go test ./... -race -count=1
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t logsage-backend:ci backend
+      - name: Validate compose config
+        env:
+          # Dummy values: only the configuration is checked, nothing runs.
+          INGEST_API_KEY: ci-ingest-key
+          QUERY_API_KEY: ci-query-key
+          CLICKHOUSE_USER: ci
+          CLICKHOUSE_PASSWORD: ci
+        run: |
+          docker compose -f infra/docker-compose.yml config --quiet
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet
+      - name: App profile refuses to start without secrets
+        run: |
+          if docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet 2>/dev/null; then
+            echo "compose accepted the app profile without secrets" >&2
+            exit 1
+          fi
