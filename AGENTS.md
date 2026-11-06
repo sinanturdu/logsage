@@ -13,6 +13,7 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 ## Commands (update as the project grows)
 - Start dependencies: `docker compose -f infra/docker-compose.yml up -d`
 - Backend: `cd backend && go vet ./... && go build ./... && go test ./... -race`
+- Run ingest API: `cd backend && go run ./cmd/ingest` (health check: `GET /healthz`)
 
 ## Conventions
 - Go: standard layout, small packages, `context.Context` first parameter, errors wrapped with `%w`, no global state, table-driven tests.

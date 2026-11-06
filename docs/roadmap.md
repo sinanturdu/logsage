@@ -1,8 +1,8 @@
 # Roadmap
 
 ## v0.1: Ingest and search
-- [ ] Go module, project layout, config loading, structured logging
-- [ ] `/healthz` endpoint
+- [x] Go module, project layout, config loading, structured logging
+- [x] `/healthz` endpoint
 - [ ] `POST /v1/ingest` with validation and API key check (static key first)
 - [ ] Redis Stream producer
 - [ ] Processor: consumer group, batch insert to ClickHouse, ack after write
