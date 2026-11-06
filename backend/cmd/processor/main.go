@@ -124,7 +124,9 @@ func run(ctx context.Context, getenv func(string) string) error {
 	defer func() {
 		sctx, scancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 		defer scancel()
-		_ = srv.Shutdown(sctx)
+		if err := srv.Shutdown(sctx); err != nil {
+			_ = srv.Close() // force-close connections still open after the budget
+		}
 	}()
 
 	if err := migrate(ctx, ch, cfg, log); err != nil {

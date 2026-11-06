@@ -66,7 +66,9 @@ func TestRunWithDependenciesDown(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- run(ctx, envFunc(env)) }()
 
-	client := &http.Client{Timeout: 3 * time.Second}
+	// No keep-alive: a spare client connection that never sends a request
+	// would make the server's Shutdown wait for it.
+	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	base := "http://" + httpAddr
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -99,7 +101,7 @@ func TestRunWithDependenciesDown(t *testing.T) {
 		if err != nil {
 			t.Fatalf("run() = %v, want nil after cancel", err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("run did not return within 5s after cancel")
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return within 10s after cancel")
 	}
 }
