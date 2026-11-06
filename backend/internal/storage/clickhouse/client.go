@@ -90,6 +90,36 @@ func (c *Client) Query(ctx context.Context, query string) ([]byte, error) {
 	return c.do(ctx, http.MethodPost, "/", params, strings.NewReader(query))
 }
 
+// QueryWithParams runs one read statement in the configured database. The
+// SQL must reference values only as server-side placeholders {name:Type};
+// params maps name to value and is sent as param_<name>, never spliced into
+// the SQL. settings are ClickHouse settings for this request (for example
+// readonly, max_execution_time). Names must be identifiers.
+func (c *Client) QueryWithParams(ctx context.Context, query string, params, settings map[string]string) ([]byte, error) {
+	values := url.Values{"database": {c.database}}
+	for name, v := range settings {
+		if !identifier.MatchString(name) || name == "database" || strings.HasPrefix(name, "param_") {
+			return nil, fmt.Errorf("clickhouse: invalid setting name %q", name)
+		}
+		values.Set(name, v)
+	}
+	for name, v := range params {
+		if !identifier.MatchString(name) {
+			return nil, fmt.Errorf("clickhouse: invalid parameter name %q", name)
+		}
+		values.Set("param_"+name, EscapeParam(v))
+	}
+	return c.do(ctx, http.MethodPost, "/", values, strings.NewReader(query))
+}
+
+// paramEscaper escapes values for query parameters, which ClickHouse parses
+// in the TSV "Escaped" format: without it a backslash sequence such as \t
+// in user input would be turned into a tab.
+var paramEscaper = strings.NewReplacer(`\`, `\\`, "\t", `\t`, "\n", `\n`, "\r", `\r`, "\x00", `\0`)
+
+// EscapeParam returns v escaped for use as a query parameter value.
+func EscapeParam(v string) string { return paramEscaper.Replace(v) }
+
 // InsertJSONEachRow inserts body (one JSON object per line) into table in
 // the configured database with a single request.
 func (c *Client) InsertJSONEachRow(ctx context.Context, table string, body []byte) error {

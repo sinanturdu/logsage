@@ -118,6 +118,83 @@ func TestInsertJSONEachRow(t *testing.T) {
 	}
 }
 
+func TestQueryWithParams(t *testing.T) {
+	var got *http.Request
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got, body = r, string(b)
+		_, _ = io.WriteString(w, "{\"x\":1}\n")
+	}))
+	defer srv.Close()
+	c, err := New(Options{URL: srv.URL, Database: "logsage", User: "reader", Password: "pw", Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sql := "SELECT {q:String} AS x FROM logs WHERE project_id = {project_id:String} FORMAT JSONEachRow"
+	out, err := c.QueryWithParams(context.Background(), sql,
+		map[string]string{"q": "it's a\\tb\n; DROP TABLE logs --", "project_id": "default"},
+		map[string]string{"readonly": "1", "max_execution_time": "10"})
+	if err != nil {
+		t.Fatalf("QueryWithParams: %v", err)
+	}
+	if string(out) != "{\"x\":1}\n" {
+		t.Errorf("out = %q", out)
+	}
+	if body != sql {
+		t.Errorf("body = %q, want the SQL unchanged", body)
+	}
+	q := got.URL.Query()
+	if q.Get("param_q") != `it's a\\tb\n; DROP TABLE logs --` {
+		t.Errorf("param_q = %q, want escaped value", q.Get("param_q"))
+	}
+	if q.Get("param_project_id") != "default" || q.Get("database") != "logsage" {
+		t.Errorf("params = %v", q)
+	}
+	if q.Get("readonly") != "1" || q.Get("max_execution_time") != "10" {
+		t.Errorf("settings = %v", q)
+	}
+	if strings.Contains(got.URL.RawQuery, "pw") {
+		t.Error("password leaked into URL")
+	}
+
+	bad := []struct {
+		name             string
+		params, settings map[string]string
+	}{
+		{name: "param name with quote", params: map[string]string{"q'": "x"}},
+		{name: "param name with brace", params: map[string]string{"q}": "x"}},
+		{name: "setting overrides database", settings: map[string]string{"database": "other"}},
+		{name: "setting smuggles a param", settings: map[string]string{"param_q": "x"}},
+		{name: "setting name with ampersand", settings: map[string]string{"a&b": "1"}},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := c.QueryWithParams(context.Background(), "SELECT 1", tt.params, tt.settings); err == nil {
+				t.Fatal("QueryWithParams() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestEscapeParam(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{in: "plain", want: "plain"},
+		{in: `a\b`, want: `a\\b`},
+		{in: "tab\there", want: `tab\there`},
+		{in: "line\nbreak\r", want: `line\nbreak\r`},
+		{in: "nul\x00byte", want: `nul\0byte`},
+		{in: `'"; DROP --`, want: `'"; DROP --`},
+		{in: "ünïcödé ✓", want: "ünïcödé ✓"},
+	}
+	for _, tt := range tests {
+		if got := EscapeParam(tt.in); got != tt.want {
+			t.Errorf("EscapeParam(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestErrors(t *testing.T) {
 	long := "Code: 27. DB::Exception: Cannot parse input: " + strings.Repeat("x", 1000) + "\nsecond line"
 	tests := []struct {
