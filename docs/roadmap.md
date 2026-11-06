@@ -5,8 +5,8 @@
 - [x] `/healthz` endpoint
 - [x] `POST /v1/ingest` with validation and API key check (static key first)
 - [x] Redis Stream producer
-- [ ] Processor: consumer group, batch insert to ClickHouse, ack after write
-- [ ] ClickHouse migration for `logs`
+- [x] Processor: consumer group, batch insert to ClickHouse, ack after write
+- [x] ClickHouse migration for `logs`
 - [ ] `GET /v1/logs` search (time range, level, service, text)
 - [ ] Unit and integration tests, CI green
 - [ ] Load test script and first benchmark numbers in docs

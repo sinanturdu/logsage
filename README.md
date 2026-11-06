@@ -49,24 +49,27 @@ curl -X POST localhost:8080/v1/ingest -H "X-API-Key: dev-key" -H "Content-Type: 
 # {"accepted":1}
 ```
 
-To publish to a Redis Stream instead:
+To run the full pipeline (ingest -> Redis Stream -> processor -> ClickHouse):
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d redis
+docker compose -f infra/docker-compose.yml up -d redis clickhouse
 cd backend
 PUBLISHER=redis REDIS_ADDR=localhost:6379 INGEST_API_KEY=dev-key go run ./cmd/ingest
-# after sending events:
-docker compose -f infra/docker-compose.yml exec redis redis-cli XLEN logsage:events
+# in a second terminal:
+REDIS_ADDR=localhost:6379 CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/processor
+curl localhost:8081/stats      # stream length, pending, lag, counters
+# after sending events (read with FINAL: delivery is at-least-once, duplicates collapse):
+docker compose -f infra/docker-compose.yml exec clickhouse clickhouse-client --query "SELECT count() FROM logsage.logs FINAL"
 ```
 
-Run the Redis integration tests (skipped when `REDIS_TEST_ADDR` is unset):
+Run the integration tests (skipped unless the variables are set):
 
 ```bash
 cd backend
-REDIS_TEST_ADDR=localhost:6379 go test ./internal/ingest -count=1
+REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
 ```
 
-Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`) and the `REDIS_*` settings. See `.env.example` and the ingest contract in `docs/architecture.md`.
+Configuration is read from environment variables: `HTTP_ADDR`, `LOG_LEVEL` (`debug|info|warn|error`), `LOG_FORMAT` (`json|text`), `INGEST_API_KEY` (required), the `INGEST_MAX_*` limits, `PUBLISHER` (`memory|redis`), the `REDIS_*` settings, and for the processor `CLICKHOUSE_*` and `PROCESSOR_*`. See `.env.example` and the ingest contract in `docs/architecture.md`.
 
 ## Documentation
 

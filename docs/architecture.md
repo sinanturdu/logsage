@@ -20,7 +20,7 @@ flowchart LR
 
 ## Components
 - **Ingestion API**: authenticates API key, validates batch, enforces rate limit and size limit, writes to Redis Stream, returns `202 Accepted`.
-- **Log Processor**: consumer group worker. Parses, normalizes, computes fingerprint, batches inserts into ClickHouse (by size or 1 s), acknowledges only after a successful write.
+- **Log Processor** (`cmd/processor`): consumer group worker. Parses and validates entries, batches inserts into ClickHouse (by size or 1 s), acknowledges only after a successful write, dead-letters unusable entries. Fingerprinting comes later. See "Processor (v0.1)" below and ADR 0008.
 - **Alert Engine**: evaluates rules on a sliding window; opens incidents and sends notifications.
 - **Query API**: REST + WebSocket for the dashboard; always scoped by `project_id`.
 - **AI Service**: anomaly detection and root-cause suggestions. Called by the backend over HTTP.
@@ -84,22 +84,38 @@ Config: `REDIS_ADDR` (required for `redis`), `REDIS_STREAM` (`logsage:events`), 
 ## Data model
 
 ### ClickHouse
+Created by `backend/migrations/clickhouse` (applied idempotently by the processor on startup):
 ```sql
-CREATE TABLE logs (
-  project_id  UUID,
-  timestamp   DateTime64(3),
+CREATE TABLE IF NOT EXISTS logsage.logs (
+  project_id  LowCardinality(String),   -- "default" until projects exist (v0.2)
+  event_id    String,                   -- Redis stream entry ID, used for deduplication
+  timestamp   DateTime64(3, 'UTC'),
   level       LowCardinality(String),
   service     LowCardinality(String),
   message     String,
-  fingerprint UInt64,
+  fingerprint UInt64,                   -- 0 until fingerprinting lands
   trace_id    String,
   attributes  Map(String, String),
-  ingested_at DateTime64(3) DEFAULT now64(3)
-) ENGINE = MergeTree
+  ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (project_id, service, timestamp)
-TTL toDateTime(timestamp) + INTERVAL 30 DAY;
+ORDER BY (project_id, service, timestamp, event_id)
+TTL toDateTime(timestamp) + INTERVAL 30 DAY;  -- CLICKHOUSE_TTL_DAYS
 ```
+Delivery is at-least-once, so a redelivered entry can be inserted twice. Duplicates share the sorting key and collapse on merge. **Read with `FINAL`** (`SELECT ... FROM logs FINAL`) or dedupe by `event_id` when exact results matter.
+
+## Processor (v0.1)
+- Consumer group `logsage-processor` on `REDIS_STREAM`; consumer `PROCESSOR_CONSUMER` (default `hostname-pid`). The group is created at `0` with `MKSTREAM`.
+- Loop: own pending entries first, then `XREADGROUP >` (`PROCESSOR_READ_COUNT`, `PROCESSOR_READ_BLOCK`), plus `XAUTOCLAIM` every `PROCESSOR_CLAIM_INTERVAL` for entries idle longer than `PROCESSOR_CLAIM_IDLE` (30s).
+- Flush at `PROCESSOR_BATCH_SIZE` (1000) rows or `PROCESSOR_FLUSH_INTERVAL` (1s) as one `INSERT INTO logs FORMAT JSONEachRow` over HTTP (`CLICKHOUSE_URL`, port 8123), then `XACK`.
+- Insert failure: no ack, no drop; retry with exponential backoff and jitter (`PROCESSOR_RETRY_INITIAL`..`PROCESSOR_RETRY_MAX`) and read nothing new meanwhile (backpressure shows up as stream lag).
+- Unusable entries go to `PROCESSOR_DEAD_STREAM` (`logsage:events:dead`) with their original fields plus `original_id`, `reason` and `dead_lettered_at`, then get acked.
+- Shutdown (SIGINT/SIGTERM): stop reading, flush and ack within `PROCESSOR_SHUTDOWN_TIMEOUT`.
+- HTTP (`PROCESSOR_HTTP_ADDR`, default `:8081`): `GET /healthz` (liveness), `GET /readyz` (Redis `PING` and ClickHouse `/ping`), `GET /stats`:
+  ```json
+  {"stream_length":3,"group_pending":0,"group_lag":0,"processed_total":3,"failed_batches_total":0,"dead_lettered_total":0}
+  ```
+  `failed_batches_total` counts failed insert attempts. Stream fields are `null` (with `stream_error`) when Redis is down. The same figures are logged every `PROCESSOR_STATS_INTERVAL` (10s).
 
 ### PostgreSQL
 `users`, `projects`, `api_keys` (hash only), `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
@@ -115,6 +131,8 @@ LogSage exposes a stable REST API and outgoing webhooks so external agents can q
 |------|------------|
 | Ingestion bursts overload storage | Queue + batched inserts, backpressure and `429` |
 | High-cardinality attributes bloat ClickHouse | Attribute count/size limits, `Map` type, documented limits |
+| Redelivery duplicates rows | `event_id` + `ReplacingMergeTree`, reads with `FINAL` (ADR 0008) |
+| ClickHouse down or rejecting inserts | No ack, retry with backoff, backpressure into Redis; visible in `/stats` |
 | Poisoned or oversized payloads | Size limits, strict validation, rate limit per key |
 | Cross-project data leak | Mandatory `project_id` filter via a single query builder, tested |
 | False-positive anomalies | Start with simple statistical baselines, measure before adding ML |
