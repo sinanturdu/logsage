@@ -19,3 +19,17 @@ func ClickHouse() fs.FS {
 	}
 	return sub
 }
+
+//go:embed postgres/*.sql
+var postgresFS embed.FS
+
+// Postgres returns the PostgreSQL migrations (NNNN_name.sql, several
+// statements per file allowed), applied in version order by
+// internal/storage/postgres.Migrate.
+func Postgres() fs.FS {
+	sub, err := fs.Sub(postgresFS, "postgres")
+	if err != nil {
+		panic(err) // unreachable: embedded at compile time
+	}
+	return sub
+}
