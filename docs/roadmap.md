@@ -4,7 +4,7 @@
 - [x] Go module, project layout, config loading, structured logging
 - [x] `/healthz` endpoint
 - [x] `POST /v1/ingest` with validation and API key check (static key first)
-- [ ] Redis Stream producer
+- [x] Redis Stream producer
 - [ ] Processor: consumer group, batch insert to ClickHouse, ack after write
 - [ ] ClickHouse migration for `logs`
 - [ ] `GET /v1/logs` search (time range, level, service, text)

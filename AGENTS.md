@@ -14,7 +14,8 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 - Start dependencies: `docker compose -f infra/docker-compose.yml up -d`
 - Backend: `cd backend && go vet ./... && go build ./... && go test ./...`
   - Locally on Windows, run `go test ./...` without `-race` (the race detector crashes with the MinGW toolchain on PATH).
-  - CI runs `go test ./... -race` on Linux.
+  - CI runs `go test ./... -race` on Linux, with a Redis service.
+- Redis integration tests: `docker compose -f infra/docker-compose.yml up -d redis`, then `cd backend && REDIS_TEST_ADDR=localhost:6379 go test ./internal/ingest -count=1` (skipped when unset).
 - Run ingest API: `cd backend && INGEST_API_KEY=dev-key go run ./cmd/ingest` (health check: `GET /healthz`; ingest: `POST /v1/ingest`)
 
 ## Conventions

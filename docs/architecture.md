@@ -58,9 +58,28 @@ Validation rules:
 - `service` and `message` required and non-blank. `trace_id` and `attributes` optional.
 - `attributes` is a flat object of string values.
 
-Limits (env var, default): body `INGEST_MAX_BODY_BYTES` 1 MiB; events per batch `INGEST_MAX_EVENTS` 1000; message `INGEST_MAX_MESSAGE_BYTES` 8 KiB; attributes per event `INGEST_MAX_ATTRIBUTES` 32; attribute key `INGEST_MAX_ATTR_KEY_CHARS` 64 characters; attribute value `INGEST_MAX_ATTR_VALUE_CHARS` 1024 characters.
+Limits (env var, default): body `INGEST_MAX_BODY_BYTES` 1 MiB; events per batch `INGEST_MAX_EVENTS` 1000; message `INGEST_MAX_MESSAGE_BYTES` 8 KiB; attributes per event `INGEST_MAX_ATTRIBUTES` 32; attribute key `INGEST_MAX_ATTR_KEY_CHARS` 64 characters; attribute value `INGEST_MAX_ATTR_VALUE_CHARS` 1024 characters; `trace_id` `INGEST_MAX_TRACE_ID_LEN` 128 characters.
 
-Authentication in v0.1 is a single static key from `INGEST_API_KEY`, compared in constant time and never logged. Per-project hashed keys replace it in v0.2. Until the Redis Streams producer lands, accepted events go to an in-memory publisher (bounded, lost on restart).
+Authentication in v0.1 is a single static key from `INGEST_API_KEY`, compared in constant time and never logged. Per-project hashed keys replace it in v0.2.
+
+### Publishing (v0.1)
+`PUBLISHER` selects where accepted events go:
+- `memory` (default): bounded in-process buffer for tests and local runs. Events are lost on restart.
+- `redis`: one `XADD <REDIS_STREAM> MAXLEN ~ <REDIS_STREAM_MAXLEN> * ...` per event, with the whole batch sent in one pipeline under `REDIS_TIMEOUT`. Any failure returns `503`. Delivery is at-least-once (see ADR 0007).
+
+Stream entry (default stream `logsage:events`):
+
+| Field | Value |
+|-------|-------|
+| `payload` | event JSON: `timestamp` (RFC3339, UTC), `level`, `service`, `message`, `trace_id` (omitted if empty), `attributes` (omitted if empty) |
+| `project_id` | `"default"` until projects exist (v0.2) |
+| `ingested_at` | server receive time, RFC3339 UTC with fractional seconds |
+
+Config: `REDIS_ADDR` (required for `redis`), `REDIS_STREAM` (`logsage:events`), `REDIS_STREAM_MAXLEN` (100000, approximate), `REDIS_TIMEOUT` (`2s`).
+
+### Health endpoints
+- `GET /healthz`: liveness only, always `200 {"status":"ok"}` while the process serves HTTP.
+- `GET /readyz`: `200 {"status":"ready"}`, or `503 {"status":"unavailable"}` when `PUBLISHER=redis` and Redis `PING` fails within `REDIS_TIMEOUT`. Failure details are logged, not returned.
 
 ## Data model
 
