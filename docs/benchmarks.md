@@ -1,8 +1,10 @@
 # Benchmarks (v0.1)
 
-> **Local Docker on a Windows laptop, not a production benchmark.** All services, Redis, ClickHouse and the load generator share one machine and one Docker Desktop VM. The host disk was 96–100% full during the runs (see "Environment"), which caused I/O stalls. Use these numbers to find bottlenecks and spot regressions, not to plan capacity.
+> **Local Docker on a Windows laptop, not a production benchmark.** All services, Redis, ClickHouse and the load generator share one machine and one Docker Desktop VM. Use these numbers to find bottlenecks and spot regressions, not to plan capacity.
+>
+> Two measurement sessions are below. The **2026-11-07 section** is after the no-loss fix (ADR 0010). The **older results** were measured on 2026-11-06/07 with the host disk 96–100% full and the publish-time stream cap that lost events; they are kept for comparison.
 
-## Environment
+## Environment (older session; the 2026-11-07 section notes its differences)
 
 | | |
 |---|---|
@@ -28,14 +30,17 @@ export LOADGEN_INGEST_KEY="$INGEST_API_KEY" LOADGEN_QUERY_KEY="$QUERY_API_KEY"
 STATS=http://127.0.0.1:8081/stats
 ```
 
-The stream cap matters: with the default `REDIS_STREAM_MAXLEN=100000`, a burst faster than the processor loses events (see finding 1). The throughput runs used a larger cap set in `.env` (`REDIS_STREAM_MAXLEN=1000000` for series A, `400000` for series B and later), followed by `up -d --force-recreate ingest processor`.
+Since ADR 0010 there is no stream cap to tune: publishing never trims, and ingest answers `429` at `INGEST_MAX_STREAM_LEN` (500,000). (The older runs below set the removed `REDIS_STREAM_MAXLEN` to 1,000,000 or 400,000 to avoid the loss described in finding 1.) To check that nothing is lost, add `--verify` to any `ingest` run that uses `--wait-drain`, with `LOADGEN_CLICKHOUSE_USER` and `LOADGEN_CLICKHOUSE_PASSWORD` set.
 
 ```bash
 # 1. Ingest throughput at several concurrency levels (batch 100), with loss check
 for c in 1 4 16 64; do ./loadgen ingest --concurrency $c --batch-size 100 --duration 15s --wait-drain $STATS --json; done
 
-# N1: latency at a steady 10,000 events/s
-./loadgen ingest --concurrency 16 --rate 10000 --duration 30s --wait-drain $STATS --json
+# Burst with the no-loss check (2026-11-07 section)
+./loadgen ingest --concurrency 4 --batch-size 100 --duration 10s --wait-drain $STATS --verify --json
+
+# N1: latency at a steady 10,000 events/s (15 s in the 2026-11-07 section, 30 s before)
+./loadgen ingest --concurrency 16 --rate 10000 --duration 15s --wait-drain $STATS --json
 
 # 2. Processor-only drain: queue a backlog with the processor stopped, then time the drain
 docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app stop processor
@@ -54,7 +59,66 @@ docker compose -f infra/docker-compose.yml exec clickhouse clickhouse-client --u
 
 The cost of `FINAL` was measured in ClickHouse directly: the API's query with and without `FINAL`, 11 runs each with the first discarded, durations from `system.query_log` (`log_comment` tags), before and after `OPTIMIZE TABLE logsage.logs FINAL`.
 
-## Results
+## 2026-11-07: after the no-loss fix
+
+Same laptop, Docker Desktop 29.9.2, services and loadgen built from commit `07fa556` (fix/no-loss-under-bursts). Fresh Docker state (images re-pulled, empty volumes). Redis runs with `--maxmemory 1gb --maxmemory-policy noeviction`; ingest with `INGEST_MAX_STREAM_LEN=500000` unless noted. **C: had 18.3 GB free at the start, 5.3–5.6 GB during the N1 and demo runs** (Docker's virtual disk grew, and other space went for reasons outside this work). So the disk was not much emptier than in the older session; see the N1 note below.
+
+### Bursts at maximum rate (the scenario that lost 22.9% before)
+
+Concurrency 4, batch 100, 10 s, no rate limit, `--wait-drain --verify` (stored = rows of the run in ClickHouse with `FINAL`).
+
+| Run | Requests | 202 | 429 | Accepted (events/s) | p99 | Drained after send | Stored | Lost |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 6,489 | 6,489 | 0 | 648,900 (64,859/s) | 12.7 ms | 8.2 s | 648,900 | **0** |
+| 2 | 5,578 | 5,578 | 0 | 557,800 (55,748/s) | 19.1 ms | 8.1 s | 557,800 | **0** |
+| 3 | 5,035 | 5,035 | 0 | 503,500 (50,330/s) | 17.7 ms | 7.8 s | 503,500 | **0** |
+
+The backlog stayed below 500,000, so backpressure did not engage. Redis `used_memory_human` after each burst (after drain and trimming): 31.2 MB, 17.9 MB, 4.1 MB; peak 148 MB. The trimmer removed 1,700,700 acknowledged entries during these runs.
+
+**Burst with backpressure engaged:** concurrency 16, 30 s, `--retry-on-429`. 13,112 requests: 12,601 × 202 and 511 × 429 (all retried). 1,260,100 accepted (41,988 events/s, p50 13.4 ms, p99 60.2 ms including the retried requests), **1,260,100 stored, lost 0**. The cached stream length peaked at 538,300 (7.7% over the soft limit). Redis peaked at 160 MB. One batch of 100 events was still being retried when the 30 s ended; it was never accepted, so it is not a loss.
+
+### 429 demo (processor stopped, `INGEST_MAX_STREAM_LEN=20000`)
+
+| | Sent | 202 | 429 (nothing written) | Stream length after | After processor restart |
+|---|---|---|---|---|---|
+| A: 50,000 events as fast as possible (2 senders, batch 500) | 50,000 | 100 requests (50,000 events) | 0 | 50,000 | accepted 50,000, stored 50,000, lost 0 |
+| B: 50,000 events paced at 20,000 events/s | 50,000 | 51 requests (25,500 events) | 49 requests (24,500 events) | 25,500 (stayed there) | accepted 25,500, stored 25,500, lost 0 |
+
+In A all 50,000 events arrived within one 500 ms refresh of the cached length, so no request saw the limit: the soft limit overshot by 30,000. The next request got:
+
+```
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 1
+
+{"error":"ingest queue is full, retry after the Retry-After delay"}
+```
+
+In B the cache caught up after about 15,500 accepted events and requests switched from `202` to `429` (overshoot 5,500, 27.5%). This is the trade-off documented in ADR 0010: the limit is soft by about ingest rate × refresh interval, and the 1 GB Redis memory cap is the hard backstop.
+
+### N1 re-run: steady 10,000 events/s (concurrency 16, 15 s per run, batch 100)
+
+| Run | Events/s | Requests | p50 | p95 | p99 | max | Lost |
+|---|---|---|---|---|---|---|---|
+| 1 | 10,004 | 1,501 | 2.97 ms | 4.91 ms | 6.29 ms | 13.25 ms | 0 |
+| 2 | 10,003 | 1,501 | 3.21 ms | 5.29 ms | 6.16 ms | 9.51 ms | 0 |
+| 3 | 10,000 | 1,500 | 3.20 ms | 5.63 ms | 7.94 ms | 12.56 ms | 0 |
+| 4 | 10,004 | 1,501 | 3.08 ms | 5.04 ms | 6.22 ms | 8.08 ms | 0 |
+| 5 | 10,000 | 1,500 | 3.36 ms | 5.62 ms | 6.98 ms | 10.80 ms | 0 |
+| 6 | 10,000 | 1,500 | 3.24 ms | 5.83 ms | 7.45 ms | 17.69 ms | 0 |
+| 7 | 10,003 | 1,501 | 3.16 ms | 5.16 ms | 6.37 ms | 7.54 ms | 0 |
+| 8 | 10,004 | 1,501 | 3.13 ms | 4.90 ms | 5.91 ms | 8.30 ms | 0 |
+
+**Median p99 6.33 ms; 8 of 8 runs under 50 ms.** N1 is met in this session.
+
+What changed compared with the older N1 runs (7 of 14 above 50 ms):
+- Runs were 15 s instead of 30 s (150,000 events per run instead of 300,000), to keep disk use down. That gives about 1,500 requests per run, so each p99 rests on about 15 samples.
+- The disk was **not** much emptier (5.3–5.4 GB free against 4.3 GB before), so free disk alone does not explain the difference.
+- The likely main cause is trimming. The stream now stays near empty: the trimmer removes acknowledged entries every 5 s, and `logsage.logs` was emptied between runs. Redis's append-only file therefore stays small, so AOF rewrites are cheap. Before, the stream held 400k–1M entries and the stalls coincided with large AOF rewrites (see "Bottlenecks" below).
+
+This is consistent with the earlier diagnosis but not a controlled experiment. Re-measuring with 30 s runs and a large standing backlog would separate the factors.
+
+## Results before the no-loss fix (2026-11-06/07, nearly full disk)
 
 ### 1. Ingest throughput (unlimited rate, batch 100)
 
@@ -122,7 +186,7 @@ Cost of `FINAL` at 1M rows (server-side p50):
 | 24h + `service` | 48 / 11 ms (285k / 52k rows) | 30 / 5 ms |
 | `count()` over 24h | 87 / 6 ms | 8 / 4 ms |
 
-## Against the requirements
+## Against the requirements (before the no-loss fix; see the 2026-11-07 section for N1 and losses now)
 
 | Target | Result | Verdict |
 |---|---|---|
