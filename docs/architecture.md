@@ -22,7 +22,7 @@ flowchart LR
 - **Ingestion API**: authenticates API key, validates batch, enforces rate limit and size limit, writes to Redis Stream, returns `202 Accepted`.
 - **Log Processor** (`cmd/processor`): consumer group worker. Parses and validates entries, batches inserts into ClickHouse (by size or 1 s), acknowledges only after a successful write, dead-letters unusable entries. Fingerprinting comes later. See "Processor (v0.1)" below and ADR 0008.
 - **Alert Engine**: evaluates rules on a sliding window; opens incidents and sends notifications.
-- **Query API**: REST + WebSocket for the dashboard; always scoped by `project_id`.
+- **Query API** (`cmd/query`): read-only REST search over ClickHouse (`GET /v1/logs`, v0.1); WebSocket live tail later. Always scoped by `project_id` through one query builder. See "Query API (v0.1 contract)" and ADR 0009.
 - **AI Service**: anomaly detection and root-cause suggestions. Called by the backend over HTTP.
 - **Dashboard**: React + TypeScript.
 
@@ -81,6 +81,39 @@ Config: `REDIS_ADDR` (required for `redis`), `REDIS_STREAM` (`logsage:events`), 
 - `GET /healthz`: liveness only, always `200 {"status":"ok"}` while the process serves HTTP.
 - `GET /readyz`: `200 {"status":"ready"}`, or `503 {"status":"unavailable"}` when `PUBLISHER=redis` and Redis `PING` fails within `REDIS_TIMEOUT`. Failure details are logged, not returned.
 
+## Query API (v0.1 contract)
+```
+GET /v1/logs?from=2026-11-06T00:00:00Z&to=2026-11-06T12:00:00Z&level=error,fatal&service=checkout&q=timeout&limit=100
+X-API-Key: <query key>
+```
+| Parameter | Rules |
+|-----------|-------|
+| `from`, `to` | Required, RFC3339. `from` inclusive, `to` exclusive, `from < to`, `to - from <= QUERY_MAX_WINDOW` (168h). Millisecond precision. |
+| `level` | Optional, comma-separated subset of `debug,info,warn,error,fatal`. |
+| `service` | Optional, exact match. |
+| `q` | Optional, case-insensitive substring of `message` (UTF-8, at most `QUERY_MAX_TEXT_LEN` = 256 characters). |
+| `trace_id` | Optional, exact match. |
+| `limit` | Optional, 1..`QUERY_MAX_LIMIT` (1000), default 100. |
+| `cursor` | Optional, `next_cursor` from the previous page of the same query, unchanged. |
+
+Unknown or repeated parameters are rejected. Results are ordered newest first (`timestamp DESC, event_id DESC`) and deduplicated (`FINAL`).
+
+`200`:
+```json
+{"events":[{"event_id":"1793993613811-0","timestamp":"2026-11-06T10:00:01.000Z","level":"info","service":"checkout",
+  "message":"order created","trace_id":"t-1","attributes":{"env":"dev"}}],
+ "next_cursor":"eyJ2IjoxLC...","took_ms":7}
+```
+`next_cursor` is `null` on the last page. Errors are `{"error":"..."}`: `400` (names the bad parameter), `401` (missing or wrong key, including the ingest key), `405` (not GET), `503` (ClickHouse unreachable or failing), `504` (query timed out), `500` (ClickHouse rejected the query). ClickHouse messages are never returned to clients.
+
+Auth: `QUERY_API_KEY`, separate from `INGEST_API_KEY` (they must differ); constant-time comparison of SHA-256 digests, never logged.
+
+Safety: every query is built by `query.Build`, which always adds `project_id = {project_id:String}` (`"default"` until v0.2). All values are server-side parameters (`{name:Type}` + `param_<name>`), never part of the SQL text. ClickHouse settings per query: `readonly=1`, `max_execution_time=QUERY_TIMEOUT` (10s), `max_result_rows=QUERY_MAX_LIMIT+1`.
+
+Cost: queries without `service` read more of the primary index than queries with it (sorting key `(project_id, service, timestamp, event_id)`), and `q` scans every `message` in the time window. Both are bounded by `QUERY_MAX_WINDOW` and `QUERY_TIMEOUT` (ADR 0009).
+
+Health: `GET /healthz` (liveness), `GET /readyz` (ClickHouse `/ping`). Listens on `QUERY_HTTP_ADDR` (`:8082`).
+
 ## Data model
 
 ### ClickHouse
@@ -134,5 +167,7 @@ LogSage exposes a stable REST API and outgoing webhooks so external agents can q
 | Redelivery duplicates rows | `event_id` + `ReplacingMergeTree`, reads with `FINAL` (ADR 0008) |
 | ClickHouse down or rejecting inserts | No ack, retry with backoff, backpressure into Redis; visible in `/stats` |
 | Poisoned or oversized payloads | Size limits, strict validation, rate limit per key |
-| Cross-project data leak | Mandatory `project_id` filter via a single query builder, tested |
+| Cross-project data leak | Mandatory `project_id` filter via a single query builder, tested (ADR 0009) |
+| SQL injection through search parameters | Server-side query parameters only, `readonly=1`, injection tests |
+| Expensive searches | Time-window, page-size and text-length limits, `max_execution_time`, `504` |
 | False-positive anomalies | Start with simple statistical baselines, measure before adding ML |
