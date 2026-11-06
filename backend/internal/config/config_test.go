@@ -16,6 +16,7 @@ func TestLoad(t *testing.T) {
 		ClickHouse:         DefaultClickHouseConfig(),
 		Processor:          DefaultProcessorConfig(),
 		Query:              DefaultQueryConfig(),
+		Postgres:           DefaultPostgresConfig(),
 	}
 	with := func(f func(*Config)) Config {
 		c := base
