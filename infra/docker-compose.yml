@@ -35,7 +35,9 @@ services:
     # AOF persistence so queued events survive a container restart.
     command: ["redis-server", "--appendonly", "yes"]
     ports: ["127.0.0.1:6379:6379"]
-    volumes: ["./data/redis:/data"]
+    # Named volume: AOF rewrites and RDB snapshots on a Docker Desktop bind
+    # mount from a Windows filesystem stalled Redis (see docs/benchmarks.md).
+    volumes: ["redis-data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -44,3 +46,4 @@ services:
 
 volumes:
   clickhouse-data:
+  redis-data:
