@@ -311,6 +311,9 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
   - A "Commands" button sits next to the `Ctrl K` hint, so the palette can be found without the shortcut. The hint is hidden below 700px.
   - The palette is a modal near the top of the page in the B2 paper style: no blur and no icons, the active option marked with the selection color and the pen bar, and matched letters bold and underlined.
   - A "?" help dialog lists every shortcut. B2 had no help screen.
+  - Closing (fix after v0.2.0): Escape from anywhere, Ctrl K or Cmd K again (a toggle), a click or tap on the backdrop, a visible Close button and any route change all close the palette, and focus returns to where it was. A footer reads "Up and down to move, Enter to run, Esc to close".
+  - With an empty query the palette lists up to 8 commands for the context: up to two recent ones, the other page, live tail on or off, Clear filters when filters are active, the two likely next ranges, project switches, and the shortcuts help.
+- **Error-share strip with only error and fatal selected** (fix after v0.2.0): the share would be 100% everywhere, so one line takes the strip's place ("Error share is not shown while only error and fatal levels are selected."), the summary leaves out the share sentence, and the hint says "the strip".
 - **Live status** (I2c-3): the button says "Live", and the text next to it says "Receiving new logs" while healthy, so the word is not shown twice. The other states keep their wording.
 - **Live order** (I2c-3): while Live is on, the list is "latest arrivals first". Each batch is sorted by event time, newest first, and goes on top, because arrival order is visibility order. Turning Live off or refreshing restores strict "newest first".
 - **Sentence-case labels** (I2c-3): the detail's zone headings are "Request", "Context" and "Same trace", bold rather than upper case. No label in the app uses `text-transform: uppercase`.
