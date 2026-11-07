@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -62,13 +63,17 @@ type Options struct {
 	CookieSecure        bool
 	AllowedOrigins      []string
 	RegistrationEnabled bool
-	TouchInterval       time.Duration    // default DefaultTouchInterval
+	TouchInterval       time.Duration // default DefaultTouchInterval
 	// Logs serves the read endpoints; nil leaves them answering 404.
 	Logs LogReader
+	// Tail serves the live tail; nil leaves it answering 404.
+	Tail TailReader
+	// TailOptions configure the live tail (zero values take defaults).
+	TailOptions TailOptions
 	// MaxConcurrentQueries caps running log reads per user (default
 	// DefaultMaxConcurrentQueries); above it the answer is 429.
 	MaxConcurrentQueries int
-	Now                 func() time.Time // default time.Now
+	Now                  func() time.Time // default time.Now
 }
 
 // Server serves the management API.
@@ -81,6 +86,13 @@ type Server struct {
 	origins originChecker
 	logs    LogReader
 	gate    *queryGate
+
+	tail         TailReader
+	tailOpts     TailOptions
+	tailGate     *tailGate
+	resume       *resumeStore
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New returns a Server.
@@ -97,8 +109,12 @@ func New(store Store, hasher *password.Hasher, limiter *Limiter, opts Options, l
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	tailOpts := opts.TailOptions.withDefaults()
 	return &Server{store: store, hasher: hasher, limiter: limiter, log: log, opts: opts,
-		origins: newOriginChecker(opts.AllowedOrigins), logs: opts.Logs, gate: newQueryGate(opts.MaxConcurrentQueries)}, nil
+		origins: newOriginChecker(opts.AllowedOrigins), logs: opts.Logs, gate: newQueryGate(opts.MaxConcurrentQueries),
+		tail: opts.Tail, tailOpts: tailOpts, tailGate: newTailGate(tailOpts),
+		resume:   &resumeStore{max: 4 * tailOpts.MaxConnTotal, ttl: tailOpts.MaxReplay, states: map[string]*tailState{}},
+		shutdown: make(chan struct{})}, nil
 }
 
 // Register adds the API routes to mux behind the security middleware.
@@ -120,6 +136,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	m.HandleFunc("GET /api/projects/{slug}/logs", s.authed(s.readLogs(s.prepareLogs)))
 	m.HandleFunc("GET /api/projects/{slug}/histogram", s.authed(s.readLogs(s.prepareHistogram)))
 	m.HandleFunc("GET /api/projects/{slug}/facets", s.authed(s.readLogs(s.prepareFacets)))
+	m.HandleFunc("GET /api/projects/{slug}/tail", s.authed(s.handleTail))
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeError(w, http.StatusNotFound) })
 	mux.Handle("/api/", s.secure(m))
 }
