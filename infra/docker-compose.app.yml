@@ -7,7 +7,8 @@
 # verify per-project keys in PostgreSQL (DATABASE_URL, built from the
 # POSTGRES_* values; percent-encode special characters in the password);
 # migrate applies the PostgreSQL schema once before they start. The legacy
-# static keys are optional and only honored with ALLOW_LEGACY_STATIC_KEYS.
+# static keys are optional and only honored with ALLOW_LEGACY_STATIC_KEYS=true
+# (off by default since v0.2.0; removed in v0.3).
 
 x-backend: &backend
   # The context is the repository root so the image can build the dashboard
@@ -44,7 +45,7 @@ services:
       AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
       AUTH_NEGATIVE_TTL: ${AUTH_NEGATIVE_TTL:-5s}
       AUTH_CACHE_SIZE: ${AUTH_CACHE_SIZE:-10000}
-      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-true}
+      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-false}
       INGEST_API_KEY: ${INGEST_API_KEY:-}
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
@@ -91,7 +92,7 @@ services:
       AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
       AUTH_NEGATIVE_TTL: ${AUTH_NEGATIVE_TTL:-5s}
       AUTH_CACHE_SIZE: ${AUTH_CACHE_SIZE:-10000}
-      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-true}
+      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-false}
       QUERY_API_KEY: ${QUERY_API_KEY:-}
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logsage}

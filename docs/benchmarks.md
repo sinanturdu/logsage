@@ -30,6 +30,8 @@ export LOADGEN_INGEST_KEY="$INGEST_API_KEY" LOADGEN_QUERY_KEY="$QUERY_API_KEY"
 STATS=http://127.0.0.1:8081/stats
 ```
 
+Since v0.2.0 the static `INGEST_API_KEY` / `QUERY_API_KEY` work only with `ALLOW_LEGACY_STATIC_KEYS=true` in `.env`. Without it, use per-project keys: after `scripts\dev.ps1 up`, `export LOADGEN_INGEST_KEY="$(cat .dev/ingest.key)"`, or create keys in the dashboard's API keys screen.
+
 Since ADR 0010 there is no stream cap to tune: publishing never trims, and ingest answers `429` at `INGEST_MAX_STREAM_LEN` (500,000). (The older runs below set the removed `REDIS_STREAM_MAXLEN` to 1,000,000 or 400,000 to avoid the loss described in finding 1.) To check that nothing is lost, add `--verify` to any `ingest` run that uses `--wait-drain`, with `LOADGEN_CLICKHOUSE_USER` and `LOADGEN_CLICKHOUSE_PASSWORD` set.
 
 ```bash

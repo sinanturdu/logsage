@@ -27,6 +27,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	addr := freeAddr(t)
 	t.Setenv("HTTP_ADDR", addr)
 	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("ALLOW_LEGACY_STATIC_KEYS", "true") // static keys are opt-in since v0.2.0
 	t.Setenv("INGEST_API_KEY", "test-key")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -105,6 +106,7 @@ func TestRunRejectsBadPublisherConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HTTP_ADDR", freeAddr(t))
+			t.Setenv("ALLOW_LEGACY_STATIC_KEYS", "true") // static keys are opt-in since v0.2.0
 			t.Setenv("INGEST_API_KEY", "test-key")
 			for k, v := range tt.env {
 				t.Setenv(k, v)
@@ -125,6 +127,7 @@ func TestRunRedisPublisherUnreachable(t *testing.T) {
 	addr := freeAddr(t)
 	t.Setenv("HTTP_ADDR", addr)
 	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("ALLOW_LEGACY_STATIC_KEYS", "true") // static keys are opt-in since v0.2.0
 	t.Setenv("INGEST_API_KEY", "test-key")
 	t.Setenv("PUBLISHER", "redis")
 	t.Setenv("REDIS_ADDR", freeAddr(t))

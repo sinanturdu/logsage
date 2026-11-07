@@ -31,9 +31,9 @@ func TestRunRejectsBadConfig(t *testing.T) {
 		env  map[string]string
 	}{
 		{name: "missing query key", env: map[string]string{}},
-		{name: "query key equals ingest key", env: map[string]string{"QUERY_API_KEY": "same", "INGEST_API_KEY": "same"}},
-		{name: "bad window", env: map[string]string{"QUERY_API_KEY": "k", "QUERY_MAX_WINDOW": "a week"}},
-		{name: "bad clickhouse url", env: map[string]string{"QUERY_API_KEY": "k", "CLICKHOUSE_URL": "localhost"}},
+		{name: "query key equals ingest key", env: map[string]string{"QUERY_API_KEY": "same", "INGEST_API_KEY": "same", "ALLOW_LEGACY_STATIC_KEYS": "true"}},
+		{name: "bad window", env: map[string]string{"QUERY_API_KEY": "k", "QUERY_MAX_WINDOW": "a week", "ALLOW_LEGACY_STATIC_KEYS": "true"}},
+		{name: "bad clickhouse url", env: map[string]string{"QUERY_API_KEY": "k", "CLICKHOUSE_URL": "localhost", "ALLOW_LEGACY_STATIC_KEYS": "true"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -52,13 +52,14 @@ func TestRunRejectsBadConfig(t *testing.T) {
 func TestRunServesAndShutsDown(t *testing.T) {
 	addr := freeAddr(t)
 	env := map[string]string{
-		"LOG_LEVEL":          "error",
-		"QUERY_HTTP_ADDR":    addr,
-		"QUERY_API_KEY":      "read-key",
-		"INGEST_API_KEY":     "write-key",
-		"CLICKHOUSE_URL":     "http://" + freeAddr(t),
-		"CLICKHOUSE_TIMEOUT": "1s",
-		"QUERY_TIMEOUT":      "1s",
+		"LOG_LEVEL":                "error",
+		"QUERY_HTTP_ADDR":          addr,
+		"ALLOW_LEGACY_STATIC_KEYS": "true", // static keys are opt-in since v0.2.0
+		"QUERY_API_KEY":            "read-key",
+		"INGEST_API_KEY":           "write-key",
+		"CLICKHOUSE_URL":           "http://" + freeAddr(t),
+		"CLICKHOUSE_TIMEOUT":       "1s",
+		"QUERY_TIMEOUT":            "1s",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
