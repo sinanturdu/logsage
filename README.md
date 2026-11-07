@@ -63,7 +63,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 seed
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 web
 ```
 
-Then open http://localhost:5173/projects/demo/logs.
+Then open http://localhost:5173/projects/demo/logs. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets.
 
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.

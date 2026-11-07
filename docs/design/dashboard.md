@@ -284,6 +284,22 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
+## As built (I2b and I2c-1)
+
+What the explorer does differently from B2 and its polish round, and why. Details are in ADR 0017 and ADR 0018.
+
+- **List semantics:** the rows form a `treegrid`, not a `listbox`, so they can carry `aria-expanded` and hold an interactive detail.
+- **One open detail at a time** (B2 allows several). Escape and focus then have a single target, and the Same trace pivot switches the open detail.
+- **Same trace click:** the item is shown in the open detail while the list selection stays where it is. In B2 it selected and expanded that log in the list, which jumps the list to a row that may not be loaded.
+- **Same trace scope:** logs that share the trace within 10 minutes before and after the log, at most 50, not "every log" of the trace.
+- **Request and Context use a fixed rule** (prefixes `http.`, `url.`, `request.`, `response.`, `gateway.` and a few exact keys) instead of the mockup's hand-picked fields, because attributes are arbitrary.
+- **The action buttons** wrap under the ids whenever the line runs out of room, not at a fixed 1200px.
+- **Below 900px the filter column collapses** behind a "Filters (N)" button instead of moving above the list. When opened, it keeps B2's three columns. The search box and the new filter chips stay visible.
+- **New, not in B2:** the filter chips row, "Zoom to selection" and "Zoom out", the scope line ("N logs in view, M in the selection"), and gaps in the error strip at buckets with fewer than 5 logs, with a note.
+- **Strip unit:** the strips are labeled with the server's bucket size ("per 10 s"), not a fixed 30 s.
+- **Service facets** are checkboxes with selection semantics. With none checked, all services are shown (I2b).
+- **The range heading** sits in the explorer head next to the range controls, not in the shell header (I2b).
+
 ## Frontend plan for I2
 
 **Stack:** React + TypeScript + Vite in `frontend/`, built to static files that the `api` service (or a static server on the same origin) serves. Each dependency below needs the owner's approval, and nothing is installed yet.
