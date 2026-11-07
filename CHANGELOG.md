@@ -5,6 +5,9 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Dashboard read endpoints on `cmd/api` (ADR 0014): `GET /api/projects/{slug}/logs`, `/histogram` (per-level counts in buckets of 10s to 1d, zero-filled) and `/facets` (levels without the level filter, services without the service filter, top 50 plus other) for members with a session; non-members get `404`. Per-user cap `API_MAX_CONCURRENT_QUERIES` (default 4, `429` + `Retry-After`).
+- Log search accepts a comma-separated `service` list (at most 20 names), also on `/v1/logs`.
+- `cmd/api` needs `CLICKHOUSE_URL`, `CLICKHOUSE_DB`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD`, uses the `QUERY_*` limits and checks ClickHouse in `/readyz`; the compose `api` service gets the ClickHouse settings (no Redis).
 - Users, server-side sessions and the management API `cmd/api` on `:8083` (ADR 0013): login, logout, logout-all, me, change-password, optional registration (`REGISTRATION_ENABLED`, off by default), projects with `owner`/`admin`/`viewer` roles, key list/create (shown once)/revoke. Non-members get `404`. Session cookie `HttpOnly`, `SameSite=Lax`, `__Host-` prefix and `Secure` with `COOKIE_SECURE=true` (default); idle (12h) and absolute (7d) TTLs.
 - Passwords hashed with argon2id (PHC strings, rehash on login, bounded concurrency, dummy verification for unknown emails); policy 12–128 characters, not the email. New direct dependency `golang.org/x/crypto` v0.33.0 (was indirect via pgx).
 - CSRF (JSON content type plus trusted `Origin`/`Referer`), CORS only for `ALLOWED_ORIGINS`, per-IP and per-email login throttling with `429` + `Retry-After` (per instance), audit log of security events.

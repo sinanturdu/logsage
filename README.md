@@ -130,15 +130,19 @@ curl -X POST http://127.0.0.1:8080/v1/ingest -H "X-API-Key: $INGEST_KEY" -H "Con
 curl -H "X-API-Key: $QUERY_KEY" "http://127.0.0.1:8082/v1/logs?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z"
 ```
 
-Users and the management API (`cmd/api`, `:8083`; contract in [docs/architecture.md](docs/architecture.md), design in ADR 0013). Passwords are read from `LOGSAGE_PASSWORD` or stdin, never flags:
+Users, the management API and the dashboard read endpoints (`cmd/api`, `:8083`; contract in [docs/architecture.md](docs/architecture.md), design in ADR 0013 and 0014). Passwords are read from `LOGSAGE_PASSWORD` or stdin, never flags:
 
 ```bash
 printf '%s\n' 'a long passphrase here' | go run ./cmd/admin create-user --email you@example.com
 go run ./cmd/admin add-member --project demo --email you@example.com --role owner
-COOKIE_SECURE=false go run ./cmd/api        # COOKIE_SECURE=false only for local plain http
+COOKIE_SECURE=false CLICKHOUSE_URL=http://localhost:8123 CLICKHOUSE_DB=logsage CLICKHOUSE_USER=logsage \
+  CLICKHOUSE_PASSWORD=change-me go run ./cmd/api   # COOKIE_SECURE=false only for local plain http
 curl -c jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:8083" \
   -d '{"email":"you@example.com","password":"a long passphrase here"}' http://localhost:8083/api/auth/login
 curl -b jar.txt http://localhost:8083/api/projects
+# Dashboard reads (ADR 0014): logs, histogram and facets of a project you are a member of
+curl -b jar.txt "http://localhost:8083/api/projects/demo/histogram?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z&service=payments,checkout"
+curl -b jar.txt "http://localhost:8083/api/projects/demo/facets?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z&level=error"
 ```
 
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.

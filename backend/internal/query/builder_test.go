@@ -43,7 +43,7 @@ func shapes(value string) []Filter {
 			f.Levels = []string{"error", "fatal"}
 		}
 		if mask&2 != 0 {
-			f.Service = value
+			f.Services = []string{value}
 		}
 		if mask&4 != 0 {
 			f.Text = value

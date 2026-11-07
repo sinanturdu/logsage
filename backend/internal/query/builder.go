@@ -14,7 +14,7 @@ import (
 type Filter struct {
 	From, To time.Time // from inclusive, to exclusive
 	Levels   []string  // empty: all levels
-	Service  string    // exact match, empty: any
+	Services []string  // exact match on any of them, empty: any
 	Text     string    // case-insensitive substring of message, empty: any
 	TraceID  string    // exact match, empty: any
 	Limit    int       // rows per page; Build asks for Limit+1
@@ -39,8 +39,14 @@ const projectScope = "(project_id = {project_id:String} OR project_id = {project
 // LegacyDefaultProject is the project_id of v0.1 rows (ADR 0011/0012).
 const LegacyDefaultProject = "default"
 
+// MaxServices is the largest number of values in a service filter.
+const MaxServices = 20
+
+// Levels lists the log levels in severity order.
+var Levels = []string{"debug", "info", "warn", "error", "fatal"}
+
 // Scope is the project a query is limited to. It comes from the verified
-// key only (ScopeFor), never from the request.
+// key or the caller's membership (ScopeFor), never from the request.
 type Scope struct {
 	ProjectID string
 	Alias     string
@@ -55,23 +61,25 @@ func ScopeFor(projectID string) Scope {
 	return Scope{ProjectID: projectID, Alias: projectID}
 }
 
-// Build is the only place that produces log search SQL. Every statement is
-// scoped to projectID, reads FROM logs FINAL (redelivered rows collapsed),
-// orders newest first with event_id as tie-break, and fetches Limit+1 rows.
-// All values are passed as parameters; the SQL is assembled only from the
-// constant fragments below.
-func Build(scope Scope, f Filter) (Statement, error) {
+// skip names a filter left out of a WHERE clause (facet exclusion rule).
+type skip int
+
+const (
+	skipNone skip = iota
+	skipLevels
+	skipServices
+)
+
+// where returns the conditions and parameters shared by every statement.
+// The project scope and the time range are always present.
+func where(scope Scope, f Filter, s skip) ([]string, map[string]string, error) {
 	if scope.ProjectID == "" || scope.Alias == "" {
-		return Statement{}, errors.New("query: project scope is required")
-	}
-	if f.Limit <= 0 {
-		return Statement{}, errors.New("query: limit must be positive")
+		return nil, nil, errors.New("query: project scope is required")
 	}
 	if !f.From.Before(f.To) {
-		return Statement{}, errors.New("query: from must be before to")
+		return nil, nil, errors.New("query: from must be before to")
 	}
-
-	where := []string{
+	conds := []string{
 		projectScope,
 		"timestamp >= {from:DateTime64(3, 'UTC')}",
 		"timestamp < {to:DateTime64(3, 'UTC')}",
@@ -81,41 +89,84 @@ func Build(scope Scope, f Filter) (Statement, error) {
 		"project_alias": scope.Alias,
 		"from":          f.From.UTC().Format(chTime),
 		"to":            f.To.UTC().Format(chTime),
-		"limit":         strconv.Itoa(f.Limit + 1),
 	}
-
-	if len(f.Levels) > 0 {
+	if len(f.Levels) > 0 && s != skipLevels {
 		quoted := make([]string, len(f.Levels))
 		for i, l := range f.Levels {
 			if !validLevel(l) {
-				return Statement{}, fmt.Errorf("query: invalid level %q", l)
+				return nil, nil, fmt.Errorf("query: invalid level %q", l)
 			}
 			quoted[i] = "'" + l + "'" // safe: l is one of five fixed words
 		}
-		where = append(where, "level IN {levels:Array(String)}")
+		conds = append(conds, "level IN {levels:Array(String)}")
 		params["levels"] = "[" + strings.Join(quoted, ",") + "]"
 	}
-	if f.Service != "" {
-		where = append(where, "service = {service:String}")
-		params["service"] = f.Service
+	if len(f.Services) > MaxServices {
+		return nil, nil, fmt.Errorf("query: more than %d services", MaxServices)
+	}
+	switch {
+	case s == skipServices || len(f.Services) == 0:
+	case len(f.Services) == 1:
+		// One service keeps the v0.1 statement unchanged.
+		conds = append(conds, "service = {service:String}")
+		params["service"] = f.Services[0]
+	default:
+		conds = append(conds, "service IN {services:Array(String)}")
+		params["services"] = arrayParam(f.Services)
 	}
 	if f.Text != "" {
-		where = append(where, "positionCaseInsensitiveUTF8(message, {q:String}) > 0")
+		conds = append(conds, "positionCaseInsensitiveUTF8(message, {q:String}) > 0")
 		params["q"] = f.Text
 	}
 	if f.TraceID != "" {
-		where = append(where, "trace_id = {trace_id:String}")
+		conds = append(conds, "trace_id = {trace_id:String}")
 		params["trace_id"] = f.TraceID
 	}
+	return conds, params, nil
+}
+
+// arrayElem escapes one string for a quoted element of an Array(String)
+// parameter value. ClickHouse parses an array parameter with one level of
+// backslash escapes, and the client (clickhouse.EscapeParam) already
+// escapes every backslash and turns tab, newline, CR and NUL into escape
+// sequences on the way. So only the quote is escaped here, by doubling it,
+// which needs no backslash. Tested end to end against ClickHouse.
+var arrayElem = strings.NewReplacer(`'`, `''`)
+
+// arrayParam renders values as an Array(String) parameter value. It is a
+// value, never SQL: ClickHouse parses it as data of the declared type.
+func arrayParam(values []string) string {
+	q := make([]string, len(values))
+	for i, v := range values {
+		q[i] = "'" + arrayElem.Replace(v) + "'"
+	}
+	return "[" + strings.Join(q, ",") + "]"
+}
+
+func joinWhere(conds []string) string { return "WHERE " + strings.Join(conds, "\n  AND ") + "\n" }
+
+// Build is the only place that produces log search SQL. Every statement is
+// scoped to the project, reads FROM logs FINAL (redelivered rows collapsed),
+// orders newest first with event_id as tie-break, and fetches Limit+1 rows.
+// All values are passed as parameters; the SQL is assembled only from
+// constant fragments.
+func Build(scope Scope, f Filter) (Statement, error) {
+	if f.Limit <= 0 {
+		return Statement{}, errors.New("query: limit must be positive")
+	}
+	conds, params, err := where(scope, f, skipNone)
+	if err != nil {
+		return Statement{}, err
+	}
+	params["limit"] = strconv.Itoa(f.Limit + 1)
 	if f.After != nil {
-		where = append(where, "(timestamp, event_id) < ({cursor_ts:DateTime64(3, 'UTC')}, {cursor_id:String})")
+		conds = append(conds, "(timestamp, event_id) < ({cursor_ts:DateTime64(3, 'UTC')}, {cursor_id:String})")
 		params["cursor_ts"] = f.After.Timestamp.UTC().Format(chTime)
 		params["cursor_id"] = f.After.EventID
 	}
-
 	sql := "SELECT event_id, timestamp, level, service, message, trace_id, attributes\n" +
 		"FROM logs FINAL\n" +
-		"WHERE " + strings.Join(where, "\n  AND ") + "\n" +
+		joinWhere(conds) +
 		"ORDER BY timestamp DESC, event_id DESC\n" +
 		"LIMIT {limit:UInt32}\n" +
 		"FORMAT JSONEachRow"

@@ -127,9 +127,21 @@ services:
       LOGIN_DELAY_BASE: ${LOGIN_DELAY_BASE:-1s}
       LOGIN_DELAY_MAX: ${LOGIN_DELAY_MAX:-15m}
       LOGIN_LIMITER_SIZE: ${LOGIN_LIMITER_SIZE:-10000}
+      # Log read endpoints (ADR 0014): ClickHouse only, no Redis, no API keys.
+      # They use the same QUERY_* limits as cmd/query.
+      API_MAX_CONCURRENT_QUERIES: ${API_MAX_CONCURRENT_QUERIES:-4}
+      QUERY_MAX_WINDOW: ${QUERY_MAX_WINDOW:-168h}
+      QUERY_MAX_LIMIT: ${QUERY_MAX_LIMIT:-1000}
+      QUERY_TIMEOUT: ${QUERY_TIMEOUT:-10s}
+      QUERY_MAX_TEXT_LEN: ${QUERY_MAX_TEXT_LEN:-256}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logsage}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
     ports: ["127.0.0.1:8083:8083"]
     depends_on:
       postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/healthz"]

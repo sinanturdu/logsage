@@ -13,6 +13,8 @@ func envFunc(m map[string]string) func(string) string { return func(k string) st
 func TestRunRejectsBadConfig(t *testing.T) {
 	for name, env := range map[string]map[string]string{
 		"no database":        {},
+		"no clickhouse":      {"DATABASE_URL": "postgres://u:p@127.0.0.1:1/db"},
+		"no clickhouse pass": {"DATABASE_URL": "postgres://u:p@127.0.0.1:1/db", "CLICKHOUSE_URL": "http://127.0.0.1:1", "CLICKHOUSE_DB": "logsage", "CLICKHOUSE_USER": "u"},
 		"bad ttl":            {"DATABASE_URL": "postgres://u:p@127.0.0.1:1/db", "SESSION_IDLE_TTL": "nope"},
 		"wildcard origin":    {"DATABASE_URL": "postgres://u:p@127.0.0.1:1/db", "ALLOWED_ORIGINS": "*"},
 		"weak argon2":        {"DATABASE_URL": "postgres://u:p@127.0.0.1:1/db", "ARGON2_MEMORY_KIB": "1024"},
@@ -30,12 +32,20 @@ func TestRunRejectsBadConfig(t *testing.T) {
 // TestRunServesAndShutsDown needs PostgreSQL; cancel stops run within the
 // shutdown budget without OS signals.
 func TestRunServesAndShutsDown(t *testing.T) {
-	url := os.Getenv("POSTGRES_TEST_URL")
-	if url == "" {
-		t.Skip("POSTGRES_TEST_URL not set")
+	url, chURL := os.Getenv("POSTGRES_TEST_URL"), os.Getenv("CLICKHOUSE_TEST_URL")
+	if url == "" || chURL == "" {
+		t.Skip("POSTGRES_TEST_URL or CLICKHOUSE_TEST_URL not set")
+	}
+	chUser, chPass := os.Getenv("CLICKHOUSE_TEST_USER"), os.Getenv("CLICKHOUSE_TEST_PASSWORD")
+	if chUser == "" || chPass == "" {
+		// cmd/api requires every CLICKHOUSE_* setting (ADR 0014), so this
+		// test needs a ClickHouse user with a password, not the
+		// passwordless default user.
+		t.Fatal("set CLICKHOUSE_TEST_USER and CLICKHOUSE_TEST_PASSWORD: cmd/api refuses an empty ClickHouse user or password")
 	}
 	env := map[string]string{"DATABASE_URL": url, "API_HTTP_ADDR": "127.0.0.1:0", "COOKIE_SECURE": "false",
-		"ARGON2_MEMORY_KIB": "19456", "ARGON2_ITERATIONS": "1", "ARGON2_PARALLELISM": "1"}
+		"ARGON2_MEMORY_KIB": "19456", "ARGON2_ITERATIONS": "1", "ARGON2_PARALLELISM": "1",
+		"CLICKHOUSE_URL": chURL, "CLICKHOUSE_DB": "default", "CLICKHOUSE_USER": chUser, "CLICKHOUSE_PASSWORD": chPass}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready := make(chan string, 1)

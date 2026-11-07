@@ -21,9 +21,10 @@ jobs:
         image: clickhouse/clickhouse-server:24.8
         ports: ["8123:8123"]
         env:
-          # Throwaway CI container: keep the passwordless default user
-          # reachable over the network instead of creating credentials.
-          CLICKHOUSE_SKIP_USER_SETUP: "1"
+          # Throwaway CI container with a password user, like the local
+          # compose setup: cmd/api refuses to start without CLICKHOUSE_PASSWORD.
+          CLICKHOUSE_USER: logsage
+          CLICKHOUSE_PASSWORD: ci-clickhouse
         options: >-
           --ulimit nofile=262144:262144
           --health-cmd "clickhouse-client --query 'SELECT 1'"
@@ -53,6 +54,8 @@ jobs:
           # Enable the Redis and ClickHouse integration tests.
           REDIS_TEST_ADDR: localhost:6379
           CLICKHOUSE_TEST_URL: http://localhost:8123
+          CLICKHOUSE_TEST_USER: logsage
+          CLICKHOUSE_TEST_PASSWORD: ci-clickhouse
           POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
         run: |
           go vet ./...
@@ -80,6 +83,8 @@ jobs:
           docker compose -f infra/docker-compose.yml config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --services | grep -qx api
+          # The api service reads ClickHouse but needs no Redis.
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --format json             | jq -e '.services.api.environment | has("CLICKHOUSE_URL") and has("CLICKHOUSE_PASSWORD") and (has("REDIS_ADDR") | not)'
       - name: Image contains every binary
         run: docker run --rm --entrypoint ls logsage-backend:ci /usr/local/bin/ingest /usr/local/bin/processor /usr/local/bin/query /usr/local/bin/admin /usr/local/bin/api
       - name: App profile refuses to start without secrets

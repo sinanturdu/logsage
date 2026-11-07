@@ -1,5 +1,6 @@
 // Command api serves the management API: login with server-side sessions,
-// projects, members and API keys (ADR 0013).
+// projects, members and API keys (ADR 0013), and the session-authenticated
+// log read endpoints for the dashboard (ADR 0014).
 package main
 
 import (
@@ -19,8 +20,14 @@ import (
 	"github.com/sinanturdu/logsage/backend/internal/health"
 	"github.com/sinanturdu/logsage/backend/internal/logging"
 	"github.com/sinanturdu/logsage/backend/internal/password"
+	"github.com/sinanturdu/logsage/backend/internal/query"
+	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 	"github.com/sinanturdu/logsage/backend/internal/storage/postgres"
 )
+
+// defaultPageSize is the log page size when the request has no limit,
+// the same as cmd/query.
+const defaultPageSize = 100
 
 const httpShutdownTimeout = 5 * time.Second
 
@@ -49,7 +56,7 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	if err := cfg.ValidateAPI(); err != nil {
+	if err := cfg.ValidateAPI(getenv); err != nil {
 		return err
 	}
 	log := logging.New(os.Stdout, cfg.LogLevel, cfg.LogFormat)
@@ -66,6 +73,31 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	defer pool.Close()
 	store := postgres.NewStore(pool, cfg.Postgres.QueryTimeout)
 
+	// Log reads use the shared query service with the QUERY_* limits. The
+	// HTTP client waits a little longer than ClickHouse's own limit so the
+	// server reports a timeout itself.
+	chTimeout := cfg.ClickHouse.Timeout
+	if minTimeout := cfg.Query.Timeout + 5*time.Second; chTimeout < minTimeout {
+		chTimeout = minTimeout
+	}
+	ch, err := clickhouse.New(clickhouse.Options{
+		URL: cfg.ClickHouse.URL, Database: cfg.ClickHouse.Database, User: cfg.ClickHouse.User,
+		Password: cfg.ClickHouse.Password, Timeout: chTimeout,
+	})
+	if err != nil {
+		return err
+	}
+	logs, err := query.NewService(ch, query.Options{
+		MaxWindow:    cfg.Query.MaxWindow,
+		DefaultLimit: min(defaultPageSize, cfg.Query.MaxLimit),
+		MaxLimit:     cfg.Query.MaxLimit,
+		MaxTextLen:   cfg.Query.MaxTextLen,
+		Timeout:      cfg.Query.Timeout,
+	})
+	if err != nil {
+		return err
+	}
+
 	limiter := api.NewLimiter(a.LoginMaxFailures, a.LoginDelayBase, a.LoginDelayMax, a.LoginLimiterSize)
 	srv, err := api.New(store, hasher, limiter, api.Options{
 		IdleTTL:             a.SessionIdleTTL,
@@ -73,6 +105,8 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 		CookieSecure:        a.CookieSecure,
 		AllowedOrigins:      a.Origins(),
 		RegistrationEnabled: a.RegistrationEnabled,
+		Logs:                 logs,
+		MaxConcurrentQueries: a.MaxConcurrentQueries,
 	}, log)
 	if err != nil {
 		return err
@@ -80,7 +114,7 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 
 	mux := http.NewServeMux()
 	health.Register(mux)
-	health.RegisterReady(mux, log, store)
+	health.RegisterReady(mux, log, store, ch)
 	srv.Register(mux)
 
 	hs := &http.Server{
@@ -103,7 +137,8 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	}
 	log.Info("management api starting", "addr", ln.Addr().String(), "cookie_secure", a.CookieSecure,
 		"allowed_origins", len(a.Origins()), "idle_ttl", a.SessionIdleTTL.String(), "absolute_ttl", a.SessionAbsoluteTTL.String(),
-		"argon2_m_kib", a.Argon2MemoryKiB, "argon2_t", a.Argon2Iterations, "argon2_p", a.Argon2Parallelism)
+		"argon2_m_kib", a.Argon2MemoryKiB, "argon2_t", a.Argon2Iterations, "argon2_p", a.Argon2Parallelism,
+		"clickhouse_db", cfg.ClickHouse.Database, "max_concurrent_queries", a.MaxConcurrentQueries)
 	if ready != nil {
 		ready <- ln.Addr().String()
 	}

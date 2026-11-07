@@ -63,6 +63,11 @@ type Options struct {
 	AllowedOrigins      []string
 	RegistrationEnabled bool
 	TouchInterval       time.Duration    // default DefaultTouchInterval
+	// Logs serves the read endpoints; nil leaves them answering 404.
+	Logs LogReader
+	// MaxConcurrentQueries caps running log reads per user (default
+	// DefaultMaxConcurrentQueries); above it the answer is 429.
+	MaxConcurrentQueries int
 	Now                 func() time.Time // default time.Now
 }
 
@@ -74,6 +79,8 @@ type Server struct {
 	log     *slog.Logger
 	opts    Options
 	origins originChecker
+	logs    LogReader
+	gate    *queryGate
 }
 
 // New returns a Server.
@@ -91,7 +98,7 @@ func New(store Store, hasher *password.Hasher, limiter *Limiter, opts Options, l
 		opts.Now = time.Now
 	}
 	return &Server{store: store, hasher: hasher, limiter: limiter, log: log, opts: opts,
-		origins: newOriginChecker(opts.AllowedOrigins)}, nil
+		origins: newOriginChecker(opts.AllowedOrigins), logs: opts.Logs, gate: newQueryGate(opts.MaxConcurrentQueries)}, nil
 }
 
 // Register adds the API routes to mux behind the security middleware.
@@ -110,6 +117,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	m.HandleFunc("GET /api/projects/{slug}/keys", s.authed(s.handleListKeys))
 	m.HandleFunc("POST /api/projects/{slug}/keys", s.authed(s.handleCreateKey))
 	m.HandleFunc("POST /api/projects/{slug}/keys/{prefix}/revoke", s.authed(s.handleRevokeKey))
+	m.HandleFunc("GET /api/projects/{slug}/logs", s.authed(s.readLogs(s.prepareLogs)))
+	m.HandleFunc("GET /api/projects/{slug}/histogram", s.authed(s.readLogs(s.prepareHistogram)))
+	m.HandleFunc("GET /api/projects/{slug}/facets", s.authed(s.readLogs(s.prepareFacets)))
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeError(w, http.StatusNotFound) })
 	mux.Handle("/api/", s.secure(m))
 }
