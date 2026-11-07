@@ -145,8 +145,22 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
       </div>
       <p className="key">
         {summary} Drag across either strip to select a time range{drag ? '; press Escape to cancel' : ''}.
-        {small && ` Buckets with fewer than ${MIN_SHARE_SAMPLE} logs are left out of the error share.`}
       </p>
+      <details className="about-chart">
+        <summary>About this chart</summary>
+        <p>
+          The upper strip counts logs per {per}. The lower strip shows error and fatal logs as a percentage of each {per}&apos;s
+          logs.
+        </p>
+        <p>
+          Buckets with fewer than {MIN_SHARE_SAMPLE} logs are left out of the error share{small ? ' (this view has some)' : ''}, and
+          the line breaks there: one error among two logs would otherwise show as a 50% spike.
+        </p>
+        <p>
+          Drag across either strip to select a time range; the list, the facets and the counts then cover only that range. Press
+          Escape while dragging to cancel. The range buttons and Custom do the same from the keyboard.
+        </p>
+      </details>
     </section>
   )
 }

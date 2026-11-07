@@ -277,3 +277,6 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 .examples [role='tab'] { background: none; border: 1px solid transparent; border-bottom: 0; padding: 4px 10px; font: inherit; font-size: var(--text-sm); color: var(--pencil); cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; }
 .examples [role='tab'][aria-selected='true'] { color: var(--ink); border-color: var(--line-strong); background: var(--white); margin-bottom: -1px; }
 .examples .curl { margin-top: 0; border-top: 0; }
+.about-chart { font-size: var(--text-sm); color: var(--pencil); margin: 2px 0 0; }
+.about-chart summary { cursor: pointer; color: var(--pen); width: fit-content; }
+.about-chart p { margin: var(--space-1) 0 0; max-width: 72ch; }

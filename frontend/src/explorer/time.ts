@@ -128,7 +128,8 @@ export function summarize(buckets: readonly Bucket[], bucketSeconds: number): st
   }
   if (!peak || total === 0) return 'No logs in this time range.'
   const per = bucketLabel(bucketSeconds)
-  let s = `${total.toLocaleString('en-US')} logs. Peak volume ${bucketTotal(peak).toLocaleString('en-US')} logs per ${per} at ${clockUtc(peak.t)} UTC.`
+  // The total is in the scope line above the chart; the summary starts with the peaks.
+  let s = `Peak volume ${bucketTotal(peak).toLocaleString('en-US')} logs per ${per} at ${clockUtc(peak.t)} UTC.`
   const anyErrors = buckets.some((b) => bucketErrors(b) > 0)
   if (peakShare && bucketErrors(peakShare) > 0) {
     s += ` Peak error and fatal share ${Math.round(errorShare(peakShare))}% at ${clockUtc(peakShare.t)} UTC.`

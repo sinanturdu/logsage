@@ -67,7 +67,7 @@ describe('summary line', () => {
       b('2026-11-07T02:16:30Z', 500, 100),
     ]
     expect(summarize(buckets, 30)).toBe(
-      '2,003 logs. Peak volume 741 logs per 30 s at 02:16:00 UTC. Peak error and fatal share 35% at 02:15:30 UTC.',
+      'Peak volume 741 logs per 30 s at 02:16:00 UTC. Peak error and fatal share 35% at 02:15:30 UTC.',
     )
     expect(summarize(buckets, 30)).toBe(summarize([...buckets], 30)) // deterministic
   })
@@ -75,6 +75,6 @@ describe('summary line', () => {
   it('handles empty data and no errors', () => {
     expect(summarize([], 10)).toBe('No logs in this time range.')
     expect(summarize([b('2026-11-07T02:15:00Z', 0)], 10)).toBe('No logs in this time range.')
-    expect(summarize([b('2026-11-07T02:15:00Z', 12)], 60)).toBe('12 logs. Peak volume 12 logs per 1 min at 02:15:00 UTC. No errors or fatal logs.')
+    expect(summarize([b('2026-11-07T02:15:00Z', 12)], 60)).toBe('Peak volume 12 logs per 1 min at 02:15:00 UTC. No errors or fatal logs.')
   })
 })

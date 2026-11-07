@@ -82,7 +82,16 @@ describe('small samples in the error share', () => {
     renderApp('/projects/shop/logs')
     const chart = await screen.findByRole('region', { name: 'Timeline' })
     await waitFor(() => expect(chart.querySelectorAll('polyline.err')).toHaveLength(2))
-    expect(within(chart).getByText(/Buckets with fewer than 5 logs are left out of the error share\./)).toBeTruthy()
+    const about = chart.querySelector('details') as HTMLDetailsElement
+    expect(about.querySelector('summary')?.textContent).toBe('About this chart')
+    expect(about.textContent).toContain('Buckets with fewer than 5 logs are left out of the error share (this view has some)')
+    expect(about.textContent).toContain('The upper strip counts logs per 10 s.')
+    expect(about.textContent).toContain('Drag across either strip to select a time range')
+    expect(about.open).toBe(false) // closed until asked for
+    const key = chart.querySelector('.key')?.textContent ?? ''
+    expect(key).toMatch(/^Peak volume /) // the total lives in the scope line only
+    expect(key).toContain('Drag across either strip to select a time range.')
+    expect(key).not.toContain('fewer than 5')
     // The 3-log bucket is 67% errors; the peak reported is the 10-log bucket's 20%.
     expect(within(chart).getByText('peak 20%')).toBeTruthy()
     expect(within(chart).getByRole('img').getAttribute('aria-label')).not.toContain('67%')

@@ -97,7 +97,7 @@ describe('small samples', () => {
   it('ignores small buckets for the peak share', () => {
     const t = Date.parse('2026-11-07T02:15:00Z')
     const s = summarize([b(t, 0, 2), b(t + 10_000, 90, 10)], 10) // 2 of 2 errors is not "100%"
-    expect(s).toBe('102 logs. Peak volume 100 logs per 10 s at 02:15:10 UTC. Peak error and fatal share 10% at 02:15:10 UTC.')
-    expect(summarize([b(t, 1, 3)], 10)).toBe('4 logs. Peak volume 4 logs per 10 s at 02:15:00 UTC. No bucket has enough logs for an error share.')
+    expect(s).toBe('Peak volume 100 logs per 10 s at 02:15:10 UTC. Peak error and fatal share 10% at 02:15:10 UTC.')
+    expect(summarize([b(t, 1, 3)], 10)).toBe('Peak volume 4 logs per 10 s at 02:15:00 UTC. No bucket has enough logs for an error share.')
   })
 })
