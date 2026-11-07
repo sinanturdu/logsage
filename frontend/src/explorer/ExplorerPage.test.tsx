@@ -86,7 +86,7 @@ describe('log explorer', () => {
     expect(of(requests, 'logs')[0]?.params.get('limit')).toBe('100')
     expect(statusText()).toBe('Showing 3 of 3 logs, newest first.')
     expect(screen.getByText(/Peak volume 43 logs per 10 s at 02:16:40 UTC/)).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/ UTClast hour$/)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/ UTC last hour$/)
     // Level marks: shape plus word.
     const row = rows()[0] as HTMLElement
     expect(within(row).getByText('■')).toBeTruthy()

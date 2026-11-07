@@ -136,8 +136,7 @@ export function ExplorerPage() {
           onRefresh={refresh}
         />
         <h1 className="range-heading">
-          {rangeHeading(win.from, win.to, now)}
-          <small>{contextText}</small>
+          {rangeHeading(win.from, win.to, now)} <small>{contextText}</small>
         </h1>
       </div>
 
