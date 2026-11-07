@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { vi } from 'vitest'
 import { App, newQueryClient } from '../App'
 
@@ -44,7 +44,14 @@ export const project = (slug: string, name = slug) => ({
 
 function LocationProbe() {
   const l = useLocation()
-  return <output data-testid="location">{l.pathname + l.search}</output>
+  const navigate = useNavigate()
+  return (
+    <>
+      <output data-testid="location">{l.pathname + l.search}</output>
+      {/* The browser Back button, for tests on a memory router. */}
+      <button type="button" data-testid="history-back" hidden onClick={() => void navigate(-1)} />
+    </>
+  )
 }
 
 export function renderApp(path: string, opts: { retries?: number } = { retries: 0 }) {

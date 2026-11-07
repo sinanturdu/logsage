@@ -108,6 +108,8 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 .strips .vol, .strips .err { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .strips .vol { stroke: var(--pen); }
 .strips .err { stroke: var(--level-error); }
+.chart-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 28px; }
+.chart-bar .scope { margin: 0; font-size: var(--text-sm); color: var(--ink); }
 .axis { display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--pencil); padding-top: var(--space-1); }
 .key { font-size: var(--text-sm); color: var(--pencil); margin: 2px 0 0; }
 

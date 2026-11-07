@@ -22,10 +22,18 @@ import {
 } from './model'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
-import { rangeHeading } from './time'
+import { bucketTotal, rangeHeading } from './time'
 
 export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
 export const NO_RESULTS = 'No logs match these filters. Widen the time range or clear a filter.'
+
+const fmt = (n: number) => n.toLocaleString('en-US')
+
+/** The timeline scope in words: the logs in view and, with a selection, in it. */
+export function scopeText(inView: number, inSelection?: number): string {
+  const view = `${fmt(inView)} ${inView === 1 ? 'log' : 'logs'} in view`
+  return inSelection === undefined ? `${view}.` : `${view}, ${fmt(inSelection)} in the selection.`
+}
 
 /** Copy for a failed explorer request: what happened and how to fix it. */
 export function explorerError(err: unknown): { text: string; retry: boolean } {
@@ -72,7 +80,7 @@ export function ExplorerPage() {
   )
 
   const win = resolveRange(state.range, now)
-  const ctx = contextWindow(state.range, now)
+  const ctx = contextWindow(state.range, now, state.zoom)
   const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId }
   const histogram = useHistogram(slug, filters, ctx)
   const facets = useFacets(slug, filters, win)
@@ -150,9 +158,11 @@ export function ExplorerPage() {
   const contextText =
     state.range.kind === 'relative'
       ? presetLabel(state.range.preset)
-      : ctx.preset
-        ? `selected within the ${presetLabel(ctx.preset)}`
-        : 'selected range'
+      : state.zoom
+        ? 'zoomed to the selection'
+        : ctx.preset
+          ? `selected within the ${presetLabel(ctx.preset)}`
+          : 'selected range'
   const error = logs.error ?? facets.error
   const problem = error && !(error instanceof ApiError && error.kind === 'unauthorized') ? explorerError(error) : null
   const total = facets.data?.total
@@ -168,7 +178,7 @@ export function ExplorerPage() {
             refresh()
             update({ range: { kind: 'relative', preset: p } })
           }}
-          onCustom={(from, to) => update({ range: { kind: 'absolute', from, to } })}
+          onCustom={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: false })}
           onRefresh={refresh}
         />
         <h1 className="range-heading">
@@ -181,8 +191,23 @@ export function ExplorerPage() {
           buckets={histogram.data.buckets}
           bucketSeconds={histogram.data.bucketSeconds}
           window={ctx}
-          selection={state.range.kind === 'absolute' ? win : null}
-          onSelect={(from, to) => update({ range: { kind: 'absolute', from, to } })}
+          selection={state.range.kind === 'absolute' && !state.zoom ? win : null}
+          // Brushing inside a zoomed view zooms further; Back undoes each step.
+          onSelect={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: state.zoom })}
+          scope={scopeText(histogram.data.buckets.reduce((n, b) => n + bucketTotal(b), 0), state.range.kind === 'absolute' && !state.zoom ? total : undefined)}
+          tools={
+            state.zoom ? (
+              <button type="button" className="button button-quiet" onClick={() => update({ zoom: false })}>
+                Zoom out
+              </button>
+            ) : (
+              state.range.kind === 'absolute' && (
+                <button type="button" className="button button-quiet" onClick={() => update({ zoom: true })}>
+                  Zoom to selection
+                </button>
+              )
+            )
+          }
         />
       ) : histogram.isError ? (
         <p className="chart-error" role="alert">

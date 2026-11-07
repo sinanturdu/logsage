@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
-import { minuteUtc, axisTicks, brushRange, bucketErrors, bucketLabel, bucketTotal, errorShare, pixelToTime, summarize, timeToFraction, type Bucket } from './time'
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { minuteUtc, axisTicks, brushRange, bucketErrors, bucketLabel, bucketTotal, MIN_SHARE_SAMPLE, pixelToTime, shareOrNull, summarize, timeToFraction, type Bucket } from './time'
 
 type Props = {
   buckets: Bucket[]
@@ -7,14 +7,41 @@ type Props = {
   window: { from: number; to: number }
   selection: { from: number; to: number } | null
   onSelect: (from: number, to: number) => void
+  /** "N logs in view, M in the selection". */
+  scope: string
+  /** Zoom to selection / Zoom out. */
+  tools?: ReactNode
 }
 
 const H = 60
 
-function line(values: number[], max: number): string {
-  if (values.length === 0) return ''
-  const w = 1000 / values.length
-  return values.map((v, i) => `${((i + 0.5) * w).toFixed(1)},${(H - 4 - (v / max) * (H - 10)).toFixed(1)}`).join(' ')
+/**
+ * Polyline point lists; a null value breaks the line, so a bucket without
+ * enough logs for a share leaves a gap instead of a misleading spike.
+ */
+export function segments(values: readonly (number | null)[], max: number): string[] {
+  const w = 1000 / Math.max(values.length, 1)
+  const out: string[][] = []
+  let cur: string[] | null = null
+  values.forEach((v, i) => {
+    if (v === null) {
+      cur = null
+      return
+    }
+    const x = (i + 0.5) * w
+    const y = (H - 4 - (v / max) * (H - 10)).toFixed(1)
+    if (!cur) {
+      cur = []
+      out.push(cur)
+    }
+    cur.push(`${x.toFixed(1)},${y}`)
+  })
+  // A lone point gets a short flat stroke so it stays visible.
+  return out.map((pts) => {
+    if (pts.length !== 1) return pts.join(' ')
+    const [x = '0', y = '0'] = (pts[0] ?? '').split(',')
+    return `${(Number(x) - w / 4).toFixed(1)},${y} ${(Number(x) + w / 4).toFixed(1)},${y}`
+  })
 }
 
 /**
@@ -23,14 +50,15 @@ function line(values: number[], max: number): string {
  * buckets, Escape cancels); the range presets and the custom range form are
  * the keyboard alternative, and the summary line states the peaks in words.
  */
-export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect }: Props) {
+export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools }: Props) {
   const area = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null)
   const volumes = buckets.map(bucketTotal)
-  const shares = buckets.map(errorShare)
+  const shares = buckets.map(shareOrNull)
   const peak = Math.max(0, ...volumes)
-  const peakShare = Math.max(0, ...shares)
-  const hasErrors = buckets.some((b) => bucketErrors(b) > 0)
+  const peakShare = Math.max(0, ...shares.map((v) => v ?? 0))
+  const hasErrors = buckets.some((b) => shareOrNull(b) !== null && bucketErrors(b) > 0)
+  const small = volumes.some((v) => v < MIN_SHARE_SAMPLE)
   const summary = summarize(buckets, bucketSeconds)
   const per = bucketLabel(bucketSeconds)
 
@@ -71,18 +99,24 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
   const ticks = axisTicks(win.from, win.to)
   const grid = ticks.slice(1, -1).map((t) => timeToFraction(t, win) * 1000)
 
-  const strip = (values: number[], max: number, cls: string) => (
+  const strip = (values: (number | null)[], max: number, cls: string) => (
     <svg viewBox={`0 0 1000 ${H}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
       {grid.map((x) => (
         <line key={x} x1={x} x2={x} y1={0} y2={H} className="grid-line" />
       ))}
       {band && <rect className="band" x={bandX} y={0} width={bandW} height={H} />}
-      <polyline className={cls} points={line(values, max)} />
+      {segments(values, max).map((pts) => (
+        <polyline key={pts} className={cls} points={pts} />
+      ))}
     </svg>
   )
 
   return (
     <section className="chart" aria-label="Timeline">
+      <div className="chart-bar">
+        <p className="scope">{scope}</p>
+        {tools}
+      </div>
       <div
         ref={area}
         className="strips"
@@ -111,6 +145,7 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
       </div>
       <p className="key">
         {summary} Drag across either strip to select a time range{drag ? '; press Escape to cancel' : ''}.
+        {small && ` Buckets with fewer than ${MIN_SHARE_SAMPLE} logs are left out of the error share.`}
       </p>
     </section>
   )
