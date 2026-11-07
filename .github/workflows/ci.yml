@@ -21,9 +21,10 @@ jobs:
         image: clickhouse/clickhouse-server:24.8
         ports: ["8123:8123"]
         env:
-          # Throwaway CI container: keep the passwordless default user
-          # reachable over the network instead of creating credentials.
-          CLICKHOUSE_SKIP_USER_SETUP: "1"
+          # Throwaway CI container with a password user, like the local
+          # compose setup: cmd/api refuses to start without CLICKHOUSE_PASSWORD.
+          CLICKHOUSE_USER: logsage
+          CLICKHOUSE_PASSWORD: ci-clickhouse
         options: >-
           --ulimit nofile=262144:262144
           --health-cmd "clickhouse-client --query 'SELECT 1'"
@@ -53,6 +54,8 @@ jobs:
           # Enable the Redis and ClickHouse integration tests.
           REDIS_TEST_ADDR: localhost:6379
           CLICKHOUSE_TEST_URL: http://localhost:8123
+          CLICKHOUSE_TEST_USER: logsage
+          CLICKHOUSE_TEST_PASSWORD: ci-clickhouse
           POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
         run: |
           go vet ./...
