@@ -5,7 +5,7 @@ import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
 import { MAX_ROWS, mergePages, useFacets, useHistogram, useLogs } from './api'
 import { FilterPanel, SearchBox } from './FilterPanel'
-import { LogList, SkeletonRows } from './LogList'
+import { LogList, SkeletonRows, type Expanded } from './LogList'
 import {
   EMPTY_FILTERS,
   contextWindow,
@@ -14,6 +14,7 @@ import {
   presetLabel,
   resolveRange,
   serializeState,
+  validTraceId,
   type ExplorerState,
   type Preset,
 } from './model'
@@ -56,6 +57,8 @@ export function ExplorerPage() {
   const refresh = useCallback(() => setNow(Math.floor(Date.now() / 1000) * 1000), [])
   const search = useRef<HTMLInputElement>(null)
   const [selected, setSelected] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState<Expanded>(null)
+  const [notice, setNotice] = useState('')
 
   const update = useCallback(
     (next: Partial<ExplorerState>, opts: { replace?: boolean } = {}) => {
@@ -79,7 +82,24 @@ export function ExplorerPage() {
   if (key !== selKey) {
     setSelKey(key)
     setSelected(null)
+    setExpanded(null)
   }
+
+  const filterTrace = useCallback(
+    (traceId: string) => {
+      if (!validTraceId(traceId)) {
+        setNotice('This trace id cannot be used as a filter: it is not 32 hexadecimal characters.')
+        return
+      }
+      setNotice('')
+      update({ traceId })
+    },
+    [update],
+  )
+  const toggle = useCallback(
+    (i: number) => setExpanded((cur) => (cur?.index === i ? null : events[i] ? { index: i, shown: events[i] } : null)),
+    [events],
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -92,11 +112,23 @@ export function ExplorerPage() {
       if (isTyping(e.target)) return
       if (e.key === 'j') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.min(s + 1, events.length - 1)))
       else if (e.key === 'k') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.max(s - 1, 0)))
-      else if (e.key === 'Escape') setSelected(null)
+      else if (e.key === 'Escape') {
+        // Escape closes the detail first (focus returns to its row), then clears the selection.
+        if (expanded) {
+          const row = document.querySelector<HTMLElement>(`[data-index="${expanded.index}"]`)
+          setExpanded(null)
+          row?.focus()
+        } else setSelected(null)
+      } else if (e.key === 't' && selected !== null) {
+        const ev = events[selected]
+        if (!ev) return
+        if (!ev.trace_id) setNotice('This log has no trace_id, so there is no trace to filter by.')
+        else filterTrace(ev.trace_id)
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [events.length])
+  }, [events, expanded, selected, filterTrace])
 
   const onSearch = useCallback((q: string, immediate: boolean) => update({ q }, { replace: !immediate }), [update])
 
@@ -169,6 +201,9 @@ export function ExplorerPage() {
         </aside>
 
         <section className="results" aria-label="Logs" aria-busy={logs.isFetching}>
+          <p className="notice-line" role="status" aria-live="polite">
+            {notice}
+          </p>
           <p className="status" role="status" aria-live="polite">
             {problem
               ? ''
@@ -208,7 +243,17 @@ export function ExplorerPage() {
             </div>
           ) : (
             <>
-              <LogList events={events} selected={selected} onSelect={setSelected} withDate={win.to - win.from > 86_400_000} />
+              <LogList
+                slug={slug}
+                events={events}
+                selected={selected}
+                expanded={expanded}
+                onSelect={setSelected}
+                onToggle={toggle}
+                onShow={(shown) => setExpanded((cur) => (cur ? { ...cur, shown } : cur))}
+                onFilterTrace={filterTrace}
+                withDate={win.to - win.from > 86_400_000}
+              />
               {capped ? (
                 <p className="cap-note">
                   {MAX_ROWS.toLocaleString('en-US')} logs loaded, the most this view shows. Narrow the time range or add
