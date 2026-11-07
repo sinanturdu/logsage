@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-const usage = `usage: loadgen <ingest|query|demo|tail> [flags]  (loadgen <cmd> -h for flags)`
+const usage = `usage: loadgen <ingest|query|demo|seed|tail> [flags]  (loadgen <cmd> -h for flags)`
 
 func run(ctx context.Context, args []string, getenv func(string) string, out io.Writer) error {
 	if len(args) == 0 {
@@ -47,6 +47,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		return cmdQuery(ctx, args[1:], getenv, out)
 	case "demo":
 		return cmdDemo(ctx, args[1:], getenv, out)
+	case "seed":
+		return cmdSeed(ctx, args[1:], getenv, out)
 	case "tail":
 		return cmdTail(ctx, args[1:], getenv, out)
 	default:
