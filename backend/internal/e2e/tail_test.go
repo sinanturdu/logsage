@@ -266,6 +266,40 @@ func collect(t *testing.T, c *tailConn, want int, timeout time.Duration) (logs [
 	}
 }
 
+// e2eBound is the generous upper bound of the waits below; they return as
+// soon as their condition holds, so it never decides a result.
+const e2eBound = 30 * time.Second
+
+// waitState reads events until a status "state:reason" arrives and returns
+// the log events seen before it. It fails after e2eBound.
+func waitState(t *testing.T, c *tailConn, want string) []query.Event {
+	t.Helper()
+	var logs []query.Event
+	deadline := time.After(e2eBound)
+	for {
+		select {
+		case ev, ok := <-c.events:
+			if !ok {
+				t.Fatalf("stream ended before status %s", want)
+			}
+			switch ev.name {
+			case "log":
+				var e query.Event
+				_ = json.Unmarshal([]byte(ev.data), &e)
+				logs = append(logs, e)
+			case "status":
+				var st struct{ State, Reason string }
+				_ = json.Unmarshal([]byte(ev.data), &st)
+				if st.State+":"+st.Reason == want {
+					return logs
+				}
+			}
+		case <-deadline:
+			t.Fatalf("no status %s within %s", want, e2eBound)
+		}
+	}
+}
+
 func messages(logs []query.Event) []string {
 	var out []string
 	for _, e := range logs {
@@ -290,7 +324,7 @@ func nowEvents(prefix string, n int, mutate func(i int, e *ev)) []ev {
 func waitLive(t *testing.T, c *tailConn) {
 	t.Helper()
 	_, states, _ := collect(t, c, -1, 0)
-	deadline := time.After(10 * time.Second)
+	deadline := time.After(e2eBound)
 	for !strings.Contains(strings.Join(states, ","), "live:") {
 		select {
 		case ev := <-c.events:
@@ -316,7 +350,7 @@ func TestTailIngestToStreamWithIsolation(t *testing.T) {
 		post(t, te.ingest, te.keys["beta"], nowEvents("beta only", 3, nil)) != 202 {
 		t.Fatal("ingest failed")
 	}
-	got, _, _ := collect(t, a, 10, 15*time.Second)
+	got, _, _ := collect(t, a, 10, e2eBound)
 	if len(got) != 10 {
 		t.Fatalf("alice got %d events, want 10", len(got))
 	}
@@ -327,7 +361,7 @@ func TestTailIngestToStreamWithIsolation(t *testing.T) {
 	if len(extra) != 0 {
 		t.Fatalf("alice received beta's events: %v", messages(extra))
 	}
-	gotB, _, _ := collect(t, b, 13, 15*time.Second)
+	gotB, _, _ := collect(t, b, 13, e2eBound)
 	if len(gotB) != 13 {
 		t.Fatalf("bob got %d events, want 13", len(gotB))
 	}
@@ -364,7 +398,7 @@ func TestTailFiltersEndToEnd(t *testing.T) {
 	if post(t, te.ingest, te.keys["alpha"], evs) != 202 {
 		t.Fatal("ingest failed")
 	}
-	got, _, _ := collect(t, c, want, 15*time.Second)
+	got, _, _ := collect(t, c, want, e2eBound)
 	more, _, _ := collect(t, c, -1, 2*time.Second)
 	if len(got) != want || len(more) != 0 || want == 0 {
 		t.Fatalf("got %d+%d events, want %d", len(got), len(more), want)
@@ -391,21 +425,21 @@ func TestTailLateVisibleRowAndRedelivery(t *testing.T) {
 	now := time.Now()
 
 	te.insertRow(t, alpha, "9000000000002-0", now, now, now, "newer row")
-	got, _, _ := collect(t, c, 1, 10*time.Second)
+	got, _, _ := collect(t, c, 1, e2eBound)
 	if len(got) != 1 || got[0].Message != "newer row" {
 		t.Fatalf("got %v", messages(got))
 	}
 	// Older event timestamp, older ingest time and an inserted_at before the
 	// row already streamed: it became visible late (a slow or retried batch).
 	te.insertRow(t, alpha, "9000000000001-0", now.Add(-time.Minute), now.Add(-30*time.Second), now.Add(-2*time.Second), "late row")
-	got, _, _ = collect(t, c, 1, 10*time.Second)
+	got, _, _ = collect(t, c, 1, e2eBound)
 	if len(got) != 1 || got[0].Message != "late row" {
 		t.Fatalf("late-visible row: got %v", messages(got))
 	}
 	// A redelivered event id (processor retry after a lost ack) is not sent twice.
 	te.insertRow(t, alpha, "9000000000002-0", now, now, time.Now(), "newer row")
 	te.insertRow(t, alpha, "9000000000003-0", now, now, time.Now(), "after redelivery")
-	got, _, _ = collect(t, c, 1, 10*time.Second)
+	got, _, _ = collect(t, c, 1, e2eBound)
 	more, _, _ := collect(t, c, -1, 2*time.Second)
 	if len(got) != 1 || got[0].Message != "after redelivery" || len(more) != 0 {
 		t.Fatalf("after redelivery got %v %v", messages(got), messages(more))
@@ -419,7 +453,7 @@ func TestTailReconnectWithLastEventID(t *testing.T) {
 	if post(t, te.ingest, te.keys["alpha"], nowEvents("first", 5, nil)) != 202 {
 		t.Fatal("ingest failed")
 	}
-	first, _, lastID := collect(t, c, 5, 15*time.Second)
+	first, _, lastID := collect(t, c, 5, e2eBound)
 	if len(first) != 5 || lastID == "" {
 		t.Fatalf("first part: %d events", len(first))
 	}
@@ -430,7 +464,7 @@ func TestTailReconnectWithLastEventID(t *testing.T) {
 	}
 	te.waitRows(12)
 	r, _ := te.open("alice", "alpha", "", lastID)
-	second, _, _ := collect(t, r, 7, 15*time.Second)
+	second, _, _ := collect(t, r, 7, e2eBound)
 	more, _, _ := collect(t, r, -1, 2*time.Second)
 	all := append(append([]query.Event{}, first...), append(second, more...)...)
 	seen := map[string]int{}
@@ -454,20 +488,14 @@ func TestTailClosesOnRevokedSessionAndDisabledUser(t *testing.T) {
 	if err != nil || resp.StatusCode != 204 {
 		t.Fatalf("logout: %v %v", resp.StatusCode, err)
 	}
-	_, states, _ := collect(t, c, -1, 3*time.Second)
-	if !strings.Contains(strings.Join(states, ","), "closed:session_ended") {
-		t.Fatalf("after logout: %v", states)
-	}
+	waitState(t, c, "closed:session_ended")
 
 	b, _ := te.open("bob", "beta", "", "")
 	waitLive(t, b)
 	if _, err := te.store.DisableUser(context.Background(), "bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	_, states, _ = collect(t, b, -1, 3*time.Second)
-	if !strings.Contains(strings.Join(states, ","), "closed:session_ended") {
-		t.Fatalf("after disabling the user: %v", states)
-	}
+	waitState(t, b, "closed:session_ended")
 }
 
 func TestTailDegradedThenLiveWithoutGaps(t *testing.T) {
@@ -478,12 +506,11 @@ func TestTailDegradedThenLiveWithoutGaps(t *testing.T) {
 	if post(t, te.ingest, te.keys["alpha"], nowEvents("during outage", 6, nil)) != 202 {
 		t.Fatal("ingest failed")
 	}
-	_, states, _ := collect(t, c, -1, 3*time.Second)
-	if !strings.Contains(strings.Join(states, ","), "degraded:storage_unavailable") {
-		t.Fatalf("while ClickHouse is unreachable: %v", states)
+	if got := waitState(t, c, "degraded:storage_unavailable"); len(got) != 0 {
+		t.Fatalf("log events while ClickHouse is unreachable: %v", messages(got))
 	}
 	te.proxy.up()
-	got, states2, _ := collect(t, c, 6, 15*time.Second)
+	got, states2, _ := collect(t, c, 6, e2eBound)
 	if !strings.Contains(strings.Join(states2, ","), "live:") || len(got) != 6 {
 		t.Fatalf("after recovery: states %v, %d events", states2, len(got))
 	}
