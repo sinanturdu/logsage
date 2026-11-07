@@ -1,4 +1,5 @@
-// Command admin manages LogSage projects and API keys in PostgreSQL.
+// Command admin manages LogSage projects, API keys, users and members in
+// PostgreSQL.
 //
 //	admin [--allow-remote] <command> [flags]
 //
@@ -11,6 +12,12 @@
 //	list-keys       --project S               list keys (prefix, kind, name, dates, status)
 //	revoke-key      --prefix P                revoke a key
 //	verify-key      [--kind ingest|query]     verify a key read from LOGSAGE_API_KEY or stdin
+//	create-user     --email E                 create a user (password from LOGSAGE_PASSWORD or stdin)
+//	set-password    --email E                 set a password (same input); revokes all sessions
+//	disable-user    --email E                 disable a user; revokes all sessions
+//	add-member      --project S --email E --role owner|admin|viewer
+//	                                          add a member or change their role
+//	list-members    --project S               list members
 //
 // The database comes from DATABASE_URL (or POSTGRES_*) in the environment
 // only. Non-local database hosts are refused unless --allow-remote is passed.
@@ -64,6 +71,11 @@ commands:
   list-keys       --project SLUG
   revoke-key      --prefix PREFIX
   verify-key      [--kind ingest|query]   (key from LOGSAGE_API_KEY or stdin)
+  create-user     --email EMAIL           (password from LOGSAGE_PASSWORD or stdin)
+  set-password    --email EMAIL           (same; revokes all sessions)
+  disable-user    --email EMAIL
+  add-member      --project SLUG --email EMAIL --role owner|admin|viewer
+  list-members    --project SLUG
 
 The database is read from DATABASE_URL (or POSTGRES_*) in the environment.`
 
@@ -129,7 +141,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdin i
 	defer pool.Close()
 	env := &env{
 		ctx: ctx, getenv: getenv, stdin: stdin, stdout: stdout, stderr: stderr,
-		pool: pool, store: postgres.NewStore(pool, cfg.Postgres.QueryTimeout), now: time.Now,
+		pool: pool, store: postgres.NewStore(pool, cfg.Postgres.QueryTimeout), now: time.Now, cfg: cfg,
 	}
 	if err := opts.run(env); err != nil {
 		if errors.Is(err, errInvalid) {
@@ -150,6 +162,7 @@ type env struct {
 	pool           *pgxpool.Pool
 	store          *postgres.Store
 	now            func() time.Time
+	cfg            config.Config
 }
 
 // command parses its flags into options that validate and run.
@@ -171,6 +184,13 @@ var commands = map[string]command{
 	"list-keys":       {flags: newListKeys},
 	"revoke-key":      {flags: newRevokeKey},
 	"verify-key":      {flags: newVerifyKey},
+	"create-user":     {flags: func(fs *flag.FlagSet) options { return &createUserCmd{email: emailFlag(fs)} }},
+	"set-password":    {flags: func(fs *flag.FlagSet) options { return &setPasswordCmd{email: emailFlag(fs)} }},
+	"disable-user":    {flags: func(fs *flag.FlagSet) options { return &disableUserCmd{email: emailFlag(fs)} }},
+	"add-member":      {flags: newAddMember},
+	"list-members": {flags: func(fs *flag.FlagSet) options {
+		return &listMembersCmd{project: fs.String("project", "", "project slug")}
+	}},
 }
 
 // ---- migrate
