@@ -36,13 +36,16 @@ func TestRunServesAndShutsDown(t *testing.T) {
 	if url == "" || chURL == "" {
 		t.Skip("POSTGRES_TEST_URL or CLICKHOUSE_TEST_URL not set")
 	}
-	chUser := os.Getenv("CLICKHOUSE_TEST_USER")
-	if chUser == "" {
-		chUser = "default"
+	chUser, chPass := os.Getenv("CLICKHOUSE_TEST_USER"), os.Getenv("CLICKHOUSE_TEST_PASSWORD")
+	if chUser == "" || chPass == "" {
+		// cmd/api requires every CLICKHOUSE_* setting (ADR 0014), so this
+		// test needs a ClickHouse user with a password, not the
+		// passwordless default user.
+		t.Fatal("set CLICKHOUSE_TEST_USER and CLICKHOUSE_TEST_PASSWORD: cmd/api refuses an empty ClickHouse user or password")
 	}
 	env := map[string]string{"DATABASE_URL": url, "API_HTTP_ADDR": "127.0.0.1:0", "COOKIE_SECURE": "false",
 		"ARGON2_MEMORY_KIB": "19456", "ARGON2_ITERATIONS": "1", "ARGON2_PARALLELISM": "1",
-		"CLICKHOUSE_URL": chURL, "CLICKHOUSE_DB": "default", "CLICKHOUSE_USER": chUser, "CLICKHOUSE_PASSWORD": os.Getenv("CLICKHOUSE_TEST_PASSWORD")}
+		"CLICKHOUSE_URL": chURL, "CLICKHOUSE_DB": "default", "CLICKHOUSE_USER": chUser, "CLICKHOUSE_PASSWORD": chPass}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready := make(chan string, 1)
