@@ -284,9 +284,9 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b, I2c-1 and I2c-2)
+## As built (I2b to I2c-3)
 
-What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017, ADR 0018 and ADR 0019.
+What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
 - **List semantics:** the rows form a `treegrid`, not a `listbox`, so they can carry `aria-expanded` and hold an interactive detail.
 - **One open detail at a time** (B2 allows several). Escape and focus then have a single target, and the Same trace pivot switches the open detail.
@@ -307,6 +307,16 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
 - **Auto-pause and "N new logs":** new, not in B2. Rows never move under a reader who has a detail open, a selection below the top, or the list scrolled away.
 - **Account settings** are an account menu with dialogs (Change password, Sign out of all devices, Sign out), not a separate page. There is nothing else to set yet.
 - **API keys** is a page with a Logs / API keys nav in the header. On narrow screens the table scrolls sideways inside its frame; the page does not.
+- **Command palette and shortcuts** (I2c-3):
+  - A "Commands" button sits next to the `Ctrl K` hint, so the palette can be found without the shortcut. The hint is hidden below 700px.
+  - The palette is a modal near the top of the page in the B2 paper style: no blur and no icons, the active option marked with the selection color and the pen bar, and matched letters bold and underlined.
+  - A "?" help dialog lists every shortcut. B2 had no help screen.
+- **Live status** (I2c-3): the button says "Live", and the text next to it says "Receiving new logs" while healthy, so the word is not shown twice. The other states keep their wording.
+- **Live order** (I2c-3): while Live is on, the list is "latest arrivals first". Each batch is sorted by event time, newest first, and goes on top, because arrival order is visibility order. Turning Live off or refreshing restores strict "newest first".
+- **Sentence-case labels** (I2c-3): the detail's zone headings are "Request", "Context" and "Same trace", bold rather than upper case. No label in the app uses `text-transform: uppercase`.
+- **A lone attribute group** (I2c-3): when only Request or only Context is present and there is no trace, its attributes flow in columns (`repeat(auto-fill, minmax(18rem, 1fr))`) instead of one narrow zone. One group next to Same trace uses `1fr 1.6fr`; the three-zone layout is unchanged.
+- **Chart text** (I2c-3): the total appears once, in the scope line. The summary starts with the peaks, and the long notes sit behind "About this chart".
+- **New-key dialog** (I2c-3): the kind name appears once with a short description; the test-log example has macOS / Linux and Windows PowerShell tabs; the key is shown in full in a wrapping block rather than a clipped input.
 
 ## Frontend plan for I2
 
