@@ -37,7 +37,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package I1b:** live tail for the dashboard: Server-Sent Events with a visibility-ordered cursor (`inserted_at`), resume with Last-Event-ID, connection limits, auth re-check (ADR 0015)
 - [x] **Package I2a:** dashboard foundation: Vite + React + TypeScript app, B2 design tokens and self-hosted fonts, login, app shell, project switcher, typed API client, frontend CI (ADR 0016)
 - [x] **Package I2b:** log explorer (B2): URL state, two-strip timeline with brushing and accessible alternatives, facets, search, single-line rows with pagination; `scripts/dev.ps1` and `loadgen seed` for local development (ADR 0017)
-- [ ] **Package I2c (next):** row detail with Same trace and Copy as JSON, live tail in the explorer, API keys screen, command palette
+- [x] **Package I2c-1:** row detail with Same trace and Copy as JSON, filter chips, Filters disclosure on narrow screens, zoom to selection, small-sample handling in the error share (ADR 0018)
+- [ ] **Package I2c-2 (next):** live tail UI in the explorer, API keys screen, command palette, production serving of the dashboard and CSP
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 
 ## v0.3: Live tail

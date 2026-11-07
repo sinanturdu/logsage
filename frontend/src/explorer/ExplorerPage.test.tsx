@@ -1,72 +1,15 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
-import { alice, json, project, renderApp } from '../test/util'
+import { describe, expect, it } from 'vitest'
+import { json, renderApp } from '../test/util'
+import { event, facets, mockExplorer, type Req } from './testing'
 import { NO_RESULTS, STORE_DOWN } from './ExplorerPage'
 import { SEARCH_TOO_LONG, TRACE_INVALID } from './FilterPanel'
 
-type Req = { path: string; params: URLSearchParams; signal: AbortSignal | undefined }
-
-function event(i: number, extra: Partial<Record<string, string>> = {}) {
-  return {
-    event_id: `${1000 + i}-0`,
-    timestamp: new Date(Date.UTC(2026, 10, 7, 2, 16, 58, 412) - i * 1000).toISOString(),
-    level: 'error',
-    service: 'payments',
-    message: `payment gateway timeout after 5000 ms (psp-eu-2) #${i}`,
-    trace_id: '',
-    attributes: {},
-    ...extra,
-  }
-}
-const facets = (total: number) => ({
-  total,
-  levels: { debug: 1, info: 2, warn: 3, error: total, fatal: 0 },
-  services: [
-    { name: 'payments', count: 40 },
-    { name: 'checkout', count: 20 },
-    { name: 'other', count: 5, other: true },
-  ],
-  took_ms: 3,
-})
-const histogram = {
-  bucket_seconds: 10,
-  buckets: [
-    { t: '2026-11-07T02:16:30Z', debug: 0, info: 10, warn: 0, error: 0, fatal: 0 },
-    { t: '2026-11-07T02:16:40Z', debug: 0, info: 10, warn: 2, error: 30, fatal: 1 },
-  ],
-  took_ms: 2,
-}
-
-type Handler = (r: Req) => Response | Promise<Response>
-
-/** fetch mock routed by path; the explorer endpoints carry query strings. */
-function mockExplorer(overrides: Partial<Record<'logs' | 'facets' | 'histogram', Handler>> = {}) {
-  const requests: Req[] = []
-  const routes: Record<string, Handler> = {
-    '/api/auth/me': () => json(200, alice),
-    '/api/projects': () => json(200, { projects: [project('shop', 'Shop')] }),
-    '/api/projects/shop/histogram': () => json(200, histogram),
-    '/api/projects/shop/facets': () => json(200, facets(3)),
-    '/api/projects/shop/logs': () => json(200, { events: [event(0), event(1), event(2)], next_cursor: null, took_ms: 4 }),
-  }
-  for (const [k, h] of Object.entries(overrides)) routes[`/api/projects/shop/${k}`] = h
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      const u = new URL(url, 'http://localhost')
-      const r = { path: u.pathname, params: u.searchParams, signal: init?.signal ?? undefined }
-      requests.push(r)
-      const h = routes[u.pathname]
-      return h ? h(r) : json(404, { error: 'not found' })
-    }),
-  )
-  return { requests, routes }
-}
-
 const of = (requests: Req[], endpoint: string) => requests.filter((r) => r.path === `/api/projects/shop/${endpoint}`)
 const where = () => screen.getByTestId('location').textContent ?? ''
-const rows = () => within(screen.getByRole('listbox', { name: 'Logs, newest first' })).getAllByRole('option')
+const grid = () => screen.getByRole('treegrid', { name: 'Logs, newest first' })
+const rows = () => Array.from(grid().querySelectorAll<HTMLElement>('[data-index]'))
 const statusText = () => document.querySelector('.results .status')?.textContent
 
 describe('log explorer', () => {
@@ -186,7 +129,7 @@ describe('log explorer', () => {
   it('moves the selection with j and k, clears it with Escape, and focuses search with /', async () => {
     mockExplorer()
     renderApp('/projects/shop/logs')
-    await screen.findByRole('listbox', { name: 'Logs, newest first' })
+    await screen.findByRole('treegrid', { name: 'Logs, newest first' })
     const user = userEvent.setup()
     const options = () => rows()
     await user.keyboard('j')
@@ -267,7 +210,7 @@ describe('log explorer', () => {
     mockExplorer({ logs: () => json(200, { events: [event(0, { message: '<img src=x onerror=alert(1)>', service: '<b>svc</b>' })], next_cursor: null }) })
     renderApp('/projects/shop/logs')
     expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeTruthy()
-    const list = screen.getByRole('listbox')
+    const list = grid()
     expect(list.querySelector('img, b')).toBeNull()
     for (const el of list.querySelectorAll('*')) {
       expect(el.getAttributeNames().some((a) => a.startsWith('on'))).toBe(false)

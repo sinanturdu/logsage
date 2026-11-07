@@ -280,8 +280,9 @@ How the stream works:
   - URL state: `range` or `from`/`to` (UTC), plus `level`, `service`, `q` and `trace_id`.
   - Layout: a two-strip SVG timeline with brushing, the facets column, and single-line rows with Load more (de-duplicated, capped at 1,000).
   - Data: it calls `/histogram` for the context window, and `/facets` and `/logs` for the selected range; changing a filter cancels requests in flight.
+  - Row detail and zoom (I2c-1, ADR 0018): an expanded row lazily calls `/logs?trace_id=...&limit=50` for 10 minutes around the log (Same trace), cancelled on collapse. `zoom=1` (absolute ranges only) makes the timeline's window the selection itself. Filter chips and the narrow-screen Filters disclosure are client-side only.
 
-The app uses `/api/auth/login`, `/logout` and `/me`, `GET/POST /api/projects`, and the explorer endpoints `/logs`, `/histogram` and `/facets`; I2c adds `/tail`.
+The app uses `/api/auth/login`, `/logout` and `/me`, `GET/POST /api/projects`, and the explorer endpoints `/logs`, `/histogram` and `/facets`; I2c-2 adds `/tail`.
 
 Error handling:
 - A 401 on any signed-in request clears the cache and goes to `/login?next=...&expired=1`.

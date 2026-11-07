@@ -5,6 +5,13 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Log explorer row detail (ADR 0018): Enter, Space or a click expands a row (treegrid, Escape collapses) to show the full message, `trace_id` and `span_id` with copy buttons, Request and Context attributes by a fixed grouping rule, "Filter by this trace" (also `t`) and "Copy as JSON" with a clipboard fallback.
+- Same trace: the logs that share the trace within 10 minutes of the log, loaded lazily, cancelled on collapse, 5 shown then "Show all N", the current log marked; clicking one shows it in the open detail.
+- Filter chips above the list, one removable chip per active filter plus Clear filters, and a "Filters (N)" disclosure below 900px.
+- Zoom to selection and Zoom out (`zoom=1` in the URL, Back works), and a scope line ("N logs in view, M in the selection").
+
+### Changed
+- The error-share strip leaves out buckets with fewer than 5 logs (the line breaks there, with a note), and the summary line ignores them for the peak share.
 - Log explorer at `/projects/:slug/logs` (ADR 0017): range and filters in the URL (relative or absolute UTC ranges), a two-strip SVG timeline with brushing, presets, a custom UTC range and a summary line, level and service facets with counts, trace id validation, debounced search with `/`, single-line B2 rows through `<LogText>` with `j`/`k`/Escape selection, Load more with de-duplication and a 1,000-row cap, and plain-language empty and error states (400, 429 with Retry-After, 503 or network, 404).
 - `scripts/dev.ps1` (Windows PowerShell 5.1 and pwsh): `up`, `seed`, `web`, `status` and `down` for one-command local development, with a dev user, a project and an ingest key created idempotently.
 - `loadgen seed`: an hour of demo history with an incident in the last 15 minutes (payments timeouts cascading into checkout and api errors), at most 100k events.

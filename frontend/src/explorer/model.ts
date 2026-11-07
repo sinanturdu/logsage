@@ -40,6 +40,8 @@ export type ExplorerState = {
   services: string[] // empty: every service
   q: string
   traceId: string
+  /** Zoomed in: the timeline shows only the absolute selection (ADR 0018). */
+  zoom: boolean
 }
 
 export const EMPTY_FILTERS = { levels: [] as Level[], services: [] as string[], q: '', traceId: '' }
@@ -97,6 +99,7 @@ export function parseState(params: URLSearchParams): ExplorerState {
     services,
     q,
     traceId: validTraceId(tRaw) ? tRaw : '',
+    zoom: range.kind === 'absolute' && params.get('zoom') === '1',
   }
 }
 
@@ -123,6 +126,7 @@ export function serializeState(s: ExplorerState): URLSearchParams {
   if (s.services.length > 0) p.set('service', s.services.join(','))
   if (s.q) p.set('q', s.q)
   if (s.traceId) p.set('trace_id', s.traceId)
+  if (s.zoom && s.range.kind === 'absolute') p.set('zoom', '1')
   return p
 }
 
@@ -138,8 +142,9 @@ export function resolveRange(r: TimeRange, now: number): { from: number; to: num
  * ends now and contains it ("selected within the last 15 min"), or on its
  * own when it is older than every preset.
  */
-export function contextWindow(r: TimeRange, now: number): { from: number; to: number; preset: Preset | null } {
+export function contextWindow(r: TimeRange, now: number, zoom = false): { from: number; to: number; preset: Preset | null } {
   if (r.kind === 'relative') return { ...resolveRange(r, now), preset: r.preset }
+  if (zoom) return { from: r.from, to: r.to, preset: null }
   for (const p of PRESETS) {
     if (r.from >= now - PRESET_MS[p] && r.to <= now + 60_000) return { from: now - PRESET_MS[p], to: now, preset: p }
   }
