@@ -104,3 +104,35 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Management API: users, sessions, projects and keys (ADR 0013). Needs
+  # only PostgreSQL. Behind plain http (local), set COOKIE_SECURE=false.
+  api:
+    <<: *backend
+    command: ["/usr/local/bin/api"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_HTTP_ADDR: ":8083"
+      DATABASE_URL: "postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-logsage}?sslmode=disable"
+      SESSION_IDLE_TTL: ${SESSION_IDLE_TTL:-12h}
+      SESSION_ABSOLUTE_TTL: ${SESSION_ABSOLUTE_TTL:-168h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
+      ARGON2_MEMORY_KIB: ${ARGON2_MEMORY_KIB:-65536}
+      ARGON2_ITERATIONS: ${ARGON2_ITERATIONS:-3}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-2}
+      ARGON2_MAX_CONCURRENT: ${ARGON2_MAX_CONCURRENT:-4}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
+      LOGIN_DELAY_BASE: ${LOGIN_DELAY_BASE:-1s}
+      LOGIN_DELAY_MAX: ${LOGIN_DELAY_MAX:-15m}
+      LOGIN_LIMITER_SIZE: ${LOGIN_LIMITER_SIZE:-10000}
+    ports: ["127.0.0.1:8083:8083"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
