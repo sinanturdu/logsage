@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log explorer, direction B2: Strip chart</title>
+<!-- Preview only: production self-hosts Red Hat Text and Red Hat Mono (SIL OFL). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F4F6F5; --grid: #D6DEDA; --ink: #18211E; --pencil: #5B6661; --pen: #1F5AA6; --red: #B42318;
+  --warn: #8A5A00; --fatal: #7B2269; --white: #FFFFFF; --select: #E6EDF6;
+  --sans: "Red Hat Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Red Hat Mono", Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 var(--sans); }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--pen); outline-offset: 2px; }
+header { display: flex; align-items: baseline; gap: 18px; padding: 14px 24px 8px; }
+.mark { font-weight: 700; font-size: 18px; }
+.project { background: none; border: 0; padding: 0; color: var(--pencil); cursor: pointer; }
+.range { margin-left: auto; font-size: 24px; font-weight: 500; }
+.range small { font-size: 15px; color: var(--pencil); font-weight: 400; margin-left: 8px; }
+header kbd { font: 13px var(--mono); color: var(--pencil); border: 1px solid var(--grid); background: var(--white); border-radius: 3px; padding: 1px 6px; }
+.chart { padding: 0 24px; }
+.strips { cursor: crosshair; touch-action: none; user-select: none; }
+.label { margin: 6px 0 2px; font-size: 13px; color: var(--pencil); }
+.label b { color: var(--ink); font-weight: 500; } .label span { margin-left: 8px; font-family: var(--mono); }
+.strips svg { display: block; width: 100%; height: 52px; border-bottom: 1px solid var(--grid); }
+.strips line { stroke: var(--grid); vector-effect: non-scaling-stroke; }
+.strips .band { fill: var(--pen); fill-opacity: .1; }
+.vol, .err { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.vol { stroke: var(--pen); } .err { stroke: var(--red); }
+.axis { display: flex; justify-content: space-between; font-size: 13px; color: var(--pencil); padding-top: 4px; }
+.key { font-size: 13px; color: var(--pencil); margin: 2px 0 0; }
+.body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; padding: 16px 24px 32px; }
+aside h2 { font-size: 15px; font-weight: 700; margin: 18px 0 6px; }
+aside input { width: 100%; padding: 6px 8px; background: var(--white); border: 1px solid #AEB9B4; border-radius: 4px; }
+aside input[aria-invalid="true"] { border: 2px solid var(--red); }
+aside #trace { font: 13px var(--mono); }
+aside label { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+aside label input { width: auto; }
+aside label span { margin-left: auto; font: 13px var(--mono); color: var(--pencil); }
+aside i, .row i, .same i { font-style: normal; }
+.field-error { color: var(--red); font-size: 14px; margin: 6px 0 0; }
+.status { color: var(--pencil); margin: 0 0 8px; }
+.row { display: grid; grid-template-columns: 13ch 8ch 1fr; column-gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--grid); cursor: pointer; }
+.row:hover { background: var(--white); }
+.row[aria-selected="true"] { background: var(--select); box-shadow: inset 3px 0 0 var(--pen); }
+.row .t { font: 14px var(--mono); } .row .lv { font-weight: 500; } .row .svc { color: var(--pencil); }
+.row .msg { grid-column: 1 / -1; font: 14px/1.5 var(--mono); overflow-wrap: anywhere; }
+.debug .lv, .same .debug i { color: var(--pencil); } .info .lv, .same .info i { color: var(--pen); }
+.warn .lv, .same .warn i { color: var(--warn); } .error .lv, .same .error i { color: var(--red); }
+.fatal .lv, .same .fatal i { color: var(--fatal); } .fatal .msg { font-weight: 500; }
+.detail { background: var(--white); border-bottom: 1px solid var(--grid); padding: 10px 14px 14px; }
+.ids { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; font-size: 14px; }
+.ids dt, .zones dt { color: var(--pencil); } .ids dd { margin: 0 16px 0 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.zones { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 16px 28px; }
+.zones h3 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+.zones dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 0; font-size: 14px; }
+.zones dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.none { color: var(--pencil); margin: 0; font-size: 14px; }
+.same ol { list-style: none; margin: 0; padding: 0; }
+.same button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 3px 6px; font-size: 14px; cursor: pointer; overflow-wrap: anywhere; }
+.same button:hover { background: var(--paper); }
+.same button[aria-current] { background: var(--select); font-weight: 500; }
+.same .t { font-family: var(--mono); color: var(--pencil); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.actions button, .more { background: var(--white); border: 1px solid var(--pen); color: var(--pen); border-radius: 4px; padding: 5px 12px; cursor: pointer; font-weight: 500; }
+.actions p { margin: 0; color: var(--pencil); font-size: 14px; }
+.gap { display: flex; align-items: center; gap: 10px; color: var(--pencil); font-size: 13px; padding: 4px 10px; }
+.gap::before, .gap::after { content: ""; flex: 1; border-top: 1px dashed #AEB9B4; }
+.more { display: block; margin: 18px auto 0; }
+@media (max-width: 1100px) { .zones { grid-template-columns: 1fr 1fr; } .same { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .body { grid-template-columns: 1fr; } aside { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; } aside #q { grid-column: 1 / -1; } header kbd { display: none; } .range { font-size: 20px; } }
+@media (max-width: 700px) { .zones, aside { grid-template-columns: 1fr; } header { flex-wrap: wrap; } .range { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="mark">LogSage</span>
+  <button class="project" type="button" aria-haspopup="listbox">shop-prod ▾</button>
+  <span class="range" id="range" aria-live="polite">02:11:30 to 02:17:00 UTC<small>selected within the last 15 min</small></span>
+  <kbd>Ctrl K</kbd>
+</header>
+
+<section class="chart" aria-label="Timeline">
+  <div class="strips" id="strips">
+    <p class="label"><b>Logs per 30 s</b><span>peak 741</span></p>
+    <svg viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true"><line x1="200" y1="0" x2="200" y2="60"/> <line x1="400" y1="0" x2="400" y2="60"/> <line x1="600" y1="0" x2="600" y2="60"/> <line x1="800" y1="0" x2="800" y2="60"/>
+<rect class="band" x="633.3" y="0" width="366.7" height="60"/>
+<polyline class="vol" points="16.7,41.7 50.0,42.6 83.3,40.9 116.7,42.2 150.0,41.2 183.3,40.4 216.7,42.0 250.0,41.6 283.3,40.8 316.7,39.8 350.0,41.3 383.3,41.9 416.7,40.3 450.0,41.1 483.3,39.5 516.7,39.9 550.0,40.5 583.3,39.0 616.7,39.3 650.0,38.4 683.3,38.8 716.7,37.9 750.0,36.8 783.3,35.7 816.7,32.5 850.0,28.2 883.3,19.8 916.7,9.6 950.0,6.0 983.3,17.8"/></svg>
+    <p class="label"><b>Error and fatal, % of logs per 30 s</b><span>peak 36%</span></p>
+    <svg viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true"><line x1="200" y1="0" x2="200" y2="60"/> <line x1="400" y1="0" x2="400" y2="60"/> <line x1="600" y1="0" x2="600" y2="60"/> <line x1="800" y1="0" x2="800" y2="60"/>
+<rect class="band" x="633.3" y="0" width="366.7" height="60"/>
+<polyline class="err" points="16.7,54.9 50.0,55.4 83.3,54.4 116.7,54.8 150.0,55.4 183.3,54.9 216.7,53.6 250.0,54.9 283.3,54.4 316.7,55.0 350.0,55.4 383.3,54.8 416.7,54.4 450.0,54.9 483.3,54.0 516.7,54.4 550.0,54.9 583.3,53.5 616.7,54.0 650.0,53.1 683.3,53.5 716.7,51.8 750.0,49.9 783.3,46.9 816.7,39.1 850.0,26.9 883.3,16.2 916.7,11.0 950.0,11.6 983.3,12.2"/></svg>
+  </div>
+  <div class="axis" aria-hidden="true"><span>02:02</span><span>02:05</span><span>02:08</span><span>02:11</span><span>02:14</span><span>02:17</span></div>
+  <p class="key">Volume is steady near 220 logs per 30 s until 02:13, then the error share climbs from under 2% to 36%. The shaded band is the selected range; drag across either strip to change it.</p>
+</section>
+
+<div class="body">
+<aside aria-label="Filters">
+  <input id="q" type="search" placeholder="Search, press /" aria-label="Search logs">
+  <div><h2>Level</h2>
+<label class="fatal"><input type="checkbox" checked> <i aria-hidden="true">◆</i> fatal<span>3</span></label>
+<label class="error"><input type="checkbox" checked> <i aria-hidden="true">■</i> error<span>1,076</span></label>
+<label class="warn"><input type="checkbox" checked> <i aria-hidden="true">▲</i> warn<span>141</span></label>
+<label class="info"><input type="checkbox" checked> <i aria-hidden="true">●</i> info<span>3,230</span></label>
+<label class="debug"><input type="checkbox" checked> <i aria-hidden="true">○</i> debug<span>212</span></label>
+  </div><div><h2>Service</h2>
+<label><input type="checkbox" checked> payments<span>1,287</span></label>
+<label><input type="checkbox" checked> checkout<span>908</span></label>
+<label><input type="checkbox" checked> api<span>1,012</span></label>
+<label><input type="checkbox" checked> search<span>433</span></label>
+<label><input type="checkbox" checked> billing<span>129</span></label>
+<label><input type="checkbox" checked> auth<span>893</span></label>
+  </div><div><h2><label for="trace">Trace id</label></h2>
+  <input id="trace" type="text" value="4bf92f35-77b3-4da6" spellcheck="false" autocomplete="off" aria-invalid="true" aria-describedby="trace-err">
+  <p class="field-error" id="trace-err">This trace id is not valid: it must be 32 hexadecimal characters with no dashes. Paste the full trace_id, or select a log and press t.</p></div>
+</aside>
+
+<main aria-label="Logs">
+<p class="status" id="status">The newest 25 of 4,662 logs, newest first.</p>
+<div role="listbox" aria-label="Logs, newest first">
+<div class="row error" role="option" aria-selected="true" tabindex="0" aria-expanded="false" data-trace="4bf92f3577b34da6a3ce929d0e0e4736" data-span="00f067aa0ba902b7"><span class="t">02:16:58.412</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="4bf92f3577b34da6a3ce929d0e0e4736" data-span="4388b18c36ce6ceb"><span class="t">02:16:58.390</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">checkout</span><span class="msg">charge failed: upstream payments returned 504</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="4bf92f3577b34da6a3ce929d0e0e4736" data-span="1a1a0c4a64d222fa"><span class="t">02:16:58.371</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">api</span><span class="msg">POST /v1/checkout 502 in 5114 ms</span></div>
+<div class="row warn" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="4bf92f3577b34da6a3ce929d0e0e4736" data-span="1feb66485f1a65e4"><span class="t">02:16:57.981</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">retrying charge for ord_7Q2K9M, attempt 3 of 3</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="8d3c1e0a5f2b47c9b6e14a7d2f09c8e1" data-span="b1befa4f0995ebb1"><span class="t">02:16:57.204</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="8d3c1e0a5f2b47c9b6e14a7d2f09c8e1" data-span="9b98ff0bc55c263f"><span class="t">02:16:57.188</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">checkout</span><span class="msg">charge failed: upstream payments returned 504</span></div>
+<div class="row fatal" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="68952ad60b2fd3e0"><span class="t">02:16:56.877</span><span class="lv"><i aria-hidden="true">◆</i> fatal</span><span class="svc">payments</span><span class="msg">gateway client pool exhausted: 64 of 64 connections waiting</span></div>
+<div class="row warn" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="8d3c1e0a5f2b47c9b6e14a7d2f09c8e1" data-span="8130426ec0ab00af"><span class="t">02:16:56.530</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">checkout</span><span class="msg">order ord_3HX81P held in pending_payment</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="c21f7a9e04d84b3fa6e2d5b1907c3e48" data-span="058945c5a868176e"><span class="t">02:16:55.902</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="5e0b9d27a1c64f88b3d7e2a90f41c6b5" data-span="f7193645a3c96350"><span class="t">02:16:55.311</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">auth</span><span class="msg">session refreshed for usr_4821</span></div>
+<div class="row warn" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="ddcd2ce895f08bce"><span class="t">02:16:54.760</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">api</span><span class="msg">p95 latency 4870 ms on POST /v1/checkout over the last 60 s</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="0a7e3f91c2d548b6a9e1f40d7b2c8e53" data-span="472bc61545c66fd7"><span class="t">02:16:53.044</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="e93b4c0d1a7f42e5b8c6d2f107a9e314" data-span="315055c6af0e96ec"><span class="t">02:16:52.611</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">search</span><span class="msg">query &quot;running shoes&quot; served 48 hits in 37 ms</span></div>
+<div class="row warn" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="2ff735ff4d113e7b"><span class="t">02:16:51.287</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">circuit breaker for psp-eu-2 half-open, probing</span></div>
+<div class="row error" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="71d5a0c3e98b4f26a4c0e7d19b3f5a82" data-span="bf00bc543e365f97"><span class="t">02:16:49.930</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">billing</span><span class="msg">invoice inv_20261107_0193 not finalized: payment pending</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="4bf92f3577b34da6a3ce929d0e0e4736" data-span="0c3eec16ae199edc"><span class="t">02:16:44.118</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">checkout</span><span class="msg">cart cart_9KD2 converted to order ord_7Q2K9M</span></div>
+<div class="row warn" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="911d7c091eeac66f"><span class="t">02:16:31.502</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">gateway psp-eu-2 latency 2380 ms, above 1500 ms threshold</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="eb257600faa0429f"><span class="t">02:16:12.775</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">api</span><span class="msg">GET /v1/products 200 in 41 ms</span></div>
+<div class="row debug" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="256f701bae854cc8"><span class="t">02:15:47.360</span><span class="lv"><i aria-hidden="true">○</i> debug</span><span class="svc">search</span><span class="msg">cache hit ratio 0.912 for index products_v14</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="b6f2e81d04a94c7fa2e95d3c0b71e6a9" data-span="96975214cde2820f"><span class="t">02:15:20.004</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">payments</span><span class="msg">charge ch_8Ff2Lq captured, 129.90 EUR in 412 ms</span></div>
+<div class="gap" aria-hidden="true"><span>38 s quiet</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="4e1df0b0865ffb80"><span class="t">02:14:41.893</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">auth</span><span class="msg">login succeeded for usr_1290 via password</span></div>
+<div class="gap" aria-hidden="true"><span>40 s quiet</span></div>
+<div class="row debug" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="8b8f6648ee37ac0a"><span class="t">02:14:02.118</span><span class="lv"><i aria-hidden="true">○</i> debug</span><span class="svc">payments</span><span class="msg">gateway psp-eu-2 keep-alive pool 12 of 64 in use</span></div>
+<div class="gap" aria-hidden="true"><span>46 s quiet</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="f6f905065a26aea0"><span class="t">02:13:15.640</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">billing</span><span class="msg">nightly invoice run started for 2214 accounts</span></div>
+<div class="gap" aria-hidden="true"><span>37 s quiet</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="126adb53c6c9229f"><span class="t">02:12:38.207</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">checkout</span><span class="msg">cart cart_7RT1 converted to order ord_5LM0QA</span></div>
+<div class="gap" aria-hidden="true"><span>38 s quiet</span></div>
+<div class="row info" role="option" aria-selected="false" tabindex="-1" aria-expanded="false" data-trace="" data-span="932b248778b38f82"><span class="t">02:11:59.881</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">search</span><span class="msg">reindex batch 1187 committed, 3046 documents</span></div>
+</div>
+<button class="more" type="button">Load older logs</button>
+</main>
+</div>
+
+<div class="detail" id="detail" hidden>
+  <dl class="ids" id="ids"></dl>
+  <div class="zones">
+    <section><h3>Request</h3><div id="req"></div></section>
+    <section><h3>Context</h3><div id="ctx"></div></section>
+    <section class="same"><h3 id="same-h"></h3><ol id="same"></ol></section>
+  </div>
+  <div class="actions"><button type="button" id="by-trace">Filter by this trace</button><button type="button" id="copy">Copy as JSON</button><p role="status" id="copied"></p></div>
+</div>
+
+<script>
+// Keys: / search, j/k select, Enter or Space expands, Esc collapses, t filters by the selected log's trace.
+const $ = s => document.querySelector(s), rows = [...document.querySelectorAll('.row')], detail = $('#detail');
+const POD = { payments: ['payments-6f9c8d7b5-xk2lp', '2.41.0'], checkout: ['checkout-7d4b9c6f8-m2qzt', '3.12.4'], api: ['api-5c8f7b9d4-wq7hn', '1.88.0'],
+  search: ['search-84c6d9f7b-r5tjv', '4.3.1'], billing: ['billing-6b7f5c9d8-h8nqp', '0.19.2'], auth: ['auth-7c9d6f8b5-zt4mw', '2.7.0'] };
+const GW = { 'http.method': 'POST', 'http.route': '/v1/charges', 'gateway.host': 'psp-eu-2.example.net', timeout_ms: '5000', attempt: '3' };
+const REQ = { // request and extra context attributes, by log time
+  '02:16:58.412': [GW, { order_id: 'ord_7Q2K9M' }], '02:16:57.981': [GW, { order_id: 'ord_7Q2K9M' }],
+  '02:16:58.390': [{ 'http.method': 'POST', 'http.route': '/v1/orders/{id}/pay', 'peer.service': 'payments', 'http.status_code': '504' }, { order_id: 'ord_7Q2K9M' }],
+  '02:16:58.371': [{ 'http.method': 'POST', 'http.route': '/v1/checkout', 'http.status_code': '502', duration_ms: '5114' }, { order_id: 'ord_7Q2K9M' }],
+  '02:16:44.118': [{ 'http.method': 'POST', 'http.route': '/v1/carts/{id}/convert' }, { order_id: 'ord_7Q2K9M', cart_id: 'cart_9KD2' }] };
+const part = (r, c) => r.querySelector(c).textContent;
+const dl = o => Object.keys(o).length ? '<dl>' + Object.entries(o).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>'
+  : '<p class="none">No request attributes on this log.</p>';
+const visible = () => rows.filter(r => !r.hidden);
+function attrs(r) {
+  const [req, extra] = REQ[part(r, '.t')] || [{}, {}], [pod, ver] = POD[part(r, '.svc')];
+  return [req, { ...extra, 'k8s.pod': pod, 'service.version': ver, region: 'eu-west-1' }];
+}
+function fill(r) {
+  const tr = r.dataset.trace, [req, ctx] = attrs(r);
+  $('#ids').innerHTML = `<dt>trace_id</dt><dd>${tr || 'none'}</dd><dt>span_id</dt><dd>${r.dataset.span}</dd>`;
+  $('#req').innerHTML = dl(req); $('#ctx').innerHTML = dl(ctx);
+  const same = tr ? rows.filter(x => x.dataset.trace === tr) : [];
+  $('#same-h').textContent = tr ? `Same trace (${same.length} logs)` : 'Same trace';
+  $('#same').innerHTML = same.length ? same.map(x => `<li><button type="button" class="${x.classList[1]}" data-i="${rows.indexOf(x)}"${x === r ? ' aria-current="true"' : ''}>`
+    + `<span class="t">${part(x, '.t').slice(3)}</span> <i aria-hidden="true">${part(x, 'i')}</i> ${part(x, '.svc')}: ${part(x, '.msg')}${x === r ? ' (this log)' : ''}</button></li>`).join('')
+    : '<li class="none">This log has no trace_id.</li>';
+  $('#copied').textContent = '';
+}
+function select(r) { rows.forEach(x => { x.setAttribute('aria-selected', x === r); x.tabIndex = x === r ? 0 : -1; }); r.focus(); }
+function expand(r, open) {
+  rows.forEach(x => x.setAttribute('aria-expanded', 'false'));
+  detail.hidden = !open;
+  if (open) { fill(r); r.after(detail); r.setAttribute('aria-expanded', 'true'); }
+}
+const current = () => rows.find(r => r.getAttribute('aria-selected') === 'true');
+function byTrace(tr) {
+  const input = $('#trace'); input.value = tr; input.setAttribute('aria-invalid', 'false'); $('#trace-err').hidden = true;
+  rows.forEach(r => { r.hidden = !!tr && r.dataset.trace !== tr; });
+  document.querySelectorAll('.gap').forEach(g => { g.hidden = !!tr; });
+  $('#status').textContent = tr ? `${visible().length} logs with trace_id ${tr}. Clear the trace id field to see all logs.` : 'The newest 25 of 4,662 logs, newest first.';
+  if (current().hidden) { select(visible()[0]); expand(visible()[0], false); }
+}
+rows.forEach(r => r.addEventListener('click', () => { select(r); expand(r, r.getAttribute('aria-expanded') !== 'true'); }));
+$('#same').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) { const r = rows[b.dataset.i]; select(r); expand(r, true); } });
+$('#by-trace').addEventListener('click', () => current().dataset.trace && byTrace(current().dataset.trace));
+$('#copy').addEventListener('click', () => {
+  const r = current(), [req, ctx] = attrs(r);
+  const json = JSON.stringify({ time: part(r, '.t'), level: r.classList[1], service: part(r, '.svc'), message: part(r, '.msg'), trace_id: r.dataset.trace, span_id: r.dataset.span, ...req, ...ctx }, null, 2);
+  navigator.clipboard.writeText(json).then(() => { $('#copied').textContent = 'Copied the log as JSON.'; },
+    () => { $('#copied').textContent = 'The browser blocked clipboard access. Allow it for this page, then copy again.'; });
+});
+$('#trace').addEventListener('input', ev => {
+  const v = ev.target.value.trim(), ok = /^[0-9a-f]{32}$/.test(v);
+  if (!v || ok) byTrace(v); else { ev.target.setAttribute('aria-invalid', 'true'); $('#trace-err').hidden = false; }
+});
+document.addEventListener('keydown', ev => {
+  if (ev.target.matches('input')) { if (ev.key === 'Escape') ev.target.blur(); return; }
+  if (ev.target.closest('.detail') && ev.key !== 'Escape') return;
+  const vis = visible(), i = vis.indexOf(current()), r = current();
+  if (ev.key === '/') { ev.preventDefault(); $('#q').focus(); }
+  else if (ev.key === 'j' || ev.key === 'k') { select(vis[Math.max(0, Math.min(vis.length - 1, i + (ev.key === 'j' ? 1 : -1)))]); if (!detail.hidden) expand(current(), true); }
+  else if ((ev.key === 'Enter' || ev.key === ' ') && ev.target === r) { ev.preventDefault(); expand(r, r.getAttribute('aria-expanded') !== 'true'); }
+  else if (ev.key === 'Escape') { expand(r, false); r.focus(); }
+  else if (ev.key === 't' && r.dataset.trace) byTrace(r.dataset.trace);
+});
+// Brushing: drag across the strips to set the range (02:02 to 02:17 maps to the full width).
+const strips = $('#strips'), bands = [...strips.querySelectorAll('.band')];
+const clock = f => { const s = 2 * 60 + Math.round(f * 15 * 60); return `02:${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+let start = null;
+const frac = ev => { const b = strips.getBoundingClientRect(); return Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)); };
+const draw = (a, b) => bands.forEach(x => { x.setAttribute('x', Math.min(a, b) * 1000); x.setAttribute('width', Math.max(2, Math.abs(b - a) * 1000)); });
+strips.addEventListener('pointerdown', ev => { start = frac(ev); strips.setPointerCapture(ev.pointerId); draw(start, start); });
+strips.addEventListener('pointermove', ev => { if (start !== null) draw(start, frac(ev)); });
+strips.addEventListener('pointerup', ev => {
+  const a = Math.min(start, frac(ev)), b = Math.max(start, frac(ev)); start = null;
+  $('#range').innerHTML = `${clock(a)} to ${clock(b)} UTC<small>selected on the timeline</small>`;
+});
+expand(rows[0], true);
+</script>
+</body>
+</html>
