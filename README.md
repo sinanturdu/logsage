@@ -107,7 +107,7 @@ Integration tests run when these variables are set (CI sets them):
 cd backend && REDIS_TEST_ADDR=localhost:6379 CLICKHOUSE_TEST_URL=http://localhost:8123 CLICKHOUSE_TEST_USER=logsage CLICKHOUSE_TEST_PASSWORD=change-me go test ./... -count=1
 ```
 
-Projects and per-project API keys (v0.2 foundation; ingest and query still use the static keys until package H):
+Projects and per-project API keys. Ingest and query accept these keys, and each key only sees and writes its own project (the static `INGEST_API_KEY`/`QUERY_API_KEY` are deprecated and work only with `ALLOW_LEGACY_STATIC_KEYS=true`, for the default project):
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d postgres
@@ -119,6 +119,15 @@ KEY=$(go run ./cmd/admin create-key --project demo --kind ingest --name ci --exp
 go run ./cmd/admin list-keys --project demo
 printf '%s\n' "$KEY" | go run ./cmd/admin verify-key          # valid project=demo kind=ingest
 go run ./cmd/admin revoke-key --prefix <8-char prefix from list-keys>
+```
+
+Use the keys like this (a revoked key or disabled project keeps working for up to `AUTH_CACHE_TTL`, 30 s by default):
+
+```bash
+INGEST_KEY=$(go run ./cmd/admin create-key --project demo --kind ingest --name app)
+QUERY_KEY=$(go run ./cmd/admin create-key --project demo --kind query --name dashboard)
+curl -X POST http://127.0.0.1:8080/v1/ingest -H "X-API-Key: $INGEST_KEY" -H "Content-Type: application/json" -d @events.json
+curl -H "X-API-Key: $QUERY_KEY" "http://127.0.0.1:8082/v1/logs?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z"
 ```
 
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.

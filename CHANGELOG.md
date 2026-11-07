@@ -5,6 +5,13 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Ingest and query authenticate with per-project keys from PostgreSQL (ADR 0012); the verified key decides the project end to end: stream entries and ClickHouse rows carry the project UUID, queries are scoped to it (the default project also matches legacy `"default"` rows). One shared authenticator with a bounded SHA-256-keyed cache (`AUTH_CACHE_TTL`, `AUTH_NEGATIVE_TTL`, `AUTH_CACHE_SIZE`), single lookup per key, `503` when PostgreSQL cannot verify an uncached key, `/readyz` checks PostgreSQL. The processor dead-letters entries without a valid project id.
+- End-to-end isolation tests (`internal/e2e`) against PostgreSQL, Redis and ClickHouse.
+- Compose: one-shot `migrate` service; ingest and query depend on it and on PostgreSQL. The image contains `cmd/admin`.
+
+### Deprecated
+- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (default for now), mapped to the default project, with a startup warning.
+
 - PostgreSQL foundation for v0.2 (ADR 0011): `github.com/jackc/pgx/v5` v5.7.4; hand-written embedded migrations with checksums (line-ending independent) and an advisory lock; `projects` and `api_keys` tables plus the `default` project that v0.1 data belongs to.
 - Per-project API keys `lsk_<ing|qry>_<prefix>_<secret>`: only the prefix and SHA-256 are stored, constant-time verification with one generic rejection error, throttled `last_used_at`.
 - `cmd/admin`: `migrate`, `create-project`, `list-projects`, `disable-project`, `create-key` (key shown once), `list-keys`, `revoke-key`, `verify-key`.
