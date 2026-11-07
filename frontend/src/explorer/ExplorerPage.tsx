@@ -23,6 +23,7 @@ import {
 import { LiveBar } from '../live/LiveBar'
 import { useLiveList } from '../live/useLiveList'
 import { shortcutFor } from '../shortcuts'
+import { useExplorerBridge } from '../palette/bridge'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
 import { bucketTotal, rangeHeading } from './time'
@@ -203,6 +204,56 @@ export function ExplorerPage() {
     return () => document.removeEventListener('keydown', onKey)
   }, [events, expanded, selected, filterTrace, toggleLive, tail])
 
+  // The command palette reads this state and runs explorer commands through it.
+  const rangeControls = useRef<{ openCustom: () => void }>(null)
+  useExplorerBridge({
+    ctx: {
+      live,
+      zoom: state.zoom,
+      canZoom: state.range.kind === 'absolute' && !state.zoom,
+      services: (facets.data?.services ?? []).filter((s) => !s.other).map((s) => s.name),
+      selectedServices: state.services,
+      levels: state.levels,
+      hasFilters: hasFilters(state),
+    },
+    run: (a) => {
+      switch (a.type) {
+        case 'range':
+          refresh()
+          update({ range: { kind: 'relative', preset: a.preset }, zoom: false })
+          return
+        case 'custom-range':
+          rangeControls.current?.openCustom()
+          return
+        case 'levels':
+          update({ levels: a.levels })
+          return
+        case 'clear-filters':
+          update(EMPTY_FILTERS)
+          return
+        case 'service':
+          update({ services: [...state.services, a.name] })
+          return
+        case 'focus':
+          if (a.field === 'search') search.current?.focus()
+          else {
+            setFiltersOpen(true) // on narrow screens the field sits behind the Filters button
+            setTimeout(() => document.querySelector<HTMLInputElement>('[data-field="trace"]')?.focus(), 0)
+          }
+          return
+        case 'live':
+          if (a.on !== live) toggleLive()
+          return
+        case 'refresh':
+          refresh()
+          return
+        case 'zoom':
+          update({ zoom: a.on })
+          return
+      }
+    },
+  })
+
   const onSearch = useCallback((q: string, immediate: boolean) => update({ q }, { replace: !immediate }), [update])
 
   if (projects.isSuccess && !projects.data.some((p) => p.slug === slug)) {
@@ -233,6 +284,7 @@ export function ExplorerPage() {
     <div className="explorer">
       <div className="explorer-head">
         <RangeControls
+          ref={rangeControls}
           range={state.range}
           window={win}
           onPreset={(p: Preset) => {

@@ -103,7 +103,7 @@ describe('project switcher', () => {
 })
 
 describe('shell', () => {
-  it('has the focus order skip link, logo, project, Logs, API keys, account', async () => {
+  it('has the focus order skip link, logo, project, Logs, API keys, Commands, account', async () => {
     mockApi({ 'GET /api/auth/me': me, 'GET /api/projects': () => json(200, { projects: [project('shop', 'Shop')] }) })
     renderApp('/projects/shop/logs')
     await screen.findByLabelText('Project')
@@ -119,6 +119,8 @@ describe('shell', () => {
     expect(document.activeElement?.getAttribute('aria-current')).toBe('page')
     await user.tab()
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'API keys' }))
+    await user.tab()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Commands' }))
     await user.tab()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Account' }))
     expect(screen.getByText('Ctrl K').tagName).toBe('KBD')

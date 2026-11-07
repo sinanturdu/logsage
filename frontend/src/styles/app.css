@@ -288,3 +288,24 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 .shortcuts { margin: 0; display: grid; gap: 4px; }
 .shortcuts > div { display: grid; grid-template-columns: minmax(9rem, auto) 1fr; gap: var(--space-3); align-items: baseline; }
 .shortcuts dd { margin: 0; }
+
+/* Command palette (ADR 0020) */
+.dialog-backdrop:has(.palette) { place-items: start center; padding-top: 12vh; }
+.dialog.palette { padding: var(--space-3); width: min(620px, 100%); }
+.palette-input { width: 100%; font: inherit; font-size: var(--text-base); padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); }
+.palette-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.palette-option { display: flex; justify-content: space-between; gap: var(--space-3); padding: 6px 10px; border-radius: var(--radius); cursor: pointer; font-size: var(--text-md); }
+.palette-option[aria-selected='true'] { background: var(--select); box-shadow: inset 3px 0 0 var(--pen); }
+.palette-option .group { color: var(--pencil); font-size: var(--text-sm); white-space: nowrap; }
+.palette-option .label { overflow-wrap: anywhere; }
+.palette-option .hit { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.palette-empty { margin: var(--space-2) 0 0; color: var(--pencil); }
+.shell-notice { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); margin: 0; max-width: min(640px, calc(100% - 32px)); background: var(--ink); color: var(--white); padding: var(--space-2) var(--space-3); border-radius: var(--radius); font-size: var(--text-md); overflow-wrap: anywhere; z-index: 30; }
+.shell-notice:empty { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .dialog.palette { animation: palette-in 80ms ease-out; }
+  @keyframes palette-in { from { opacity: 0; } to { opacity: 1; } }
+}
+@media (max-width: 700px) {
+  .shell-header kbd { display: none; }
+}
