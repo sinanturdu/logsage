@@ -25,7 +25,7 @@ flowchart LR
 - **Query API** (`cmd/query`): read-only REST search over ClickHouse (`GET /v1/logs`, v0.1); WebSocket live tail later. Always scoped by `project_id` through one query builder. See "Query API (v0.1 contract)" and ADR 0009.
 - **AI Service**: anomaly detection and root-cause suggestions. Called by the backend over HTTP.
 - **Management API** (`cmd/api`, v0.2): login with server-side sessions, projects, member roles and API keys over JSON. PostgreSQL only. See "Management API (v0.2 contract)" and ADR 0013.
-- **Dashboard**: React + TypeScript.
+- **Dashboard** (`frontend/`, v0.2 I2a): React + TypeScript single-page app (Vite) on the management API; session cookie only, state in the URL, untrusted text rendered as text only. In development Vite proxies `/api` to `cmd/api`; production serving and CSP are an open decision. See "Dashboard (v0.2)" and ADR 0016.
 
 ## Ingestion API (v0.1 contract)
 ```
@@ -271,6 +271,22 @@ How the stream works:
 - **Old events:** logs with an event time older than `TAIL_MAX_LATENESS` (10m) at arrival are not streamed live.
 - **Resume:** a reconnect with `Last-Event-ID` within `TAIL_MAX_REPLAY` (5m) resumes without gaps or duplicates.
 - **Stream lifetime:** a stream closes after `TAIL_MAX_DURATION` (1h). Session and membership are re-checked every `TAIL_AUTH_RECHECK` (30s), and a client slower than `TAIL_WRITE_TIMEOUT` per write is dropped.
+
+## Dashboard (v0.2)
+`frontend/`, ADR 0016. Routes:
+- `/login`: sign-in. A `next=<path>` parameter returns the user to that path afterwards; only same-app paths are accepted.
+- `/`: opens the first project, or shows the empty state with a create-project form.
+- `/projects/:slug/logs`: the shell plus the explorer, a placeholder until I2b.
+
+The app uses `/api/auth/login`, `/logout` and `/me`, and `GET/POST /api/projects`; I2b adds `/logs`, `/histogram`, `/facets` and `/tail`.
+
+Error handling:
+- A 401 on any signed-in request clears the cache and goes to `/login?next=...&expired=1`.
+- A 429 shows the `Retry-After` seconds.
+- 400 errors show the server's fixed message.
+- 404, 5xx and network errors become plain messages that say how to fix the problem.
+
+Nothing is kept in browser storage. Log text goes through `<LogText>` (text nodes only); `dangerouslySetInnerHTML` and `innerHTML` are lint errors.
 
 ## Fingerprinting
 Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.

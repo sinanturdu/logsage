@@ -5,6 +5,7 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Dashboard foundation in `frontend/` (ADR 0016): Vite + React + TypeScript (strict), B2 design tokens with self-hosted Red Hat fonts, login with plain-language errors, return to the requested URL after a 401, app shell with project switcher, `Ctrl K` hint and account menu, empty state with project creation, typed API client with central error mapping, `<LogText>` for text-only rendering of untrusted log data, lint rules against HTML injection and browser storage, Vitest tests, and a `frontend` CI job.
 - Live tail `GET /api/projects/{slug}/tail` on `cmd/api` (ADR 0015): Server-Sent Events with the read endpoints' filters, in visibility order with late-visible rows and redeliveries handled, resume with `Last-Event-ID` (reset when older than `TAIL_MAX_REPLAY`), heartbeats, `degraded`/`live` on ClickHouse errors, connection limits per user/project/total, auth re-check, per-write deadlines and close on shutdown. Settings `TAIL_*`.
 - ClickHouse migrations 0003/0004: `logs.inserted_at` (fixed epoch for old rows) with a minmax index; the processor sets it per insert attempt.
 - `loadgen tail`: end-to-end live tail latency (p50/p95/p99) and missing events.

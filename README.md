@@ -47,6 +47,54 @@ This starts Redis, ClickHouse, PostgreSQL and the LogSage services. Their ports 
 
 To stop: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down` (add `-v` to delete the stored data).
 
+## Run the dashboard locally
+
+Requirements: Docker with Compose v2, Node 24 (`frontend/.nvmrc`), Go 1.23+ for the load generator. The dashboard (`frontend/`, ADR 0016) runs on Vite's dev server and reaches the API through its `/api` proxy.
+
+1. Configure: copy `.env.example` to `.env`, replace every `change-me` value, and set `COOKIE_SECURE=false` (the dev server is plain http).
+
+```bash
+cp .env.example .env
+```
+
+2. Start the stack (infrastructure, ingest, processor, query and the management API on `:8083`):
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build
+```
+
+3. Create a user, a project you own, and an ingest key. The password is read from stdin, never from a flag. In Git Bash on Windows, prefix the `exec` commands with `MSYS_NO_PATHCONV=1`.
+
+```bash
+printf '%s' 'a long passphrase here' | docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-user --allow-remote --email you@example.com
+```
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-project --allow-remote --name Demo --slug demo
+```
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin add-member --allow-remote --project demo --email you@example.com --role owner
+```
+
+```bash
+KEY=$(docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-key --allow-remote --project demo --kind ingest --name demo)
+```
+
+4. Send demo data with an incident (keep it running in its own terminal):
+
+```bash
+cd backend && LOADGEN_INGEST_KEY="$KEY" go run ./cmd/loadgen demo --incident --duration 5m
+```
+
+5. Run the dashboard and open http://localhost:5173:
+
+```bash
+cd frontend && npm ci && npm run dev
+```
+
+The dev server proxies `/api` to `http://127.0.0.1:8083` without rewriting the Host header, so the API's same-host Origin check accepts the dashboard's requests without `ALLOWED_ORIGINS`. To stop: `Ctrl+C` in the dev server, then `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down -v`.
+
 ## API examples
 
 Send events (bash, curl):
