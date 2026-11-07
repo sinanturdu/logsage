@@ -22,6 +22,7 @@ import {
 } from './model'
 import { LiveBar } from '../live/LiveBar'
 import { useLiveList } from '../live/useLiveList'
+import { shortcutFor } from '../shortcuts'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
 import { bucketTotal, rangeHeading } from './time'
@@ -56,9 +57,6 @@ export function explorerError(err: unknown): { text: string; retry: boolean } {
 }
 
 const HISTOGRAM_EVERY_MS = 10_000
-
-const isTyping = (t: EventTarget | null) =>
-  t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
 
 export function ExplorerPage() {
   const { slug = '' } = useParams()
@@ -176,27 +174,25 @@ export function ExplorerPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (e.key === '/' && !isTyping(e.target)) {
+      // Keys come from the shared definition (shortcuts.ts), which the help lists.
+      const id = shortcutFor(e, ['search', 'next', 'previous', 'escape', 'live', 'retry', 'trace'])
+      if (id === 'search') {
         e.preventDefault()
         search.current?.focus()
-        return
-      }
-      if (isTyping(e.target)) return
-      if (e.key === 'j') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.min(s + 1, events.length - 1)))
-      else if (e.key === 'k') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.max(s - 1, 0)))
-      else if (e.key === 'Escape') {
+      } else if (id === 'next') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.min(s + 1, events.length - 1)))
+      else if (id === 'previous') setSelected((s) => (events.length === 0 ? null : s === null ? 0 : Math.max(s - 1, 0)))
+      else if (id === 'escape') {
         // Escape closes the detail first (focus returns to its row), then clears the selection.
         if (expanded) {
           const row = document.querySelector<HTMLElement>(`[data-index="${expanded.index}"]`)
           setExpanded(null)
           row?.focus()
         } else setSelected(null)
-      } else if (e.key === 'l') {
+      } else if (id === 'live') {
         toggleLive()
-      } else if (e.key === 'r' && tail.state.kind === 'reconnecting') {
+      } else if (id === 'retry' && tail.state.kind === 'reconnecting') {
         tail.retryNow()
-      } else if (e.key === 't' && selected !== null) {
+      } else if (id === 'trace' && selected !== null) {
         const ev = events[selected]
         if (!ev) return
         if (!ev.trace_id) setNotice('This log has no trace_id, so there is no trace to filter by.')

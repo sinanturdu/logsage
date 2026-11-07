@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { LogText } from '../components/LogText'
+import { shortcutFor } from '../shortcuts'
 import { LEVEL_SHAPE } from './model'
 import type { LogEvent } from './api'
 import { rowTime } from './time'
@@ -39,7 +40,7 @@ export function LogList({ slug, events, selected, expanded, onSelect, onToggle, 
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>, i: number) => {
     if (e.target !== e.currentTarget) return // keys inside the detail belong to its controls
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (shortcutFor(e, ['toggle']) === 'toggle') {
       e.preventDefault()
       onSelect(i)
       onToggle(i)

@@ -284,3 +284,7 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 .about-chart { font-size: var(--text-sm); color: var(--pencil); margin: 2px 0 0; }
 .about-chart summary { cursor: pointer; color: var(--pen); width: fit-content; }
 .about-chart p { margin: var(--space-1) 0 0; max-width: 72ch; }
+.shortcut-group h3 { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-md); }
+.shortcuts { margin: 0; display: grid; gap: 4px; }
+.shortcuts > div { display: grid; grid-template-columns: minmax(9rem, auto) 1fr; gap: var(--space-3); align-items: baseline; }
+.shortcuts dd { margin: 0; }

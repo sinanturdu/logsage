@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch } from 'react-router'
+import { shortcutFor } from '../shortcuts'
+import { ShortcutsHelp } from './ShortcutsHelp'
 import { AccountMenu } from './AccountMenu'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
@@ -17,6 +20,17 @@ function ProjectNav() {
 }
 
 export function Shell() {
+  const [help, setHelp] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcutFor(e, ['help']) === 'help') {
+        e.preventDefault()
+        setHelp(true)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
   return (
     <>
       <a className="skip-link" href="#main">
@@ -36,6 +50,7 @@ export function Shell() {
       <main id="main" className="shell-main" tabIndex={-1}>
         <Outlet />
       </main>
+      {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
     </>
   )
 }
