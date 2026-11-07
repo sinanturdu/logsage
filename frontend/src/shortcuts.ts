@@ -1,0 +1,78 @@
+// The one definition of every keyboard shortcut (ADR 0020). The handlers
+// match keys through `matches`, and the help dialog lists this array, so
+// the two cannot drift apart.
+
+export type ShortcutId = 'palette' | 'help' | 'search' | 'next' | 'previous' | 'toggle' | 'escape' | 'trace' | 'live' | 'retry'
+
+type Keyish = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>
+
+export type Shortcut = {
+  id: ShortcutId
+  /** What the help shows, one entry per key combination. */
+  keys: readonly string[]
+  description: string
+  where: 'Anywhere' | 'Log explorer' | 'Live tail'
+  /** Also active while typing in a text field. */
+  whileTyping: boolean
+  matches: (e: Keyish) => boolean
+}
+
+const plain = (e: Keyish) => !e.ctrlKey && !e.metaKey && !e.altKey
+
+export const SHORTCUTS: readonly Shortcut[] = [
+  {
+    id: 'palette',
+    keys: ['Ctrl K', '⌘ K'],
+    description: 'Open the command palette',
+    where: 'Anywhere',
+    whileTyping: true,
+    matches: (e) => (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k',
+  },
+  { id: 'help', keys: ['?'], description: 'Show keyboard shortcuts', where: 'Anywhere', whileTyping: false, matches: (e) => plain(e) && e.key === '?' },
+  { id: 'search', keys: ['/'], description: 'Focus the search box', where: 'Log explorer', whileTyping: false, matches: (e) => plain(e) && e.key === '/' },
+  { id: 'next', keys: ['j'], description: 'Select the next log', where: 'Log explorer', whileTyping: false, matches: (e) => plain(e) && e.key === 'j' },
+  { id: 'previous', keys: ['k'], description: 'Select the previous log', where: 'Log explorer', whileTyping: false, matches: (e) => plain(e) && e.key === 'k' },
+  {
+    id: 'toggle',
+    keys: ['Enter', 'Space'],
+    description: 'Expand or collapse the selected log',
+    where: 'Log explorer',
+    whileTyping: false,
+    matches: (e) => plain(e) && (e.key === 'Enter' || e.key === ' '),
+  },
+  {
+    id: 'escape',
+    keys: ['Escape'],
+    description: 'Close the open detail, then clear the selection; also closes menus and dialogs',
+    where: 'Log explorer',
+    whileTyping: false,
+    matches: (e) => e.key === 'Escape',
+  },
+  { id: 'trace', keys: ['t'], description: 'Filter by the selected log’s trace', where: 'Log explorer', whileTyping: false, matches: (e) => plain(e) && e.key === 't' },
+  { id: 'live', keys: ['l'], description: 'Turn the live tail on or off', where: 'Live tail', whileTyping: false, matches: (e) => plain(e) && e.key === 'l' },
+  {
+    id: 'retry',
+    keys: ['r'],
+    description: 'Reconnect now while the live tail waits to retry',
+    where: 'Live tail',
+    whileTyping: false,
+    matches: (e) => plain(e) && e.key === 'r',
+  },
+]
+
+/** Whether the event comes from a place where typed characters are text. */
+export const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+
+/**
+ * The shortcut an event triggers, among those listed, or null. Shortcuts
+ * that are not active while typing are skipped when the target is a field.
+ */
+export function shortcutFor(e: Keyish & { target: EventTarget | null }, among: readonly ShortcutId[]): ShortcutId | null {
+  for (const s of SHORTCUTS) {
+    if (!among.includes(s.id)) continue
+    if (!s.whileTyping && isTyping(e.target)) continue
+    if (s.matches(e)) return s.id
+  }
+  return null
+}

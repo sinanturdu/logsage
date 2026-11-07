@@ -34,6 +34,20 @@ export function groupAttributes(attrs: Record<string, string> | null | undefined
   return { spanId, request: request.sort(byKey), context: context.sort(byKey) }
 }
 
+/**
+ * How the detail's zones are laid out:
+ * - three: Request, Context and Same trace side by side;
+ * - pair: two zones (one attribute group, or "No attributes", next to Same trace; or both groups without a trace);
+ * - single: one attribute group and no trace, whose pairs then flow in several columns
+ *   so most of the width is not left empty.
+ */
+export type ZoneLayout = 'three' | 'pair' | 'single'
+export function zoneLayout(g: Pick<Grouped, 'request' | 'context'>, hasTrace: boolean): ZoneLayout {
+  const groups = (g.request.length > 0 ? 1 : 0) + (g.context.length > 0 ? 1 : 0)
+  if (hasTrace) return groups === 2 ? 'three' : 'pair'
+  return groups === 2 ? 'pair' : 'single'
+}
+
 export const SAME_TRACE_HALF_MS = 10 * 60_000
 export const SAME_TRACE_LIMIT = 50
 

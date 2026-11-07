@@ -118,6 +118,7 @@ function invalidReason(msg: string | undefined): string {
 /** Seconds left until the retry, rounded up, never negative. */
 export const secondsLeft = (s: LiveState, now: number) => (s.kind === 'reconnecting' ? Math.max(0, Math.ceil((s.retryAt - now) / 1000)) : 0)
 
+export const LIVE_TEXT = 'Receiving new logs'
 export const DEGRADED_TEXT = 'Live tail degraded: the log store is slow to respond. Showing what arrived, retrying.'
 
 /** The state in words, for the status line; color is never the only signal. */
@@ -128,7 +129,8 @@ export function describe(s: LiveState, now: number): string {
     case 'connecting':
       return 'Connecting'
     case 'live':
-      return 'Live'
+      // The button already says Live; the status says what is happening.
+      return LIVE_TEXT
     case 'degraded':
       return DEGRADED_TEXT
     case 'reconnecting':

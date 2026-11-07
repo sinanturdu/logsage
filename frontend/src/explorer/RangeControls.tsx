@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react'
 import { MAX_WINDOW_MS, PRESETS, type Preset, type TimeRange } from './model'
 
 const PRESET_TEXT: Record<Preset, string> = { '15m': '15 min', '1h': '1 h', '6h': '6 h', '24h': '24 h', '7d': '7 days' }
@@ -17,22 +17,31 @@ type Props = {
   onPreset: (p: Preset) => void
   onCustom: (from: number, to: number) => void
   onRefresh: () => void
+  /** Lets the command palette open the custom range form. */
+  ref?: Ref<{ openCustom: () => void }>
 }
 
 /** Range presets and a custom UTC range: the keyboard alternative to brushing. */
-export function RangeControls({ range, window: win, onPreset, onCustom, onRefresh }: Props) {
+export function RangeControls({ range, window: win, onPreset, onCustom, onRefresh, ref }: Props) {
   const id = useId()
   const [open, setOpen] = useState(false)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [error, setError] = useState('')
 
-  function openCustom() {
+  function openCustom(force = false) {
     setFrom(toInput(win.from))
     setTo(toInput(win.to))
     setError('')
-    setOpen((o) => !o)
+    setOpen((o) => force || !o)
   }
+  const fromInput$ = useRef<HTMLInputElement>(null)
+  useImperativeHandle(ref, () => ({
+    openCustom: () => {
+      openCustom(true)
+      setTimeout(() => fromInput$.current?.focus(), 0)
+    },
+  }))
 
   function apply(e: FormEvent) {
     e.preventDefault()
@@ -60,7 +69,7 @@ export function RangeControls({ range, window: win, onPreset, onCustom, onRefres
             {PRESET_TEXT[p]}
           </button>
         ))}
-        <button type="button" className="chip" aria-expanded={open} aria-controls={`${id}-custom`} onClick={openCustom}>
+        <button type="button" className="chip" aria-expanded={open} aria-controls={`${id}-custom`} onClick={() => openCustom()}>
           Custom
         </button>
         <button type="button" className="chip" onClick={onRefresh} title="Load the newest logs for this range">
@@ -71,7 +80,7 @@ export function RangeControls({ range, window: win, onPreset, onCustom, onRefres
         <form id={`${id}-custom`} className="custom-range" onSubmit={apply} noValidate aria-label="Custom time range">
           <label>
             From (UTC)
-            <input type="datetime-local" step={1} value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input ref={fromInput$} type="datetime-local" step={1} value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
           <label>
             To (UTC)

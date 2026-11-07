@@ -39,7 +39,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package I2b:** log explorer (B2): URL state, two-strip timeline with brushing and accessible alternatives, facets, search, single-line rows with pagination; `scripts/dev.ps1` and `loadgen seed` for local development (ADR 0017)
 - [x] **Package I2c-1:** row detail with Same trace and Copy as JSON, filter chips, Filters disclosure on narrow screens, zoom to selection, small-sample handling in the error share (ADR 0018)
 - [x] **Package I2c-2:** live tail UI in the explorer (fetch-based SSE client, state machine with backoff, auto-pause), API keys screen with one-time reveal, account menu with change password and sign out of all devices (ADR 0019)
-- [ ] **Package I2c-3 (next):** command palette, production serving of the dashboard and CSP, v0.2.0 release prep, final polish
+- [x] **Package I2c-3:** command palette (Ctrl K) with a fuzzy matcher, one shared shortcut definition and a "?" help, per-route titles, and polish: new-key dialog, chart text, live status and order, sentence-case labels, detail layout (ADR 0020)
+- [ ] **Package I2c-4 (next):** production serving of the dashboard, CSP, configurable ingest URL, v0.2.0 release prep
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 
 ## v0.3: Live tail

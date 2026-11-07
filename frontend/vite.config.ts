@@ -17,5 +17,7 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
     unstubGlobals: true,
+    // Lets style tests read app.css (for example: no upper-case labels).
+    css: { include: [/app\.css/] },
   },
 })

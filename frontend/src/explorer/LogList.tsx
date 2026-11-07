@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { LogText } from '../components/LogText'
+import { shortcutFor } from '../shortcuts'
 import { LEVEL_SHAPE } from './model'
 import type { LogEvent } from './api'
 import { rowTime } from './time'
@@ -19,6 +20,8 @@ type Props = {
   withDate: boolean
   /** Live arrivals: they get a short highlight when they appear. */
   fresh?: ReadonlySet<string>
+  /** How the rows are ordered, for the accessible name. */
+  order?: string
 }
 
 /**
@@ -26,7 +29,7 @@ type Props = {
  * aria-expanded, and an expanded row is followed by its detail. Messages are
  * text only (LogText).
  */
-export function LogList({ slug, events, selected, expanded, onSelect, onToggle, onShow, onFilterTrace, withDate, fresh }: Props) {
+export function LogList({ slug, events, selected, expanded, onSelect, onToggle, onShow, onFilterTrace, withDate, fresh, order = 'newest first' }: Props) {
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (selected === null) return
@@ -37,7 +40,7 @@ export function LogList({ slug, events, selected, expanded, onSelect, onToggle, 
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>, i: number) => {
     if (e.target !== e.currentTarget) return // keys inside the detail belong to its controls
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (shortcutFor(e, ['toggle']) === 'toggle') {
       e.preventDefault()
       onSelect(i)
       onToggle(i)
@@ -45,7 +48,7 @@ export function LogList({ slug, events, selected, expanded, onSelect, onToggle, 
   }
 
   return (
-    <div ref={list} className="rows" role="treegrid" aria-label="Logs, newest first">
+    <div ref={list} className="rows" role="treegrid" aria-label={`Logs, ${order}`}>
       {events.map((e, i) => {
         const ms = Date.parse(e.timestamp)
         const open = expanded?.index === i

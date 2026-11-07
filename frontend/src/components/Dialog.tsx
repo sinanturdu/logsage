@@ -9,6 +9,9 @@ type Props = {
   onClose?: () => void
   /** The element that gets focus first (defaults to the first focusable). */
   initialFocus?: React.RefObject<HTMLElement | null>
+  /** Keeps the title for screen readers only. */
+  titleHidden?: boolean
+  className?: string
 }
 
 /**
@@ -16,7 +19,7 @@ type Props = {
  * (Tab and Shift+Tab wrap), Escape closes it when allowed, and focus
  * returns to the element that opened it.
  */
-export function Dialog({ title, children, onClose, initialFocus }: Props) {
+export function Dialog({ title, children, onClose, initialFocus, titleHidden = false, className = '' }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const id = useId()
   const close = useRef(onClose)
@@ -58,8 +61,10 @@ export function Dialog({ title, children, onClose, initialFocus }: Props) {
 
   return (
     <div className="dialog-backdrop">
-      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={`${id}-t`} tabIndex={-1} onKeyDown={onKeyDown}>
-        <h2 id={`${id}-t`}>{title}</h2>
+      <div ref={box} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={`${id}-t`} tabIndex={-1} onKeyDown={onKeyDown}>
+        <h2 id={`${id}-t`} className={titleHidden ? 'visually-hidden' : undefined}>
+          {title}
+        </h2>
         {children}
       </div>
     </div>

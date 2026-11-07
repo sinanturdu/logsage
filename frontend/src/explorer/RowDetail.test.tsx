@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { json, renderApp } from '../test/util'
+import appCss from '../styles/app.css?raw'
 import { COPY_FALLBACK, TRACE_EMPTY, TRACE_ERROR } from './RowDetail'
 import { mockExplorer, type Req } from './testing'
 
@@ -103,6 +104,25 @@ describe('row detail', () => {
     expect(within(d).queryByRole('button', { name: 'Filter by this trace' })).toBeNull()
     expect(d.querySelector('.zones')?.classList.contains('no-trace')).toBe(true)
     expect(within(d).getByText('none')).toBeTruthy()
+  })
+
+  it('uses sentence-case zone headings and no upper-case styling anywhere', async () => {
+    setup([ev(0)])
+    await openFirst()
+    const headings = Array.from((detail() as HTMLElement).querySelectorAll('h3')).map((h) => h.textContent)
+    expect(headings.slice(0, 2)).toEqual(['Request', 'Context'])
+    expect(headings[2]).toMatch(/^Same trace/)
+    expect(appCss).not.toMatch(/text-transform\s*:\s*uppercase/i)
+  })
+
+  it('lays a lone attribute group out in columns, and keeps three zones with a trace', async () => {
+    setup([ev(0, { trace_id: '', attributes: { env: 'prod', region: 'eu-2', version: '1.3.8' } }), ev(1)])
+    const user = await openFirst()
+    const zones = () => (detail() as HTMLElement).querySelector('.zones') as HTMLElement
+    expect(zones().classList.contains('layout-single')).toBe(true)
+    expect(appCss).toContain('.zones.layout-single .pairs { grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr))')
+    await user.keyboard('{Escape}j{Enter}')
+    expect(zones().classList.contains('layout-three')).toBe(true)
   })
 
   it('says No attributes when there are none', async () => {

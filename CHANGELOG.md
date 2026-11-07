@@ -5,6 +5,21 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Command palette (ADR 0020):
+  - Opens with `Ctrl K` or `⌘ K` (also while typing) or the Commands button.
+  - It is a combobox with a listbox, a focus trap and a polite result count.
+  - Commands cover navigation, project switching, time ranges, filters, the live tail, refresh, zoom, copy link, account actions and help, each only when it applies.
+  - A fuzzy matcher in the repo highlights matched letters.
+  - Recent commands are kept in memory.
+- Keyboard shortcuts help (`?`), generated from the one shortcut definition that the handlers use.
+- Per-route document titles ("Logs - demo - LogSage"), announced politely on navigation.
+- The new-key dialog's test-log example has macOS / Linux and Windows PowerShell tabs (the latter uses `curl.exe` with a temp file).
+
+### Changed
+- New-key dialog: the kind name appears once with a short description, and the key is shown in full in a wrapping, selectable block.
+- Explorer timeline: the summary starts with the peaks (the total stays in the scope line), and the notes moved into an "About this chart" disclosure.
+- Live tail: the status says "Receiving new logs". While live, each batch is sorted by event time and goes on top ("latest arrivals first"); turning Live off restores strict newest-first order.
+- Row detail: zone headings are sentence case, and a lone attribute group flows in columns.
 - Live tail in the log explorer (ADR 0019):
   - A Live toggle (also `l`, `live=1` in the URL) streams new logs through a fetch-based SSE client with Last-Event-ID.
   - Backoff starts at 5 s and doubles up to 30 s, with a countdown and Retry now (`r`). A 401 returns to sign-in, a 404 or a 400 stops with a plain reason, and a 429 waits for Retry-After.

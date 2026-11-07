@@ -87,6 +87,7 @@ function TraceInput({ value, onApply }: { value: string; onApply: (v: string) =>
       </h2>
       <input
         id={id}
+        data-field="trace"
         className="mono"
         value={text}
         spellCheck={false}

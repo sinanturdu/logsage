@@ -65,6 +65,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 web
 
 Then open http://localhost:5173/projects/demo/logs. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets. Press `l` (or the Live button) to follow new logs while `go run ./cmd/loadgen demo --rate 2` sends some, and use API keys in the header to create an ingest key; it is shown once.
 
+Keyboard shortcuts (press `?` in the dashboard for the same list):
+
+| Keys | Where | What |
+|---|---|---|
+| `Ctrl K` / `⌘ K` | anywhere, also while typing | open the command palette |
+| `?` | anywhere | show keyboard shortcuts |
+| `/` | log explorer | focus the search box |
+| `j` / `k` | log explorer | select the next / previous log |
+| `Enter` / `Space` | log explorer | expand or collapse the selected log |
+| `Escape` | log explorer | close the detail, then clear the selection; closes menus and dialogs |
+| `t` | log explorer | filter by the selected log's trace |
+| `l` | live tail | turn the live tail on or off |
+| `r` | live tail | reconnect now while it waits to retry |
+
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.
 - The dev login is printed once and kept in `.dev/login.txt`. `.dev/` is local-only and git-ignored, like `.env`.

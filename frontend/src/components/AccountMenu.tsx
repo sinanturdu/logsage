@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { ApiError, api, errorMessage, request } from '../api/client'
@@ -146,12 +146,39 @@ function LogoutAllDialog({ onClose, onDone }: { onClose: () => void; onDone: () 
  * password, Sign out of all devices and Sign out. Arrow keys move between
  * items; Escape closes the menu and returns focus to the button.
  */
-export function AccountMenu() {
-  const me = useMe()
+export type AccountDialog = 'password' | 'all' | null
+
+/** Sign-out and its aftermath (clear the cache, go to sign-in), shared with the palette. */
+export function useSignOut() {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const ended = useCallback(() => {
+    qc.clear()
+    navigate('/login', { replace: true })
+  }, [qc, navigate])
+  const signOut = useCallback(async () => {
+    try {
+      await api.logout()
+    } catch {
+      // The cookie is cleared or already invalid either way; sign-in follows.
+    }
+    ended()
+  }, [ended])
+  return { signOut, ended }
+}
+
+/** The account dialogs, rendered by the shell so the palette can open them too. */
+export function AccountDialogs({ dialog, onClose }: { dialog: AccountDialog; onClose: () => void }) {
+  const { ended } = useSignOut()
+  if (dialog === 'password') return <ChangePasswordDialog onClose={onClose} />
+  if (dialog === 'all') return <LogoutAllDialog onClose={onClose} onDone={ended} />
+  return null
+}
+
+export function AccountMenu({ onDialog }: { onDialog: (d: AccountDialog) => void }) {
+  const me = useMe()
+  const { signOut } = useSignOut()
   const [open, setOpen] = useState(false)
-  const [dialog, setDialog] = useState<'password' | 'all' | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -198,23 +225,11 @@ export function AccountMenu() {
     }
   }
 
-  const ended = () => {
-    qc.clear()
-    navigate('/login', { replace: true })
-  }
-  async function signOut() {
-    try {
-      await api.logout()
-    } catch {
-      // The cookie is cleared or already invalid either way; sign-in follows.
-    }
-    ended()
-  }
   const pick = (what: 'password' | 'all') => {
     // The menu item goes away; the dialog returns focus to the Account button.
     button.current?.focus()
     setOpen(false)
-    setDialog(what)
+    onDialog(what)
   }
 
   return (
@@ -247,8 +262,6 @@ export function AccountMenu() {
           </div>
         </div>
       )}
-      {dialog === 'password' && <ChangePasswordDialog onClose={() => setDialog(null)} />}
-      {dialog === 'all' && <LogoutAllDialog onClose={() => setDialog(null)} onDone={ended} />}
     </div>
   )
 }

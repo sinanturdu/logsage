@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Link, Route, Routes } from 'react-router'
 import { ApiError } from './api/client'
 import { RequireAuth, SessionWatcher } from './auth/session'
+import { RouteTitle } from './components/RouteTitle'
 import { Shell } from './components/Shell'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -38,6 +39,7 @@ export function App({ client }: { client: QueryClient }) {
   return (
     <QueryClientProvider client={client}>
       <SessionWatcher />
+      <RouteTitle />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route

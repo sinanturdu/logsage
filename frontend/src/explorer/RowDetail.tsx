@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { request } from '../api/client'
 import { LogText } from '../components/LogText'
 import { copyText } from './clipboard'
-import { SAME_TRACE_LIMIT, groupAttributes, logJson, sameTraceWindow, type Pair } from './detail'
+import { SAME_TRACE_LIMIT, groupAttributes, logJson, sameTraceWindow, zoneLayout, type Pair } from './detail'
 import type { LogEvent } from './api'
 import { LEVEL_SHAPE, isoUtc } from './model'
 import { rowTime } from './time'
@@ -174,7 +174,7 @@ export function RowDetail({ slug, event, onFilterTrace, onShow }: Props) {
           </button>
         </div>
       </div>
-      <div className={`zones${hasTrace ? '' : ' no-trace'}`}>
+      <div className={`zones layout-${zoneLayout(g, hasTrace)}${hasTrace ? '' : ' no-trace'}`}>
         {g.request.length > 0 && (
           <section className="zone">
             <h3>Request</h3>
