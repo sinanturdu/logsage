@@ -14,31 +14,16 @@ Mockups of the log explorer for each direction are in `docs/design/mockups/`. Op
   - `/` focuses search, `j`/`k` move between rows, `Enter` expands a row and `Esc` collapses it.
   - `t` pivots to the focused row's trace, and `Ctrl+K` / `⌘K` opens the command palette (switch project, jump to a screen, set the time range).
   - Focus is always visible as a 2px outline in the direction's focus color.
-- **Levels are never shown by color alone.** Each level has a word (`debug info warn error fatal`, lower case, the same as the API values) and a shape:
-
-  | level | shape |
-  |-------|-------|
-  | debug | `○` |
-  | info | `●` |
-  | warn | `▲` |
-  | error | `■` |
-  | fatal | `◆` |
-
-  The level colors come from color-blind-safe hues (blue, orange, vermilion, red-purple, grey) and are adjusted to each background.
+- **Levels are never shown by color alone.** Each level has a word (lower case, the same as the API values) and a shape: debug `○`, info `●`, warn `▲`, error `■`, fatal `◆`. The level colors come from color-blind-safe hues (blue, orange, vermilion, red-purple, grey) and are adjusted to each background.
 - **Contrast.** Text and level colors were checked against WCAG AA (4.5:1 or better on their background; the lowest is 4.7:1).
-- **Device sizes.**
-  - Full use at 1024px and up.
-  - At 768px (tablet) the filter column collapses into a drawer.
-  - On phones the screens are read-only, with one column and no live tail controls.
+- **Device sizes.** Full use at 1024px and up; at 768px (tablet) the filter column collapses into a drawer; on phones the screens are read-only, with one column and no live tail controls.
 - **Reduced motion.** `prefers-reduced-motion: reduce` turns off every transition; nothing in the dashboard depends on motion.
 - **Fonts.** The mockups load fonts from Google Fonts only for the preview. Production self-hosts the WOFF2 files. All the fonts used are under the SIL Open Font License.
 - **Data.** Times are shown in UTC by default with a toggle for local time. Numbers are exact counts from the API; nothing is rounded for show.
 
----
-
 ## Direction A: Dark cockpit
 
-**Concept.** In aviation, a "dark cockpit" is a panel where every light is off when the systems are normal, so the one lamp that comes on is impossible to miss. The explorer stays grey and quiet, and color is spent only on abnormal things: warn, error and fatal rows, and services whose error rate is above their own baseline.
+**Concept.** In aviation, a "dark cockpit" is a panel where every light is off when the systems are normal, so the one lamp that comes on is impossible to miss. The explorer stays grey and quiet, and color is spent only on abnormal things: the level marks of warn, error and fatal rows, and services whose error rate is above their own baseline.
 
 **Palette** (default dark)
 
@@ -53,15 +38,9 @@ Mockups of the log explorer for each direction are in `docs/design/mockups/`. Op
 
 Info is `#8CC4F0` (7.7:1) and fatal is `#EFA3F5` (7.7:1). Info is deliberately close to the text color in weight: normal is not news.
 
-**Type.**
-- B612 (Airbus and ENAC, OFL) for UI. It was designed for cockpit displays, so it is legible at small sizes, under fatigue and in low light.
-- B612 Mono for log messages, timestamps, trace ids and attribute values. Monospace is used only where columns of machine text must align or a character must be copied exactly (`0`/`O`, `l`/`1` in trace ids).
-- Scale: 12 / 13 / 14 / 16 / 20 px. Rows are 13px mono and the body text is 14px. Weights are 400 and 700 only.
+**Type.** B612 (Airbus and ENAC, OFL) for UI. It was designed for cockpit displays, so it is legible at small sizes, under fatigue and in low light. B612 Mono for log messages, timestamps, trace ids and attribute values. Monospace is used only where columns of machine text must align or a character must be copied exactly (`0`/`O`, `l`/`1` in trace ids). Scale: 12 / 13 / 14 / 16 / 20 px. Rows are 13px mono and the body text is 14px. Weights are 400 and 700 only.
 
-**Layout.**
-- A single column, full width, dense.
-- An annunciator row sits at the top, then a 48px timeline strip, the filter bar and the table.
-- Columns align on a 4px grid. Timestamps are right-aligned so the seconds line up. The level column is a fixed 9ch wide, and messages are left-aligned and never wrap unless the row is expanded.
+**Layout.** A single column, full width, dense. An annunciator row sits at the top, then a 48px timeline strip, the filter bar and the table. Columns align on a 4px grid. Timestamps are right-aligned so the seconds line up. The level column is a fixed 9ch wide, and messages are left-aligned and never wrap unless the row is expanded.
 
 ```
 +----------------------------------------------------------------------------+
@@ -79,28 +58,16 @@ Info is `#8CC4F0` (7.7:1) and fatal is `#EFA3F5` (7.7:1). Info is deliberately c
 +----------------------------------------------------------------------------+
 ```
 
-**The one memorable element: the annunciator row.**
-- Every service is a plain word on the panel.
-- A service whose error rate over the selected range is above its own 24-hour baseline lights up: its word gets the Caution or Warning color, a lamp glyph (`(*)` in the wireframe) and the rate (`payments 38% errors`).
-- Clicking a lit service filters to it.
-- Nothing else on the screen is colored or bold.
+**The one memorable element: the annunciator row.** Every service is a plain word on the panel. A service whose error rate over the selected range is above its own 24-hour baseline lights up: its word gets the Caution or Warning color, a lamp glyph (`(*)` in the wireframe) and the rate (`payments 38% errors`). Clicking a lit service filters to it. Apart from level marks, nothing else on the screen is colored or bold.
 
-**Motion.**
-- A live-tail row arrives with a 120ms background flash in Bezel, and nothing else moves.
-- An expanding row opens instantly; the only transition is a 100ms height change.
-- An annunciator lamp turning on is a color change only, with no blinking (blinking is reserved for nothing).
-- With reduced motion there is no flash and no height change.
+**Motion.** A live-tail row arrives with a 120ms background flash in Bezel, and nothing else moves. An expanding row opens instantly; the only transition is a 100ms height change. An annunciator lamp turning on is a color change only, with no blinking (blinking is reserved for nothing). With reduced motion there is no flash and no height change.
 
-**Theme.**
-- Dark by default. The audience works at night next to a sleeping household, and a dark-cockpit concept only works when "normal" recedes.
-- A light theme ("day panel": `#EEF1F2` background, `#1D262B` text, darker level colors) exists for daylight and projectors. The choice is per user and remembered.
+**Theme.** Dark by default. The audience works at night next to a sleeping household, and a dark-cockpit concept only works when "normal" recedes. A light theme ("day panel": `#EEF1F2` background, `#1D262B` text, darker level colors, still to be contrast-checked) exists for daylight and projectors. The choice is per user and remembered.
 
 **Copy.**
 - Empty: "No logs match these filters in the last 15 minutes. Widen the time range or clear the service filter."
 - Error: "The log search timed out after 30 seconds. Narrow the time range or add a service filter, then search again."
 - Key created: "Your ingest key is shown once. Copy it now and store it in your secret manager; LogSage keeps only a hash and cannot show it again."
-
----
 
 ## Direction B: Strip chart
 
@@ -119,16 +86,9 @@ Info is `#8CC4F0` (7.7:1) and fatal is `#EFA3F5` (7.7:1). Info is deliberately c
 
 Warn is `#8A5A00` (5.5:1) and fatal is `#7B2269` (8.5:1).
 
-**Type.**
-- Red Hat Text (OFL) for UI.
-- Red Hat Mono (OFL) for messages, times and ids. The two share proportions and x-height, so mono messages sit on the same baseline as sans labels without a visible jump; mono is used only for machine text.
-- Scale: 12 / 14 / 15 / 18 / 24 px. The 24px size is used once, for the time range readout above the chart.
+**Type.** Red Hat Text (OFL) for UI. Red Hat Mono (OFL) for messages, times and ids. The two share proportions and x-height, so mono messages sit on the same baseline as sans labels without a visible jump; mono is used only for machine text. Scale: 12 / 14 / 15 / 18 / 24 px. The 24px size is used once, for the time range readout above the chart.
 
-**Layout.**
-- The chart is the hero: 160px tall and full width, on a visible grid.
-- Below it sits a two-column body: a 220px filter column on the left (level checkboxes with counts, services with counts, trace id) and the list on the right.
-- Between rows more than 30 seconds apart, a thin gap line reads "42 s quiet", so bursts look compressed and quiet periods look open.
-- Every chart x-position aligns with the list's time column header.
+**Layout.** The chart is the hero: 160px tall and full width, on a visible grid. Below it sits a two-column body: a 220px filter column on the left (level checkboxes with counts, services with counts, trace id) and the list on the right. Between rows more than 30 seconds apart, a thin gap line reads "42 s quiet", so bursts look compressed and quiet periods look open. Every chart x-position aligns with the list's time column header.
 
 ```
 +----------------------------------------------------------------------------+
@@ -150,28 +110,16 @@ Warn is `#8A5A00` (5.5:1) and fatal is `#7B2269` (8.5:1).
 +-------------------+--------------------------------------------------------+
 ```
 
-**The one memorable element: the pen trace.**
-- Log volume is drawn as one continuous blue pen line over the grid, not as bars, with the error rate as a second red line.
-- Dragging across the chart lays a translucent blue band (the brush) that sets the time range.
-- The current mouse position draws a vertical hairline that also highlights the nearest list row's time.
-- The rest of the screen is flat paper.
+**The one memorable element: the pen trace.** Log volume is drawn as one continuous blue pen line over the grid, not as bars, with the error rate as a second red line. Dragging across the chart lays a translucent blue band (the brush) that sets the time range. The current mouse position draws a vertical hairline that also highlights the nearest list row's time. The rest of the screen is flat paper.
 
-**Motion.**
-- While live tail is on, the trace extends to the right as new buckets arrive. This is a real change, drawn without easing.
-- New rows insert at the top with no slide. A "3 new rows" marker sits above them until you scroll.
-- Expanding a row is instant.
-- With reduced motion the trace still updates (it is data) but without the 200ms line-drawing interpolation.
+**Motion.** While live tail is on, the trace extends to the right as new buckets arrive. This is a real change, drawn without easing. New rows insert at the top with no slide. A "3 new rows" marker sits above them until you scroll. Expanding a row is instant. With reduced motion the trace still updates (it is data) but without the 200ms line-drawing interpolation.
 
-**Theme.**
-- Light by default. This direction is about reading dense mixed text and a chart precisely, and dark-on-light gives the highest acuity for long reading. It is also how postmortems, which reuse these views, get shared and printed.
-- A dark "night paper" theme (`#1A2120` background, Grid `#2F3B38`, lighter pens) follows the OS when the user picks "match system".
+**Theme.** Light by default. This direction is about reading dense mixed text and a chart precisely, and dark-on-light gives the highest acuity for long reading. It is also how postmortems, which reuse these views, get shared and printed. A dark "night paper" theme (`#1A2120` background, Grid `#2F3B38`, lighter pens) follows the OS when the user picks "match system".
 
 **Copy.**
 - Empty: "Nothing was logged between 02:02 and 02:17 for these filters. Drag across the chart to pick another range."
 - Error: "Could not load the chart: the server returned 503 because the log store is unreachable. The list below may be incomplete; try again in a minute."
 - Key created: "Copy this query key now. It will not be shown again; if you lose it, revoke it and create a new one."
-
----
 
 ## Direction C: Trailhead
 
@@ -192,16 +140,9 @@ Warn is `#8F5B00` (5.5:1) and fatal is `#6B2C91` (8.5:1).
 
 The dark theme uses `#152029` as background with lifted level colors (all 7:1 or higher).
 
-**Type.**
-- Overpass (OFL) for UI. It is derived from Highway Gothic, the US road-sign face, so it is wide, open and readable at a glance.
-- Overpass Mono for messages, times, ids and attribute values only, where copying exactly and aligning matter.
-- Scale: 12 / 13 / 15 / 17 / 22 px. Sign labels are 15px bold, in sentence case.
+**Type.** Overpass (OFL) for UI. It is derived from Highway Gothic, the US road-sign face, so it is wide, open and readable at a glance. Overpass Mono for messages, times, ids and attribute values only, where copying exactly and aligning matter. Scale: 12 / 13 / 15 / 17 / 22 px. Sign labels are 15px bold, in sentence case.
 
-**Layout.**
-- Three panes: a slim filter rail (200px), the list (flexible), and a detail pane (360px) that shows the focused row's attributes and its trace's other rows.
-- No inline expansion: selecting a row fills the detail pane, so the list never jumps.
-- The trail sits under the header. The timeline is a 40px strip above the list, aligned to the list's width.
-- On tablets the detail pane becomes a bottom sheet.
+**Layout.** Three panes: a slim filter rail (200px), the list (flexible), and a detail pane (360px) that shows the focused row's attributes and its trace's other rows. No inline expansion: selecting a row fills the detail pane, so the list never jumps. The trail sits under the header. The timeline is a 40px strip above the list, aligned to the list's width. On tablets the detail pane becomes a bottom sheet.
 
 ```
 +----------------------------------------------------------------------------+
@@ -220,28 +161,16 @@ The dark theme uses `#152029` as background with lifted level colors (all 7:1 or
 +-----------+--------------------------------------+-------------------------+
 ```
 
-**The one memorable element: the trail.**
-- Each filter or pivot is posted as a green road sign with white text, left to right in the order you made them: "Last 15 min", "service is payments", "trace 4bf92f35".
-- Clicking a sign goes back to that point and drops the signs after it. Hovering a sign shows a cross to remove just that one.
-- The browser's back button walks the same trail, because each sign is a URL state.
-- Nothing else uses green.
+**The one memorable element: the trail.** Each filter or pivot is posted as a green road sign with white text, left to right in the order you made them: "Last 15 min", "service is payments", "trace 4bf92f35". Clicking a sign goes back to that point and drops the signs after it. Hovering a sign shows a cross to remove just that one. The browser's back button walks the same trail, because each sign is a URL state. Nothing else uses green.
 
-**Motion.**
-- A new sign appears on the trail instantly, with no slide.
-- A live-tail row arrives with a 2px Signal blue left edge that fades over 1 s, showing "this is new".
-- The detail pane swaps content without animation.
-- With reduced motion the new-row edge stays for 1 s and disappears without fading.
+**Motion.** A new sign appears on the trail instantly, with no slide. A live-tail row arrives with a 2px Signal blue left edge that fades over 1 s, showing "this is new". The detail pane swaps content without animation. With reduced motion the new-row edge stays for 1 s and disappears without fading.
 
-**Theme.**
-- Follows the OS by default (light or dark). People who are paged at night usually already run their OS in dark mode at night, and the signage palette was built to hold contrast in both.
-- An explicit override is in account settings.
+**Theme.** Follows the OS by default (light or dark). People who are paged at night usually already run their OS in dark mode at night, and the signage palette was built to hold contrast in both. An explicit override is in account settings.
 
 **Copy.**
 - Empty: "No logs on this trail. Step back to "service is payments" or widen the time range."
 - Error: "This trace id is not valid: it must be 32 hexadecimal characters. Check the value you pasted."
 - Key created: "Here is your new ingest key. Copy it now; after you leave this page only its prefix lsk_ing_uj3ey33v is shown."
-
----
 
 ## Review pass (what changed after the first draft)
 
@@ -251,6 +180,16 @@ The dark theme uses `#152029` as background with lifted level colors (all 7:1 or
 - **C:** the first draft was light with a top chart and a two-column list, too close to B. It now follows the OS theme, uses a three-pane layout with a detail pane instead of inline expansion, and spends its boldness on the trail.
 - **All:** the first draft put levels in upper-case pills (`ERROR`). Levels are now lower-case words plus a shape, matching the API values, with no pills.
 - **All:** the first draft had a "Retry →" button. The arrow was dropped; buttons say what they do.
+
+## Mockup notes
+
+- Each mockup was checked in a browser at 1366px and 768px wide. Tablet layouts work; on tablets C stacks the detail pane below the list instead of showing the bottom sheet.
+- One decoration was removed from each:
+  - A: the border around the project switcher.
+  - B: the horizontal grid lines in the chart (the vertical time grid stays).
+  - C: the rules between rows in the "Same trace" list.
+- After the first look, A's warn and error messages were made plain text again: only the level column carries color, otherwise an incident turns the whole list orange and red.
+- C's dark theme (OS dark mode) could not be checked visually, because the preview renders local files in light mode only; its colors pass the contrast check.
 
 ## Comparison
 
@@ -283,8 +222,6 @@ The per-service baseline can start simply: the error rate over the selected rang
 5. Should the theme preference be stored per user on the server, or per browser?
 6. Should the annunciator baseline (if A) be computed in ClickHouse per request, or precomputed by the processor?
 
----
-
 ## Frontend plan for I2
 
 **Stack:** React + TypeScript + Vite in `frontend/`, built to static files that the `api` service (or a static server on the same origin) serves. Each dependency below needs the owner's approval, and nothing is installed yet.
@@ -299,11 +236,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 | `@tanstack/react-virtual` | renders only visible rows, so a 10,000-row result stays fast on a tablet |
 | `@fontsource/<chosen fonts>` | self-hosted font files through the bundler, no Google Fonts at runtime |
 
-**Development dependencies**
-- `typescript`, `vite`, `@vitejs/plugin-react`.
-- `vitest`, `@testing-library/react` and `@testing-library/user-event` for unit tests.
-- `eslint` with `typescript-eslint`.
-- `@playwright/test` later, for end-to-end tests against the compose stack.
+**Development dependencies:** `typescript`, `vite`, `@vitejs/plugin-react`; `vitest`, `@testing-library/react` and `@testing-library/user-event` for unit tests; `eslint` with `typescript-eslint`; later `@playwright/test` for end-to-end tests against the compose stack.
 
 **Not added:**
 - No chart library: the timeline is a hand-written SVG of about 200 lines. It needs bars or a line plus a brush, and the scales are a few lines of arithmetic.
