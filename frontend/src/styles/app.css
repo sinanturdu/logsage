@@ -269,3 +269,11 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 }
 .menu-item { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 6px 8px; font: inherit; font-size: var(--text-md); color: var(--ink); border-radius: var(--radius); cursor: pointer; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--select); }
+.key-label { margin: var(--space-3) 0 2px; font-weight: 500; }
+.secret { align-items: flex-start; }
+.key-block { flex: 1; min-width: 0; font: var(--text-md) var(--font-mono); overflow-wrap: anywhere; word-break: break-all; user-select: all; background: var(--white); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 8px; cursor: text; }
+.choice-desc { color: var(--pencil); }
+.examples [role='tablist'] { display: flex; gap: 2px; border-bottom: 1px solid var(--line-strong); }
+.examples [role='tab'] { background: none; border: 1px solid transparent; border-bottom: 0; padding: 4px 10px; font: inherit; font-size: var(--text-sm); color: var(--pencil); cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; }
+.examples [role='tab'][aria-selected='true'] { color: var(--ink); border-color: var(--line-strong); background: var(--white); margin-bottom: -1px; }
+.examples .curl { margin-top: 0; border-top: 0; }

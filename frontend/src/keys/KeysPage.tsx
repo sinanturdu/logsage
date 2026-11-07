@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { errorMessage } from '../api/client'
@@ -33,13 +33,107 @@ function When({ iso, none = '–' }: { iso: string | null; none?: string }) {
   return iso ? <time dateTime={d.title} title={d.title}>{d.text}</time> : <>{none}</>
 }
 
-/** The curl example uses a placeholder: the real key never appears in it. */
+const INGEST_URL = 'http://localhost:8080/v1/ingest'
+const stamp = (now: number) => `${new Date(now).toISOString().slice(0, 19)}Z`
+const body = (slug: string, now: number, from: string) =>
+  `{"events":[{"timestamp":"${stamp(now)}","level":"info","service":"${slug.replace(/[^a-z0-9-]/g, '')}-app","message":"hello from ${from}"}]}`
+
+/** macOS / Linux: curl with a single-quoted body. Always the placeholder, never the key. */
 export const curlExample = (slug: string, now: number) =>
   [
-    'curl -X POST http://localhost:8080/v1/ingest \\',
+    `curl -X POST ${INGEST_URL} \\`,
     '  -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" \\',
-    `  -d '{"events":[{"timestamp":"${new Date(now).toISOString().slice(0, 19)}Z","level":"info","service":"${slug.replace(/[^a-z0-9-]/g, '')}-app","message":"hello from curl"}]}'`,
+    `  -d '${body(slug, now, 'curl')}'`,
   ].join('\n')
+
+/**
+ * Windows PowerShell: the body goes to a temp file (ASCII, so no BOM), then
+ * curl.exe sends it; the bare curl alias would run Invoke-WebRequest.
+ */
+export const powershellExample = (slug: string, now: number) =>
+  [
+    `$body = '${body(slug, now, 'PowerShell')}'`,
+    "$file = Join-Path $env:TEMP 'logsage-event.json'",
+    'Set-Content -Path $file -Value $body -Encoding ascii -NoNewline',
+    `curl.exe -X POST ${INGEST_URL} -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" --data-binary "@$file"`,
+  ].join('\n')
+
+const EXAMPLES = [
+  { id: 'unix', label: 'macOS / Linux', text: curlExample },
+  { id: 'ps', label: 'Windows PowerShell', text: powershellExample },
+] as const
+
+/** The test-log example in two tabs (WAI-ARIA tabs: arrow keys, Home, End). */
+function ExampleTabs({ slug }: { slug: string }) {
+  const id = useId()
+  // The timestamp is taken when the example first renders.
+  const [now] = useState(() => Date.now())
+  const [active, setActive] = useState(0)
+  const tabs = useRef<(HTMLButtonElement | null)[]>([])
+  const select = (i: number) => {
+    const n = (i + EXAMPLES.length) % EXAMPLES.length
+    setActive(n)
+    tabs.current[n]?.focus()
+  }
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const keys: Record<string, number> = { ArrowRight: active + 1, ArrowLeft: active - 1, Home: 0, End: EXAMPLES.length - 1 }
+    const next = keys[e.key]
+    if (next === undefined) return
+    e.preventDefault()
+    select(next)
+  }
+  return (
+    <div className="examples">
+      <div role="tablist" aria-label="Send a test log from" onKeyDown={onKey}>
+        {EXAMPLES.map((x, i) => (
+          <button
+            key={x.id}
+            ref={(el) => {
+              tabs.current[i] = el
+            }}
+            type="button"
+            role="tab"
+            id={`${id}-tab-${x.id}`}
+            aria-selected={i === active}
+            aria-controls={`${id}-panel-${x.id}`}
+            tabIndex={i === active ? 0 : -1}
+            onClick={() => setActive(i)}
+          >
+            {x.label}
+          </button>
+        ))}
+      </div>
+      {EXAMPLES.map((x, i) => (
+        <pre
+          key={x.id}
+          role="tabpanel"
+          id={`${id}-panel-${x.id}`}
+          aria-labelledby={`${id}-tab-${x.id}`}
+          tabIndex={0}
+          hidden={i !== active}
+          className="curl"
+        >
+          {x.text(slug, now)}
+        </pre>
+      ))}
+    </div>
+  )
+}
+
+/** Selects the whole key, so one click or focus is enough to copy it by hand. */
+function selectAll(el: HTMLElement) {
+  const sel = window.getSelection()
+  if (!sel) return
+  sel.removeAllRanges()
+  const r = document.createRange()
+  r.selectNodeContents(el)
+  sel.addRange(r)
+}
+
+export const KINDS = [
+  { kind: 'ingest', label: 'Ingest', description: 'Sends logs to LogSage.' },
+  { kind: 'query', label: 'Query', description: 'Reads logs through the API.' },
+] as const
 
 function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void }) {
   const qc = useQueryClient()
@@ -80,9 +174,23 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
     return (
       <Dialog title={`Your new ${created.info.kind} key`}>
         <p className="once">{ONCE_TEXT}</p>
-        <label htmlFor={`${id}-key`}>Key</label>
+        <p className="key-label" id={`${id}-key-label`}>
+          Key
+        </p>
         <div className="secret">
-          <input id={`${id}-key`} className="mono" readOnly value={created.key} onFocus={(e) => e.currentTarget.select()} spellCheck={false} autoComplete="off" />
+          <div
+            className="key-block"
+            role="textbox"
+            aria-readonly="true"
+            aria-multiline="true"
+            aria-labelledby={`${id}-key-label`}
+            tabIndex={0}
+            spellCheck={false}
+            onClick={(e) => selectAll(e.currentTarget)}
+            onFocus={(e) => selectAll(e.currentTarget)}
+          >
+            {created.key}
+          </div>
           <button type="button" className="button" onClick={async () => setNote((await copyText(created.key)) ? 'Copied the key.' : COPY_FALLBACK)}>
             Copy
           </button>
@@ -92,8 +200,8 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
         </p>
         {created.info.kind === 'ingest' && (
           <>
-            <p>Send a test log (replace YOUR_KEY with the key):</p>
-            <pre className="curl">{curlExample(slug, Date.parse(created.info.created_at))}</pre>
+            <p>Send a test log. Replace YOUR_KEY with the key, and the address if your ingest API runs elsewhere.</p>
+            <ExampleTabs slug={slug} />
           </>
         )}
         <label className="check">
@@ -113,18 +221,25 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
       <form onSubmit={(e) => void submit(e)} noValidate>
         <fieldset>
           <legend>Kind</legend>
-          <label className="choice">
-            <input type="radio" name={`${id}-kind`} value="ingest" checked={kind === 'ingest'} onChange={() => setKind('ingest')} />
-            <span>
-              <b>Ingest</b> Ingest keys send logs to LogSage.
-            </span>
-          </label>
-          <label className="choice">
-            <input type="radio" name={`${id}-kind`} value="query" checked={kind === 'query'} onChange={() => setKind('query')} />
-            <span>
-              <b>Query</b> Query keys read logs through the API.
-            </span>
-          </label>
+          {KINDS.map((k) => (
+            <label key={k.kind} className="choice">
+              <input
+                type="radio"
+                name={`${id}-kind`}
+                value={k.kind}
+                checked={kind === k.kind}
+                aria-labelledby={`${id}-kname-${k.kind}`}
+                aria-describedby={`${id}-kind-${k.kind}`}
+                onChange={() => setKind(k.kind)}
+              />
+              <span>
+                <b id={`${id}-kname-${k.kind}`}>{k.label}</b>{' '}
+                <span className="choice-desc" id={`${id}-kind-${k.kind}`}>
+                  {k.description}
+                </span>
+              </span>
+            </label>
+          ))}
         </fieldset>
         <label htmlFor={`${id}-name`}>Name</label>
         <input

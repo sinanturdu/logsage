@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { alice, json, mockApi, project, renderApp } from '../test/util'
 import { COPY_FALLBACK } from '../explorer/RowDetail'
 import { sortKeys, type KeyInfo } from './api'
-import { EMPTY_KEYS, ONCE_TEXT, REVOKE_TEXT, VIEWER_TEXT, curlExample, dateUtc } from './KeysPage'
+import { EMPTY_KEYS, ONCE_TEXT, REVOKE_TEXT, VIEWER_TEXT, curlExample, dateUtc, powershellExample } from './KeysPage'
 
 const SECRET = 'lsk_ingest_9f3Kq2Lx7Vb4Np1Rt8Wz5Yc6Hd0Ja3Me'
 const key = (prefix: string, over: Partial<KeyInfo> = {}): KeyInfo => ({
@@ -117,20 +117,37 @@ describe('create key', () => {
     const opener = screen.getByRole('button', { name: 'Create key' })
     await user.click(opener)
     const dialog = screen.getByRole('dialog', { name: 'Create an API key' })
-    expect(within(dialog).getByText('Ingest keys send logs to LogSage.')).toBeTruthy()
-    expect(within(dialog).getByText('Query keys read logs through the API.')).toBeTruthy()
+    const ingest = within(dialog).getByRole('radio', { name: 'Ingest' })
+    expect(ingest.getAttribute('aria-describedby') && document.getElementById(ingest.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Sends logs to LogSage.')
+    expect(within(dialog).getByRole('radio', { name: 'Query' })).toBeTruthy()
+    expect(within(dialog).getByText('Reads logs through the API.')).toBeTruthy()
+    expect(dialog.textContent).not.toMatch(/Ingest\s+Ingest|Query\s+Query/) // the kind name appears once
     await user.type(within(dialog).getByLabelText('Name'), 'checkout-prod')
     await user.selectOptions(within(dialog).getByLabelText('Expires'), '90 days')
     await user.click(within(dialog).getByRole('button', { name: 'Create' }))
 
     const reveal = await screen.findByRole('dialog', { name: 'Your new ingest key' })
     expect(body).toEqual({ kind: 'ingest', name: 'checkout-prod', expires_in: '2160h' })
-    expect((within(reveal).getByLabelText('Key') as HTMLInputElement).value).toBe(SECRET)
-    expect(within(reveal).getByLabelText('Key').hasAttribute('readonly')).toBe(true)
+    const block = within(reveal).getByRole('textbox', { name: 'Key' })
+    expect(block.textContent).toBe(SECRET) // in full, wrapping, not clipped in an input
+    expect(block.getAttribute('aria-readonly')).toBe('true')
+    await user.click(block)
+    expect(window.getSelection()?.toString()).toBe(SECRET)
     expect(within(reveal).getByText(ONCE_TEXT)).toBeTruthy()
-    const curl = reveal.querySelector('pre')?.textContent ?? ''
-    expect(curl).toContain('YOUR_KEY')
-    expect(curl).not.toContain(SECRET)
+    const tabs = within(reveal).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['macOS / Linux', 'Windows PowerShell'])
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true')
+    const panel = () => within(reveal).getByRole('tabpanel')
+    expect(panel().textContent).toContain("-d '{")
+    tabs[0]?.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(document.activeElement).toBe(tabs[1])
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true')
+    expect(panel().textContent).toContain('curl.exe')
+    for (const pre of reveal.querySelectorAll('pre')) {
+      expect(pre.textContent).toContain('YOUR_KEY')
+      expect(pre.textContent).not.toContain(SECRET)
+    }
 
     // Escape does not close it; Done needs the confirmation.
     await user.keyboard('{Escape}')
@@ -161,7 +178,7 @@ describe('create key', () => {
     await table()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Create key' }))
-    await user.click(screen.getByLabelText(/Query keys read logs/))
+    await user.click(screen.getByRole('radio', { name: 'Query' }))
     await user.type(screen.getByLabelText('Name'), 'reader')
     await user.click(screen.getByRole('button', { name: 'Create' }))
     const reveal = await screen.findByRole('dialog', { name: 'Your new query key' })
@@ -217,6 +234,14 @@ describe('create key', () => {
     const c = curlExample('shop', Date.UTC(2026, 10, 7, 16, 40, 5, 250))
     expect(c).toContain('X-API-Key: YOUR_KEY')
     expect(c).toContain('"timestamp":"2026-11-07T16:40:05Z"') // the ingest API requires one
+    expect(c).toMatch(/-d '\{.*\}'$/) // a single-quoted body
+    const ps = powershellExample('shop', Date.UTC(2026, 10, 7, 16, 40, 5))
+    expect(ps).toContain('Set-Content -Path $file -Value $body -Encoding ascii -NoNewline')
+    expect(ps).toContain('curl.exe -X POST')
+    expect(ps).toContain('--data-binary "@$file"')
+    expect(ps).toContain('X-API-Key: YOUR_KEY')
+    expect(ps.split('\n').some((l) => /^curl\s/.test(l))).toBe(false) // never the bare curl alias
+    expect(ps).toContain('"timestamp":"2026-11-07T16:40:05Z"')
   })
 })
 
