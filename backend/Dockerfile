@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ \
-      ./cmd/ingest ./cmd/processor ./cmd/query ./cmd/admin
+      ./cmd/ingest ./cmd/processor ./cmd/query ./cmd/admin ./cmd/api
 
 # Alpine rather than distroless: compose healthchecks use busybox wget.
 FROM alpine:3.20

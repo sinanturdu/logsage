@@ -68,7 +68,12 @@ func migrated(t *testing.T) (*pgxpool.Pool, *Store) {
 
 func embedded0001(t *testing.T) []byte {
 	t.Helper()
-	b, err := fs.ReadFile(migrations.Postgres(), "0001_projects_and_api_keys.sql")
+	return embedded(t, "0001_projects_and_api_keys.sql")
+}
+
+func embedded(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := fs.ReadFile(migrations.Postgres(), name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +87,11 @@ func TestIntegrationMigrateAppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Applied) != 1 || res.Applied[0] != "0001_projects_and_api_keys" || res.Current != 1 {
+	if len(res.Applied) != 2 || res.Applied[0] != "0001_projects_and_api_keys" || res.Applied[1] != "0002_users_sessions_members_audit" || res.Current != 2 {
 		t.Fatalf("first run = %+v", res)
 	}
 	res, err = Migrate(ctx, pool, migrations.Postgres())
-	if err != nil || len(res.Applied) != 0 || res.Current != 1 {
+	if err != nil || len(res.Applied) != 0 || res.Current != 2 {
 		t.Fatalf("second run = %+v, %v; want nothing applied", res, err)
 	}
 	var id, slug string
@@ -95,8 +100,8 @@ func TestIntegrationMigrateAppliesAndIsIdempotent(t *testing.T) {
 	}
 	var n int
 	_ = pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&n)
-	if n != 1 {
-		t.Errorf("schema_migrations rows = %d, want 1", n)
+	if n != 2 {
+		t.Errorf("schema_migrations rows = %d, want 2", n)
 	}
 }
 
@@ -129,13 +134,14 @@ func TestIntegrationMigrateDetectsChanges(t *testing.T) {
 		{
 			name: "pending migration older than the newest applied fails",
 			second: fstest.MapFS{
-				"0001_projects_and_api_keys.sql": {Data: orig},
-				"0002_late.sql":                  {Data: []byte("SELECT 1;")},
-				"0003_applied.sql":               {Data: []byte("SELECT 3;")},
+				"0001_projects_and_api_keys.sql":        {Data: orig},
+				"0002_users_sessions_members_audit.sql": {Data: embedded(t, "0002_users_sessions_members_audit.sql")},
+				"0003_late.sql":                         {Data: []byte("SELECT 1;")},
+				"0004_applied.sql":                      {Data: []byte("SELECT 3;")},
 			},
 			setup: func(t *testing.T, pool *pgxpool.Pool) {
-				ms, _ := LoadMigrations(fstest.MapFS{"0003_applied.sql": {Data: []byte("SELECT 3;")}})
-				exec(t, pool, "INSERT INTO schema_migrations VALUES (3, '0003_applied', '"+ms[0].Checksum+"')")
+				ms, _ := LoadMigrations(fstest.MapFS{"0004_applied.sql": {Data: []byte("SELECT 3;")}})
+				exec(t, pool, "INSERT INTO schema_migrations VALUES (4, '0004_applied', '"+ms[0].Checksum+"')")
 			},
 			wantErr: "older than the newest applied",
 		},
@@ -143,7 +149,8 @@ func TestIntegrationMigrateDetectsChanges(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pool, _ := tempDB(t)
-			if _, err := Migrate(ctx, pool, migrations.Postgres()); err != nil {
+			// Start from a database with only 0001 applied.
+			if _, err := Migrate(ctx, pool, fstest.MapFS{"0001_projects_and_api_keys.sql": {Data: orig}}); err != nil {
 				t.Fatal(err)
 			}
 			if tt.setup != nil {
@@ -208,7 +215,7 @@ func TestIntegrationMigrateConcurrentRunners(t *testing.T) {
 		if len(results[i].Applied) > 0 {
 			appliedBy++
 		}
-		if results[i].Current != 1 {
+		if results[i].Current != 2 {
 			t.Errorf("runner %d ended at version %d", i, results[i].Current)
 		}
 	}

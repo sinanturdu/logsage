@@ -74,9 +74,14 @@ jobs:
           CLICKHOUSE_PASSWORD: ci
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
+          COOKIE_SECURE: "false"
+          ALLOWED_ORIGINS: http://localhost:5173
         run: |
           docker compose -f infra/docker-compose.yml config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --services | grep -qx api
+      - name: Image contains every binary
+        run: docker run --rm --entrypoint ls logsage-backend:ci /usr/local/bin/ingest /usr/local/bin/processor /usr/local/bin/query /usr/local/bin/admin /usr/local/bin/api
       - name: App profile refuses to start without secrets
         run: |
           if docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet 2>/dev/null; then
