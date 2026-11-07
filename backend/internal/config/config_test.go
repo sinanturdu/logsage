@@ -19,6 +19,7 @@ func TestLoad(t *testing.T) {
 		Postgres:           DefaultPostgresConfig(),
 		Auth:               DefaultAuthConfig(),
 		API:                DefaultAPIConfig(),
+		Tail:               DefaultTailConfig(),
 	}
 	with := func(f func(*Config)) Config {
 		c := base

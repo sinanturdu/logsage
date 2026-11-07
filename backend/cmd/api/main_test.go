@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/password"
+	"github.com/sinanturdu/logsage/backend/internal/storage/postgres/pgtest"
 )
 
 func envFunc(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
@@ -81,5 +86,111 @@ func TestRunServesAndShutsDown(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("run did not return after cancel")
+	}
+}
+
+// TestRunClosesTailsOnShutdown: a live tail does not hold up a graceful
+// shutdown; it gets status closed (reason shutdown) and run returns promptly.
+func TestRunClosesTailsOnShutdown(t *testing.T) {
+	chURL, chUser, chPass := os.Getenv("CLICKHOUSE_TEST_URL"), os.Getenv("CLICKHOUSE_TEST_USER"), os.Getenv("CLICKHOUSE_TEST_PASSWORD")
+	if chURL == "" {
+		t.Skip("CLICKHOUSE_TEST_URL not set")
+	}
+	if chUser == "" || chPass == "" {
+		t.Fatal("set CLICKHOUSE_TEST_USER and CLICKHOUSE_TEST_PASSWORD: cmd/api refuses an empty ClickHouse user or password")
+	}
+	_, st, dbURL := pgtest.New(t)
+	hasher, err := password.NewHasher(password.Params{MemoryKiB: password.MinMemoryKiB, Iterations: 1, Parallelism: 1, SaltLen: 16, KeyLen: 32}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	phc, _ := hasher.Hash(ctx, "a long test passphrase")
+	u, err := st.CreateUser(ctx, "tail@example.com", phc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateProjectWithOwner(ctx, "Shop", "shop", u.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	env := map[string]string{"DATABASE_URL": dbURL, "API_HTTP_ADDR": "127.0.0.1:0", "COOKIE_SECURE": "false",
+		"ARGON2_MEMORY_KIB": "19456", "ARGON2_ITERATIONS": "1", "ARGON2_PARALLELISM": "1",
+		"CLICKHOUSE_URL": chURL, "CLICKHOUSE_DB": "default", "CLICKHOUSE_USER": chUser, "CLICKHOUSE_PASSWORD": chPass}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() { done <- run(runCtx, envFunc(env), ready) }()
+	addr := <-ready
+
+	lreq, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/api/auth/login",
+		strings.NewReader(`{"email":"tail@example.com","password":"a long test passphrase"}`))
+	lreq.Header.Set("Content-Type", "application/json")
+	lreq.Header.Set("Origin", "http://"+addr)
+	login, err := http.DefaultClient.Do(lreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.Body.Close()
+	var cookie *http.Cookie
+	for _, c := range login.Cookies() {
+		if c.Name == "logsage_session" {
+			cookie = c
+		}
+	}
+	if login.StatusCode != 200 || cookie == nil {
+		t.Fatalf("login = %d", login.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/api/projects/shop/tail", nil)
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("tail = %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	lines := make(chan string, 100)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	waitLine := func(want string) {
+		t.Helper()
+		deadline := time.After(10 * time.Second)
+		for {
+			select {
+			case l, ok := <-lines:
+				if !ok {
+					t.Fatalf("stream ended before %q", want)
+				}
+				if strings.Contains(l, want) {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("no %q within 10s", want)
+			}
+		}
+	}
+	waitLine(`"state":`) // the stream is open
+
+	start := time.Now()
+	cancel()
+	waitLine(`"reason":"shutdown"`)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run() = %v", err)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("run did not return promptly with an open tail")
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("shutdown with an open tail took %v", d)
 	}
 }

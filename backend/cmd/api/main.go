@@ -49,6 +49,16 @@ func hasherParams(a config.APIConfig) password.Params {
 	return p
 }
 
+// tailOptions maps the TAIL_* settings onto api.TailOptions.
+func tailOptions(t config.TailConfig) api.TailOptions {
+	return api.TailOptions{
+		PollInterval: t.PollInterval, Batch: t.Batch, Heartbeat: t.Heartbeat, MaxDuration: t.MaxDuration,
+		AuthRecheck: t.AuthRecheck, MaxReplay: t.MaxReplay, MaxLateness: t.MaxLateness, Overlap: t.Overlap,
+		WriteTimeout: t.WriteTimeout, RetryMax: t.RetryMax, MaxConnUser: t.MaxConnUser,
+		MaxConnProject: t.MaxConnProject, MaxConnTotal: t.MaxConnTotal, MaxSeen: t.MaxSeen,
+	}
+}
+
 // run serves until ctx is canceled, then shuts down within
 // httpShutdownTimeout. ready, if not nil, receives the listening address.
 func run(ctx context.Context, getenv func(string) string, ready chan<- string) error {
@@ -100,13 +110,15 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 
 	limiter := api.NewLimiter(a.LoginMaxFailures, a.LoginDelayBase, a.LoginDelayMax, a.LoginLimiterSize)
 	srv, err := api.New(store, hasher, limiter, api.Options{
-		IdleTTL:             a.SessionIdleTTL,
-		AbsoluteTTL:         a.SessionAbsoluteTTL,
-		CookieSecure:        a.CookieSecure,
-		AllowedOrigins:      a.Origins(),
-		RegistrationEnabled: a.RegistrationEnabled,
+		IdleTTL:              a.SessionIdleTTL,
+		AbsoluteTTL:          a.SessionAbsoluteTTL,
+		CookieSecure:         a.CookieSecure,
+		AllowedOrigins:       a.Origins(),
+		RegistrationEnabled:  a.RegistrationEnabled,
 		Logs:                 logs,
 		MaxConcurrentQueries: a.MaxConcurrentQueries,
+		Tail:                 logs,
+		TailOptions:          tailOptions(cfg.Tail),
 	}, log)
 	if err != nil {
 		return err
@@ -125,6 +137,9 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),
 	}
+	// Live tails set their own write deadline per event (WriteTimeout would
+	// otherwise end them after 30s) and end on shutdown with status closed.
+	hs.RegisterOnShutdown(srv.CloseStreams)
 	ln, err := net.Listen("tcp", a.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)

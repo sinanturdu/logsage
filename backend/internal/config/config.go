@@ -34,6 +34,7 @@ type Config struct {
 	Postgres   PostgresConfig
 	Auth       AuthConfig
 	API        APIConfig
+	Tail       TailConfig
 }
 
 // RedisConfig configures the Redis Streams publisher.
@@ -102,6 +103,7 @@ func Load(getenv func(string) string) (Config, error) {
 		Postgres:   DefaultPostgresConfig(),
 		Auth:       DefaultAuthConfig(),
 		API:        DefaultAPIConfig(),
+		Tail:       DefaultTailConfig(),
 	}
 
 	if v := strings.TrimSpace(getenv("HTTP_ADDR")); v != "" {
@@ -172,6 +174,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if err := loadAuth(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadTail(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
 	if err := loadAPI(getenv, &cfg); err != nil {
