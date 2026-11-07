@@ -66,6 +66,9 @@ func (s *fakeStore) QueryWithParams(_ context.Context, sql string, params, setti
 		if v, ok := params["service"]; ok && r.service != v {
 			continue
 		}
+		if v, ok := params["services"]; ok && !strings.Contains(v, "'"+arrayElem.Replace(r.service)+"'") {
+			continue
+		}
 		if v, ok := params["trace_id"]; ok && r.trace != v {
 			continue
 		}
@@ -283,7 +286,18 @@ func TestHandlerInjectionValuesStayParameters(t *testing.T) {
 			if rec.Code != 200 {
 				t.Fatalf("%s=%q: status %d (%s), want 200", param, value, rec.Code, rec.Body.String())
 			}
-			if store.params[param] != value {
+			if param == "service" && strings.Contains(value, ",") {
+				// A comma separates services (ADR 0014): each part is a value.
+				var want []string
+				for _, p := range strings.Split(value, ",") {
+					if !contains(want, p) {
+						want = append(want, p)
+					}
+				}
+				if got := decodeArrayParam(t, store.params["services"]); strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+					t.Errorf("services param = %q, want %q", got, want)
+				}
+			} else if store.params[param] != value {
 				t.Errorf("%s param = %q, want raw value", param, store.params[param])
 			}
 			if strings.Contains(store.sql, "DROP") || strings.Contains(store.sql, "UNION") || strings.Contains(store.sql, "--") {

@@ -177,12 +177,30 @@ func (s *Service) parse(rawQuery string, allowed []string) (url.Values, Filter, 
 	return vals, f, nil
 }
 
-// parseServices validates the service filter: one name, as in v0.1.
+// parseServices validates the service filter: one name as in v0.1, or a
+// comma-separated list of at most MaxServices names. Each name is checked on
+// its own; the list travels as one Array(String) parameter, never as SQL.
 func (s *Service) parseServices(v string) ([]string, error) {
-	if err := s.checkText("service", v); err != nil {
-		return nil, err
+	if v == "" {
+		return nil, errors.New("service: must not be empty")
 	}
-	return []string{v}, nil
+	parts := strings.Split(v, ",")
+	if len(parts) > MaxServices {
+		return nil, fmt.Errorf("service: at most %d comma-separated values", MaxServices)
+	}
+	var out []string
+	for _, p := range parts {
+		if p == "" {
+			return nil, errors.New("service: empty value in the comma-separated list")
+		}
+		if err := s.checkText("service", p); err != nil {
+			return nil, err
+		}
+		if !contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) checkText(name, v string) error {
