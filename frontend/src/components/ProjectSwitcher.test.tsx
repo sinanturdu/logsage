@@ -19,7 +19,7 @@ describe('project switcher', () => {
     renderApp('/projects/shop/logs')
     const select = (await screen.findByLabelText('Project')) as HTMLSelectElement
     expect(select.value).toBe('shop')
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Shop (shop)', 'Billing (billing)'])
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['shop', 'billing'])
     await userEvent.setup().selectOptions(select, 'billing')
     await waitFor(() => expect(where()).toBe('/projects/billing/logs'))
   })

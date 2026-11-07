@@ -21,7 +21,7 @@ export function LogsPage() {
   return (
     <section className="placeholder" aria-labelledby="logs-title">
       <span className="tag">Development placeholder</span>
-      <h1 id="logs-title" className="panel">
+      <h1 id="logs-title">
         Logs for <LogText text={project?.name ?? slug} mono={false} />
       </h1>
       <p>The log explorer (timeline, filters, rows, live tail) arrives in package I2b. The API endpoints it uses are ready:</p>

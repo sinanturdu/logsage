@@ -44,8 +44,8 @@ export function ProjectSwitcher() {
       >
         {current === '' && <option value="">Choose a project</option>}
         {projects.data.map((p) => (
-          <option key={p.id} value={p.slug}>
-            {p.name} ({p.slug})
+          <option key={p.id} value={p.slug} title={p.name}>
+            {p.slug}
           </option>
         ))}
       </select>
