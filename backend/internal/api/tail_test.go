@@ -24,44 +24,103 @@ import (
 
 // ---- fake clock ----
 
+// fakeClock fires timers only when a test advances it. Tests must not
+// advance before the stream has armed the timer they mean to fire:
+// waitArmed and step synchronize on that instead of sleeping.
 type fakeClock struct {
 	mu      sync.Mutex
 	now     time.Time
-	waiters []fakeWaiter
+	nextID  int
+	waiters map[int]fakeWaiter
+	armed   int // timers armed so far, immediate ones included
 }
 
 type fakeWaiter struct {
-	at time.Time
-	ch chan time.Time
+	at  time.Time
+	dur time.Duration
+	ch  chan time.Time
 }
 
 func (c *fakeClock) Now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.now }
 
-func (c *fakeClock) After(d time.Duration) <-chan time.Time {
+func (c *fakeClock) Timer(d time.Duration) (<-chan time.Time, func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.armed++
 	ch := make(chan time.Time, 1)
 	if d <= 0 {
 		ch <- c.now
-		return ch
+		return ch, func() {}
 	}
-	c.waiters = append(c.waiters, fakeWaiter{at: c.now.Add(d), ch: ch})
-	return ch
+	if c.waiters == nil {
+		c.waiters = map[int]fakeWaiter{}
+	}
+	c.nextID++
+	id := c.nextID
+	c.waiters[id] = fakeWaiter{at: c.now.Add(d), dur: d, ch: ch}
+	return ch, func() { c.mu.Lock(); delete(c.waiters, id); c.mu.Unlock() }
 }
 
-func (c *fakeClock) Advance(d time.Duration) {
+// Advance moves the clock and fires due timers; it returns how many fired.
+func (c *fakeClock) Advance(d time.Duration) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = c.now.Add(d)
-	keep := c.waiters[:0]
-	for _, w := range c.waiters {
+	fired := 0
+	for id, w := range c.waiters {
 		if !w.at.After(c.now) {
 			w.ch <- c.now
-		} else {
-			keep = append(keep, w)
+			delete(c.waiters, id)
+			fired++
 		}
 	}
-	c.waiters = keep
+	return fired
+}
+
+func (c *fakeClock) pendingCount() int { c.mu.Lock(); defer c.mu.Unlock(); return len(c.waiters) }
+
+func (c *fakeClock) armedCount() int { c.mu.Lock(); defer c.mu.Unlock(); return c.armed }
+
+func (c *fakeClock) pending(d time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, w := range c.waiters {
+		if w.dur == d {
+			return true
+		}
+	}
+	return false
+}
+
+// syncBound is the generous real-time upper bound of every wait below. It
+// only turns a hang into a failure; it never decides a result.
+const syncBound = 20 * time.Second
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(syncBound)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// waitArmed waits until a timer of duration d is armed (streams stop their
+// timers when they end, so it belongs to a live stream).
+func (c *fakeClock) waitArmed(t *testing.T, d time.Duration) {
+	t.Helper()
+	waitFor(t, fmt.Sprintf("a %s timer", d), func() bool { return c.pending(d) })
+}
+
+// step advances the clock by d and waits until the stream handled every
+// timer that fired, which it shows by arming it again.
+func (c *fakeClock) step(t *testing.T, d time.Duration) {
+	t.Helper()
+	before := c.armedCount()
+	fired := c.Advance(d)
+	waitFor(t, "the stream to handle its timers", func() bool { return c.armedCount() >= before+fired })
 }
 
 // ---- fake log storage ----
@@ -311,11 +370,12 @@ func (f *tailFixture) open(t *testing.T, who, query, lastID string) (*stream, in
 	return s, 200
 }
 
-// next returns the next event that is not a heartbeat, advancing the fake
-// clock by step while waiting.
+// next returns the next event that is not a heartbeat. With step > 0 it
+// keeps advancing the fake clock while waiting, so it never depends on when
+// the stream arms its timers; syncBound only bounds a hang.
 func (f *tailFixture) next(t *testing.T, s *stream, step time.Duration) sseEvent {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(syncBound)
 	for time.Now().Before(deadline) {
 		select {
 		case ev, ok := <-s.events:
@@ -332,15 +392,17 @@ func (f *tailFixture) next(t *testing.T, s *stream, step time.Duration) sseEvent
 			}
 		}
 	}
-	t.Fatal("no event within 3s")
+	t.Fatalf("no event within %s", syncBound)
 	return sseEvent{}
 }
 
-// quiet asserts no log event arrives while the clock moves on.
+// quiet asserts no log event arrives while the clock moves on: each step
+// waits until the stream handled the timers that fired (a poll writes its
+// rows before it re-arms), then looks for events.
 func (f *tailFixture) quiet(t *testing.T, s *stream, ticks int) {
 	t.Helper()
 	for i := 0; i < ticks; i++ {
-		f.clock.Advance(time.Second)
+		f.clock.step(t, time.Second)
 		select {
 		case ev := <-s.events:
 			if ev.name == "log" {
@@ -505,6 +567,7 @@ func TestTailDrainsFullBatches(t *testing.T) {
 	f := newTailFixture(t, nil) // Batch 3
 	s, _ := f.open(t, "owner", "", "")
 	expectStatus(t, f.next(t, s, 0), "live", "")
+	f.clock.waitArmed(t, time.Second) // the first poll ran; the next is due in 1s
 	for i := 0; i < 7; i++ {
 		f.mem.add(shopID, fmt.Sprintf("%d-0", 10+i), t0.Add(time.Second), "info", "m", true)
 	}
@@ -557,6 +620,7 @@ func TestTailResumeAfterStateLossAndReset(t *testing.T) {
 		t.Fatalf("got %s", id)
 	}
 	s.cancel()
+	waitStreams(t, f.s, 0) // its timers are stopped before step() runs
 
 	f.clock.Advance(5 * time.Second) // the rows above are now in the past
 	old := encodeTailCursor(tailCursor{Stream: tok, Last: query.TailKey{InsertedAt: t0.Add(-6 * time.Minute), EventID: "1-0"}, Seq: 1})
@@ -572,13 +636,17 @@ func TestTailHeartbeatAndAuthRecheck(t *testing.T) {
 	f := newTailFixture(t, nil)
 	s, _ := f.open(t, "viewer", "", "")
 	expectStatus(t, f.next(t, s, 0), "live", "")
+	// The stream sends "live" before it arms its heartbeat timer: advancing
+	// before that would move the timer's deadline past the advance (the CI
+	// failure on main, run #32).
+	f.clock.waitArmed(t, 15*time.Second)
 	f.clock.Advance(15 * time.Second)
 	select {
 	case ev := <-s.events:
 		if ev.name != "status" || ev.data != `{"state":"live","heartbeat":true}` {
 			t.Fatalf("got %s %s, want heartbeat", ev.name, ev.data)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(syncBound):
 		t.Fatal("no heartbeat")
 	}
 
@@ -666,6 +734,11 @@ func TestTailMaxDurationAndShutdown(t *testing.T) {
 	f.s.CloseStreams()
 	expectStatus(t, f.next(t, r, 0), "closed", "shutdown")
 	waitStreams(t, f.s, 0)
+	// Ended streams stop their timers, so waitArmed never matches a timer
+	// of a stream that is gone.
+	if n := f.clock.pendingCount(); n != 0 {
+		t.Errorf("%d timers still armed after every stream ended", n)
+	}
 }
 
 func TestTailDropsSlowClient(t *testing.T) {
@@ -688,7 +761,7 @@ func TestTailDropsSlowClient(t *testing.T) {
 		r.row.Key.InsertedAt = t0.Add(2 * time.Second)
 	}
 	f.mem.mu.Unlock()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(syncBound)
 	for f.s.OpenStreams() != 0 && time.Now().Before(deadline) {
 		f.clock.Advance(time.Second)
 		time.Sleep(20 * time.Millisecond)
@@ -700,7 +773,7 @@ func TestTailDropsSlowClient(t *testing.T) {
 
 func waitStreams(t *testing.T, s *Server, want int) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(syncBound)
 	for s.OpenStreams() != want && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
