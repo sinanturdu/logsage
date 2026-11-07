@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log explorer, direction A: Dark cockpit</title>
+<!-- Preview only: production self-hosts B612 and B612 Mono (SIL OFL). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --panel: #232B31; --bezel: #2E3840; --legend: #E4E9EB; --dim: #9DA9B0;
+  --caution: #F2B33D; --warning: #FF7A6B; --info: #8CC4F0; --fatal: #EFA3F5;
+  --sans: "B612", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: "B612 Mono", Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--panel); color: var(--legend); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--caution); outline-offset: 1px; }
+header { display: flex; gap: 16px; align-items: center; padding: 10px 20px; background: var(--bezel); }
+.mark { font-weight: 700; font-size: 16px; }
+.project { background: none; border: 0; padding: 4px 6px; white-space: nowrap; cursor: pointer; }
+.search { flex: 1; max-width: 640px; background: var(--panel); border: 1px solid #4A5862; border-radius: 4px; padding: 6px 10px; }
+kbd { font: 12px var(--mono); color: var(--dim); border: 1px solid #4A5862; border-radius: 3px; padding: 1px 5px; }
+.annunciator { display: flex; gap: 6px 28px; align-items: baseline; padding: 14px 20px 6px; flex-wrap: wrap; }
+.annunciator button { background: none; border: 0; padding: 2px 0; color: var(--dim); cursor: pointer; }
+.annunciator .lamp { display: none; }
+.annunciator .lit { color: var(--legend); font-weight: 700; }
+.annunciator .lit .lamp { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; }
+.annunciator .lit.w .lamp { background: var(--warning); } .annunciator .lit.w .rate { color: var(--warning); }
+.annunciator .lit.c .lamp { background: var(--caution); } .annunciator .lit.c .rate { color: var(--caution); }
+.annunciator .rate { font: 13px var(--mono); margin-left: 6px; font-weight: 400; }
+.range { background: var(--bezel); border: 1px solid #4A5862; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+.timeline { padding: 4px 20px 0; }
+.timeline svg { display: block; width: 100%; height: 48px; }
+.timeline .ok { fill: #4A5862; } .timeline .bad { fill: var(--warning); }
+.timeline .brush { fill: none; stroke: var(--legend); stroke-width: 1.5; }
+.axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); padding: 2px 20px 0; }
+.filters { display: flex; gap: 18px; align-items: center; padding: 12px 20px; flex-wrap: wrap; }
+.filters label { color: var(--dim); }
+.filters select, .filters input { background: var(--bezel); border: 1px solid #4A5862; border-radius: 4px; padding: 3px 8px; margin-left: 6px; }
+.tail { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.tail .status { color: var(--warning); max-width: 52ch; font-size: 13px; }
+.tail button { background: var(--bezel); border: 1px solid #4A5862; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+.list { font: 13px/1.5 var(--mono); padding: 0 20px 24px; }
+.head, .row { display: grid; grid-template-columns: 13ch 9ch 10ch 1fr; gap: 14px; padding: 3px 8px; }
+.head { color: var(--dim); font: 12px var(--sans); border-bottom: 1px solid #3B4750; }
+.head span:first-child, .row .t { text-align: right; }
+.row { border-radius: 3px; cursor: pointer; }
+.row:hover, .row:focus { background: var(--bezel); }
+.row .t, .row .svc { color: var(--dim); }
+.row .msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row i { font-style: normal; display: inline-block; width: 1.2em; }
+.debug .lv { color: var(--dim); } .info .lv { color: var(--info); }
+.warn .lv { color: var(--caution); }
+.error .lv { color: var(--warning); }
+.fatal .lv { color: var(--fatal); } .fatal .msg { font-weight: 700; }
+.row[aria-expanded="true"] { background: var(--bezel); border-radius: 3px 3px 0 0; }
+.row[aria-expanded="true"] .msg { white-space: normal; }
+.detail { background: var(--bezel); border-radius: 0 0 3px 3px; padding: 6px 8px 12px calc(13ch + 22px); margin-bottom: 4px; }
+.row[aria-expanded="false"] + .detail { display: none; }
+.detail dl { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 3px 14px; margin: 0 0 10px; }
+.detail dt { color: var(--dim); font-family: var(--sans); font-size: 12px; padding-top: 1px; }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.detail button, .more { background: var(--panel); border: 1px solid #4A5862; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-family: var(--sans); }
+.more { display: block; margin: 14px auto 0; }
+@media (prefers-reduced-motion: no-preference) { .row { transition: background-color 120ms; } }
+@media (max-width: 900px) {
+  .keys { display: none; }
+  .head, .row { grid-template-columns: 13ch 8ch 1fr; } .head span:nth-child(3), .row .svc { display: none; }
+  .detail { padding-left: 8px; } .detail dl { grid-template-columns: max-content 1fr; }
+  .tail { margin-left: 0; }
+}
+@media (max-width: 600px) {
+  header { flex-wrap: wrap; } .search { max-width: none; flex-basis: 100%; }
+  .head, .row { grid-template-columns: 1fr; gap: 0; } .head { display: none; } .row .t { text-align: left; }
+  .filters, .tail button { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="mark">LogSage</span>
+  <button class="project" type="button" aria-haspopup="listbox">shop-prod ▾</button>
+  <input class="search" id="q" type="search" placeholder="Search messages and attributes" aria-label="Search logs">
+  <span class="keys"><kbd>/</kbd> search <kbd>j</kbd> <kbd>k</kbd> move <kbd>Ctrl K</kbd> commands</span>
+</header>
+
+<nav class="annunciator" aria-label="Services, lit when the error rate is above the 24 h baseline">
+  <button class="lit w" type="button"><span class="lamp" aria-hidden="true"></span>payments<span class="rate">41% errors, baseline 0.6%</span></button>
+  <button class="lit w" type="button"><span class="lamp" aria-hidden="true"></span>checkout<span class="rate">23% errors, baseline 0.4%</span></button>
+  <button class="lit c" type="button"><span class="lamp" aria-hidden="true"></span>api<span class="rate">7.8% errors, baseline 0.9%</span></button>
+  <button type="button">search</button>
+  <button type="button">billing</button>
+  <button type="button">auth</button>
+</nav>
+
+<section class="timeline" aria-label="Log volume per 30 seconds; the error share is drawn in the warning color">
+<svg viewBox="0 0 1000 48" preserveAspectRatio="none" role="img" aria-label="Volume steady near 220 logs per 30 s until 02:13, then errors rise to 263 per 30 s at 02:16">
+<rect class="ok" x="1.0" y="35.4" width="31.3" height="12.5"/><rect class="bad" x="1.0" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="34.3" y="36.2" width="31.3" height="11.7"/><rect class="bad" x="34.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="67.7" y="34.7" width="31.3" height="13.1"/><rect class="bad" x="67.7" y="47.8" width="31.3" height="0.2"/>
+<rect class="ok" x="101.0" y="35.8" width="31.3" height="12.1"/><rect class="bad" x="101.0" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="134.3" y="35.0" width="31.3" height="12.9"/><rect class="bad" x="134.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="167.7" y="34.3" width="31.3" height="13.6"/><rect class="bad" x="167.7" y="47.9" width="31.3" height="0.1"/>
+<rect class="ok" x="201.0" y="35.7" width="31.3" height="12.1"/><rect class="bad" x="201.0" y="47.8" width="31.3" height="0.2"/> <rect class="ok" x="234.3" y="35.3" width="31.3" height="12.6"/><rect class="bad" x="234.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="267.7" y="34.6" width="31.3" height="13.2"/><rect class="bad" x="267.7" y="47.8" width="31.3" height="0.2"/>
+<rect class="ok" x="301.0" y="33.7" width="31.3" height="14.1"/><rect class="bad" x="301.0" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="334.3" y="35.1" width="31.3" height="12.9"/><rect class="bad" x="334.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="367.7" y="35.6" width="31.3" height="12.3"/><rect class="bad" x="367.7" y="47.9" width="31.3" height="0.1"/>
+<rect class="ok" x="401.0" y="34.2" width="31.3" height="13.7"/><rect class="bad" x="401.0" y="47.8" width="31.3" height="0.2"/> <rect class="ok" x="434.3" y="34.9" width="31.3" height="13.0"/><rect class="bad" x="434.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="467.7" y="33.5" width="31.3" height="14.3"/><rect class="bad" x="467.7" y="47.8" width="31.3" height="0.2"/>
+<rect class="ok" x="501.0" y="33.9" width="31.3" height="14.0"/><rect class="bad" x="501.0" y="47.8" width="31.3" height="0.2"/> <rect class="ok" x="534.3" y="34.4" width="31.3" height="13.5"/><rect class="bad" x="534.3" y="47.9" width="31.3" height="0.1"/> <rect class="ok" x="567.7" y="33.0" width="31.3" height="14.7"/><rect class="bad" x="567.7" y="47.7" width="31.3" height="0.3"/>
+<rect class="ok" x="601.0" y="33.3" width="31.3" height="14.4"/><rect class="bad" x="601.0" y="47.8" width="31.3" height="0.2"/> <rect class="ok" x="634.3" y="32.5" width="31.3" height="15.1"/><rect class="bad" x="634.3" y="47.6" width="31.3" height="0.4"/> <rect class="ok" x="667.7" y="32.9" width="31.3" height="14.8"/><rect class="bad" x="667.7" y="47.7" width="31.3" height="0.3"/>
+<rect class="ok" x="701.0" y="32.1" width="31.3" height="15.4"/><rect class="bad" x="701.0" y="47.5" width="31.3" height="0.5"/> <rect class="ok" x="734.3" y="31.1" width="31.3" height="16.0"/><rect class="bad" x="734.3" y="47.2" width="31.3" height="0.8"/> <rect class="ok" x="767.7" y="30.1" width="31.3" height="16.6"/><rect class="bad" x="767.7" y="46.7" width="31.3" height="1.3"/>
+<rect class="ok" x="801.0" y="27.3" width="31.3" height="17.9"/><rect class="bad" x="801.0" y="45.2" width="31.3" height="2.8"/> <rect class="ok" x="834.3" y="23.5" width="31.3" height="18.8"/><rect class="bad" x="834.3" y="42.3" width="31.3" height="5.7"/> <rect class="ok" x="867.7" y="16.1" width="31.3" height="21.7"/><rect class="bad" x="867.7" y="37.8" width="31.3" height="10.2"/>
+<rect class="ok" x="901.0" y="7.1" width="31.3" height="26.1"/><rect class="bad" x="901.0" y="33.3" width="31.3" height="14.7"/> <rect class="ok" x="934.3" y="4.0" width="31.3" height="28.4"/><rect class="bad" x="934.3" y="32.4" width="31.3" height="15.6"/> <rect class="ok" x="967.7" y="14.4" width="31.3" height="21.9"/><rect class="bad" x="967.7" y="36.2" width="31.3" height="11.8"/>
+<rect class="brush" x="733" y="1" width="266" height="46" rx="2"/>
+</svg>
+</section>
+<div class="axis" aria-hidden="true"><span>02:02</span><span>02:05</span><span>02:08</span><span>02:11</span><span>02:14</span><span>02:17</span></div>
+
+<div class="filters">
+  <button class="range" type="button">Last 15 min, 02:02 to 02:17 UTC ▾</button>
+  <label>Level <select><option>warn and above</option><option>all</option></select></label>
+  <label>Service <select><option>any</option><option>payments</option></select></label>
+  <label>Trace id <input size="20" placeholder="32 hex characters"></label>
+  <div class="tail" role="status">
+    <span class="status">Live tail disconnected at 02:17:41: the server closed the stream. Reconnecting in 5 s, or press r to retry now.</span>
+    <button type="button">Retry now</button>
+  </div>
+</div>
+
+<main class="list" aria-label="Logs, newest first">
+<div class="head" aria-hidden="true"><span>time (UTC)</span><span>level</span><span>service</span><span>message</span></div>
+<div class="row error" tabindex="-1" aria-expanded="true"><span class="t">02:16:58.412</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="detail"><dl><dt>trace_id</dt><dd>4bf92f3577b34da6a3ce929d0e0e4736</dd><dt>span_id</dt><dd>00f067aa0ba902b7</dd><dt>http.method</dt><dd>POST</dd><dt>http.route</dt><dd>/v1/charges</dd><dt>gateway.host</dt><dd>psp-eu-2.example.net</dd><dt>timeout_ms</dt><dd>5000</dd><dt>attempt</dt><dd>3</dd><dt>order_id</dt><dd>ord_7Q2K9M</dd><dt>k8s.pod</dt><dd>payments-6f9c8d7b5-xk2lp</dd><dt>service.version</dt><dd>2.41.0</dd><dt>region</dt><dd>eu-west-1</dd></dl><button type="button">Filter by this trace</button> <button type="button">Copy as JSON</button></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:58.390</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">checkout</span><span class="msg">charge failed: upstream payments returned 504</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:58.371</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">api</span><span class="msg">POST /v1/checkout 502 in 5114 ms</span></div>
+<div class="row warn" tabindex="-1" aria-expanded="false"><span class="t">02:16:57.981</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">retrying charge for ord_7Q2K9M, attempt 3 of 3</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:57.204</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:57.188</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">checkout</span><span class="msg">charge failed: upstream payments returned 504</span></div>
+<div class="row fatal" tabindex="-1" aria-expanded="false"><span class="t">02:16:56.877</span><span class="lv"><i aria-hidden="true">◆</i> fatal</span><span class="svc">payments</span><span class="msg">gateway client pool exhausted: 64 of 64 connections waiting</span></div>
+<div class="row warn" tabindex="-1" aria-expanded="false"><span class="t">02:16:56.530</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">checkout</span><span class="msg">order ord_3HX81P held in pending_payment</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:55.902</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:16:55.311</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">auth</span><span class="msg">session refreshed for usr_4821</span></div>
+<div class="row warn" tabindex="-1" aria-expanded="false"><span class="t">02:16:54.760</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">api</span><span class="msg">p95 latency 4870 ms on POST /v1/checkout over the last 60 s</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:53.044</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">payments</span><span class="msg">payment gateway timeout after 5000 ms (psp-eu-2)</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:16:52.611</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">search</span><span class="msg">query &quot;running shoes&quot; served 48 hits in 37 ms</span></div>
+<div class="row warn" tabindex="-1" aria-expanded="false"><span class="t">02:16:51.287</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">circuit breaker for psp-eu-2 half-open, probing</span></div>
+<div class="row error" tabindex="-1" aria-expanded="false"><span class="t">02:16:49.930</span><span class="lv"><i aria-hidden="true">■</i> error</span><span class="svc">billing</span><span class="msg">invoice inv_20261107_0193 not finalized: payment pending</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:16:44.118</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">checkout</span><span class="msg">cart cart_9KD2 converted to order ord_7Q2K9M</span></div>
+<div class="row warn" tabindex="-1" aria-expanded="false"><span class="t">02:16:31.502</span><span class="lv"><i aria-hidden="true">▲</i> warn</span><span class="svc">payments</span><span class="msg">gateway psp-eu-2 latency 2380 ms, above 1500 ms threshold</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:16:12.775</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">api</span><span class="msg">GET /v1/products 200 in 41 ms</span></div>
+<div class="row debug" tabindex="-1" aria-expanded="false"><span class="t">02:15:47.360</span><span class="lv"><i aria-hidden="true">○</i> debug</span><span class="svc">search</span><span class="msg">cache hit ratio 0.912 for index products_v14</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:15:20.004</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">payments</span><span class="msg">charge ch_8Ff2Lq captured, 129.90 EUR in 412 ms</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:14:41.893</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">auth</span><span class="msg">login succeeded for usr_1290 via password</span></div>
+<div class="row debug" tabindex="-1" aria-expanded="false"><span class="t">02:14:02.118</span><span class="lv"><i aria-hidden="true">○</i> debug</span><span class="svc">payments</span><span class="msg">gateway psp-eu-2 keep-alive pool 12 of 64 in use</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:13:15.640</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">billing</span><span class="msg">nightly invoice run started for 2214 accounts</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:12:38.207</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">checkout</span><span class="msg">cart cart_7RT1 converted to order ord_5LM0QA</span></div>
+<div class="row info" tabindex="-1" aria-expanded="false"><span class="t">02:11:59.881</span><span class="lv"><i aria-hidden="true">●</i> info</span><span class="svc">search</span><span class="msg">reindex batch 1187 committed, 3046 documents</span></div>
+<button class="more" type="button">Load older logs</button>
+</main>
+
+<script>
+// j/k move between rows, Enter or a click expands, Esc collapses, / focuses search.
+const rows = [...document.querySelectorAll('.row')];
+const toggle = (r, open) => r.setAttribute('aria-expanded', open ?? r.getAttribute('aria-expanded') !== 'true');
+rows.forEach(r => r.addEventListener('click', () => toggle(r)));
+document.addEventListener('keydown', ev => {
+  if (ev.target.matches('input, select')) { if (ev.key === 'Escape') ev.target.blur(); return; }
+  const i = rows.indexOf(document.activeElement);
+  if (ev.key === '/') { ev.preventDefault(); document.getElementById('q').focus(); }
+  else if (ev.key === 'j') rows[Math.min(i + 1, rows.length - 1)].focus();
+  else if (ev.key === 'k') rows[Math.max(i - 1, 0)].focus();
+  else if (ev.key === 'Enter' && i >= 0) toggle(rows[i]);
+  else if (ev.key === 'Escape' && i >= 0) toggle(rows[i], false);
+});
+</script>
+</body>
+</html>
