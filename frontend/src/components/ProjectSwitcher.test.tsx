@@ -138,7 +138,7 @@ describe('shell', () => {
     expect(screen.queryByText('Signed in as alice@example.com')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Account' }))
     await user.click(screen.getByRole('button', { name: 'Account' }))
-    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Sign out' }))
     await waitFor(() => expect(where()).toBe('/login'))
     expect(calls.some((c) => c.key === 'POST /api/auth/logout')).toBe(true)
   })
