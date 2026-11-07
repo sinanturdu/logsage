@@ -6,6 +6,7 @@ import { Shell } from './components/Shell'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { ExplorerPage } from './explorer/ExplorerPage'
+import { KeysPage } from './keys/KeysPage'
 
 export function newQueryClient(opts: { retries?: number } = {}): QueryClient {
   const retries = opts.retries ?? 2
@@ -48,6 +49,7 @@ export function App({ client }: { client: QueryClient }) {
         >
           <Route index element={<HomePage />} />
           <Route path="/projects/:slug/logs" element={<ExplorerPage />} />
+          <Route path="/projects/:slug/keys" element={<KeysPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
