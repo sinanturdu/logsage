@@ -11,8 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// defaultProjectID is written to every stream entry until projects exist (v0.2).
-const defaultProjectID = "default"
 
 // Stream entry field names.
 const (
@@ -167,6 +165,11 @@ func (p *RedisPublisher) Publish(ctx context.Context, events []Event) error {
 	ctx, cancel := context.WithTimeout(ctx, p.opts.Timeout)
 	defer cancel()
 
+	for i, ev := range events {
+		if ev.ProjectID == "" {
+			return fmt.Errorf("redis publisher: event %d has no project id", i)
+		}
+	}
 	ingestedAt := p.now().UTC().Format(time.RFC3339Nano)
 	entries := make([]*redis.XAddArgs, len(events))
 	for i, ev := range events {
@@ -178,7 +181,7 @@ func (p *RedisPublisher) Publish(ctx context.Context, events []Event) error {
 			Stream: p.opts.Stream, // no MAXLEN: never trim unread entries here
 			Values: []any{
 				fieldPayload, string(payload),
-				fieldProjectID, defaultProjectID,
+				fieldProjectID, ev.ProjectID,
 				fieldIngestedAt, ingestedAt,
 			},
 		}

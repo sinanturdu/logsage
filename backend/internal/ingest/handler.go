@@ -3,8 +3,6 @@ package ingest
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +12,9 @@ import (
 	"net/http"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
+	"github.com/sinanturdu/logsage/backend/internal/keys"
 )
 
 // Path is the route served by Handler.
@@ -26,14 +27,15 @@ type Publisher interface {
 
 // Handler serves POST /v1/ingest.
 type Handler struct {
-	pub       Publisher
-	keyDigest [sha256.Size]byte
-	lim       Limits
-	log       *slog.Logger
+	pub  Publisher
+	auth auth.Authenticator
+	lim  Limits
+	log  *slog.Logger
 
 	accepted         atomic.Int64 // events answered with 202
 	rejectedOverload atomic.Int64 // requests answered with 429
 	publishErrors    atomic.Int64 // requests answered with 503
+	authUnavailable  atomic.Int64 // requests answered 503 because keys could not be verified
 }
 
 // RetryAfterSeconds is the Retry-After value sent with 429 responses.
@@ -41,17 +43,17 @@ const RetryAfterSeconds = 1
 
 // NewHandler returns a Handler that accepts requests carrying apiKey in the
 // X-API-Key header. apiKey must not be empty.
-func NewHandler(pub Publisher, apiKey string, lim Limits, log *slog.Logger) (*Handler, error) {
+func NewHandler(pub Publisher, authn auth.Authenticator, lim Limits, log *slog.Logger) (*Handler, error) {
 	if pub == nil {
 		return nil, errors.New("ingest: publisher is nil")
 	}
-	if apiKey == "" {
-		return nil, errors.New("ingest: API key is empty")
+	if authn == nil {
+		return nil, errors.New("ingest: authenticator is nil")
 	}
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Handler{pub: pub, keyDigest: sha256.Sum256([]byte(apiKey)), lim: lim, log: log}, nil
+	return &Handler{pub: pub, auth: authn, lim: lim, log: log}, nil
 }
 
 // Register mounts the handler on mux at Path.
@@ -69,7 +71,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.authorized(r.Header.Get("X-API-Key")) {
+	principal, err := h.auth.Authenticate(r.Context(), r.Header.Get("X-API-Key"), keys.KindIngest)
+	if err != nil {
+		if errors.Is(err, auth.ErrUnavailable) {
+			h.authUnavailable.Add(1)
+			h.log.WarnContext(r.Context(), "key verification unavailable", "err", err)
+			writeError(w, http.StatusServiceUnavailable, "authentication temporarily unavailable, retry later", -1)
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid API key", -1)
 		return
 	}
@@ -106,6 +115,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The project comes only from the verified key.
+	for i := range events {
+		events[i].ProjectID = principal.ProjectID
+	}
+
 	if err := h.pub.Publish(r.Context(), events); err != nil {
 		if errors.Is(err, ErrOverloaded) {
 			// Backpressure: nothing was written; the client should slow down.
@@ -130,6 +144,7 @@ type Stats struct {
 	AcceptedTotal         int64  `json:"accepted_total"`          // events answered with 202
 	RejectedOverloadTotal int64  `json:"rejected_overload_total"` // requests answered with 429
 	PublishErrorsTotal    int64  `json:"publish_errors_total"`    // requests answered with 503
+	AuthUnavailableTotal  int64  `json:"auth_unavailable_total"`  // requests answered 503: key store unreachable
 	StreamLengthCached    *int64 `json:"stream_length_cached"`    // last XLEN seen; null before the first refresh or with the memory publisher
 	MaxStreamLen          *int64 `json:"max_stream_len"`          // backpressure limit; null with the memory publisher
 }
@@ -145,6 +160,7 @@ func (h *Handler) Stats() Stats {
 		AcceptedTotal:         h.accepted.Load(),
 		RejectedOverloadTotal: h.rejectedOverload.Load(),
 		PublishErrorsTotal:    h.publishErrors.Load(),
+		AuthUnavailableTotal:  h.authUnavailable.Load(),
 	}
 	if lr, ok := h.pub.(lengthReporter); ok {
 		if n, known := lr.CachedStreamLength(); known {
@@ -164,16 +180,6 @@ func (h *Handler) RegisterStats(mux *http.ServeMux) {
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, h.Stats())
 	})
-}
-
-// authorized compares key with the configured key in constant time. Hashing
-// both sides first keeps the comparison independent of the key length.
-func (h *Handler) authorized(key string) bool {
-	if key == "" {
-		return false
-	}
-	got := sha256.Sum256([]byte(key))
-	return subtle.ConstantTimeCompare(got[:], h.keyDigest[:]) == 1
 }
 
 // decode reads exactly one JSON object from the size-limited body.

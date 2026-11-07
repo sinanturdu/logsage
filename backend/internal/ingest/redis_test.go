@@ -91,6 +91,7 @@ func sampleEvents(n int) []Event {
 			Message:    "payment gateway timeout",
 			TraceID:    "abc123",
 			Attributes: map[string]string{"env": "prod", "i": string(rune('a' + i))},
+			ProjectID:  "33333333-3333-3333-3333-333333333333",
 		}
 	}
 	return evs
@@ -128,8 +129,8 @@ func TestRedisPublisherPublishPipeline(t *testing.T) {
 		for j := 0; j < len(vals); j += 2 {
 			fields[vals[j].(string)] = vals[j+1].(string)
 		}
-		if fields["project_id"] != "default" {
-			t.Errorf("entry %d: project_id = %q, want default", i, fields["project_id"])
+		if fields["project_id"] != "33333333-3333-3333-3333-333333333333" {
+			t.Errorf("entry %d: project_id = %q, want the event's project", i, fields["project_id"])
 		}
 		if fields["ingested_at"] != "2026-11-06T12:04:05.123Z" {
 			t.Errorf("entry %d: ingested_at = %q, want UTC RFC3339", i, fields["ingested_at"])
@@ -391,5 +392,18 @@ func TestRedisPublisherLengthRefresher(t *testing.T) {
 	waitLen(10)
 	if err := p.Publish(context.Background(), sampleEvents(1)); err != nil {
 		t.Errorf("Publish() after the backlog drained = %v", err)
+	}
+}
+
+func TestRedisPublisherRequiresProjectID(t *testing.T) {
+	f := &fakeStream{}
+	p := newFakePublisher(t, f, testRedisOpts())
+	evs := sampleEvents(2)
+	evs[1].ProjectID = ""
+	if err := p.Publish(context.Background(), evs); err == nil {
+		t.Fatal("published an event without a project id")
+	}
+	if f.pipelines() != 0 {
+		t.Error("wrote to Redis")
 	}
 }

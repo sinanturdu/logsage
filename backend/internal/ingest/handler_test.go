@@ -11,6 +11,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
+
+	"github.com/sinanturdu/logsage/backend/internal/keys"
 )
 
 const testKey = "test-key-0123456789"
@@ -103,7 +107,7 @@ func TestHandler(t *testing.T) {
 				pub = mem
 			}
 			var logs bytes.Buffer
-			h, err := NewHandler(pub, testKey, lim, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			h, err := NewHandler(pub, testAuth(), lim, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 			if err != nil {
 				t.Fatalf("NewHandler: %v", err)
 			}
@@ -197,7 +201,7 @@ func TestHandlerBodyTooLarge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pub := NewMemoryPublisher(0)
-			h, err := NewHandler(pub, testKey, lim, nil)
+			h, err := NewHandler(pub, testAuth(), lim, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -228,7 +232,7 @@ func TestNewHandlerRejectsBadArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := NewHandler(tt.pub, tt.key, DefaultLimits(), nil); err == nil {
+			if _, err := NewHandler(tt.pub, authOrNil(tt.key), DefaultLimits(), nil); err == nil {
 				t.Fatal("NewHandler() error = nil, want error")
 			}
 		})
@@ -307,7 +311,7 @@ func TestHandlerBackpressureWritesNothing(t *testing.T) {
 			if err := pub.RefreshLength(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			h, err := NewHandler(pub, testKey, DefaultLimits(), nil)
+			h, err := NewHandler(pub, testAuth(), DefaultLimits(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -362,7 +366,7 @@ func TestHandlerBackpressureWritesNothing(t *testing.T) {
 }
 
 func TestHandlerStatsCountsPublishErrors(t *testing.T) {
-	h, err := NewHandler(errPublisher{redisOOM}, testKey, DefaultLimits(), nil)
+	h, err := NewHandler(errPublisher{redisOOM}, testAuth(), DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,5 +379,98 @@ func TestHandlerStatsCountsPublishErrors(t *testing.T) {
 	st := h.Stats()
 	if st.PublishErrorsTotal != 3 || st.AcceptedTotal != 0 || st.StreamLengthCached != nil || st.MaxStreamLen != nil {
 		t.Errorf("stats = %+v", st)
+	}
+}
+
+// testProject is the project the test key belongs to.
+const testProject = "22222222-2222-2222-2222-222222222222"
+
+func testAuth() auth.Authenticator { return auth.NewStaticKey(testKey, keys.KindIngest, testProject) }
+
+func authOrNil(key string) auth.Authenticator {
+	if key == "" {
+		return nil
+	}
+	return auth.NewStaticKey(key, keys.KindIngest, testProject)
+}
+
+// stubAuth returns a fixed result.
+type stubAuth struct {
+	p   auth.Principal
+	err error
+}
+
+func (s stubAuth) Authenticate(context.Context, string, keys.Kind) (auth.Principal, error) {
+	return s.p, s.err
+}
+
+func TestHandlerAuthOutcomes(t *testing.T) {
+	tests := []struct {
+		name       string
+		authn      auth.Authenticator
+		wantStatus int
+		wantError  string
+	}{
+		{name: "key store down is 503", authn: stubAuth{err: fmt.Errorf("%w: dial tcp 10.0.0.9:5432", auth.ErrUnavailable)}, wantStatus: 503, wantError: "authentication temporarily unavailable"},
+		{name: "rejected key is a generic 401", authn: stubAuth{err: auth.ErrUnauthorized}, wantStatus: 401, wantError: "missing or invalid API key"},
+		{name: "query key on ingest is 401", authn: auth.NewStaticKey(testKey, keys.KindQuery, testProject), wantStatus: 401, wantError: "missing or invalid API key"},
+		{name: "valid key is 202", authn: testAuth(), wantStatus: 202},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pub := NewMemoryPublisher(0)
+			h, err := NewHandler(pub, tt.authn, DefaultLimits(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(batchJSON(2)))
+			req.Header.Set("X-API-Key", testKey)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus || !strings.Contains(rec.Body.String(), tt.wantError) {
+				t.Fatalf("status %d body %s; want %d %q", rec.Code, rec.Body.String(), tt.wantStatus, tt.wantError)
+			}
+			if strings.Contains(rec.Body.String(), "10.0.0.9") {
+				t.Error("response leaks the database address")
+			}
+			if tt.wantStatus != 202 && len(pub.Events()) != 0 {
+				t.Error("events published although authentication failed")
+			}
+		})
+	}
+}
+
+// TestHandlerStampsProjectFromKey: the published events carry the verified
+// key's project; nothing in the body can set it (unknown fields are 400).
+func TestHandlerStampsProjectFromKey(t *testing.T) {
+	pub := NewMemoryPublisher(0)
+	h, err := NewHandler(pub, testAuth(), DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(body string) int {
+		req := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(body))
+		req.Header.Set("X-API-Key", testKey)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := post(batchJSON(3)); code != 202 {
+		t.Fatalf("status %d", code)
+	}
+	for _, e := range pub.Events() {
+		if e.ProjectID != testProject {
+			t.Fatalf("event project = %q, want %q", e.ProjectID, testProject)
+		}
+	}
+	for _, body := range []string{
+		`{"project_id":"other","events":[{"timestamp":"2026-11-06T10:15:30Z","level":"info","service":"s","message":"m"}]}`,
+		`{"events":[{"timestamp":"2026-11-06T10:15:30Z","level":"info","service":"s","message":"m","project_id":"other"}]}`,
+	} {
+		if code := post(body); code != 400 {
+			t.Errorf("body choosing a project: status %d, want 400", code)
+		}
 	}
 }

@@ -72,7 +72,7 @@ func integrationHandler(t *testing.T) (*Handler, *clickhouse.Client) {
 		t.Fatalf("raw row count = %q (err %v), want 14: 11 default + 2 other + 1 duplicate", out, err)
 	}
 
-	h, err := NewHandler(ch, testKey, testOpts(), newTestSlog(t))
+	h, err := NewHandler(ch, queryAuth(), testOpts(), newTestSlog(t))
 	if err != nil {
 		t.Fatal(err)
 	}

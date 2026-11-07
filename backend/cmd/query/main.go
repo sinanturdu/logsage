@@ -17,6 +17,7 @@ import (
 	"github.com/sinanturdu/logsage/backend/internal/logging"
 	"github.com/sinanturdu/logsage/backend/internal/query"
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
+	"github.com/sinanturdu/logsage/backend/internal/storage/postgres"
 )
 
 const (
@@ -67,8 +68,13 @@ func run(ctx context.Context, getenv func(string) string) error {
 	if cfg.Query.MaxLimit < pageSize {
 		pageSize = cfg.Query.MaxLimit
 	}
-	h, err := query.NewHandler(ch, cfg.Query.APIKey, query.Options{
-		ProjectID:    query.DefaultProjectID,
+	authn, keyStore, closeAuth, err := postgres.NewAuthenticator(ctx, cfg, log)
+	if err != nil {
+		return fmt.Errorf("authenticator: %w", err)
+	}
+	defer closeAuth()
+
+	h, err := query.NewHandler(ch, authn, query.Options{
 		MaxWindow:    cfg.Query.MaxWindow,
 		DefaultLimit: pageSize,
 		MaxLimit:     cfg.Query.MaxLimit,
@@ -81,7 +87,11 @@ func run(ctx context.Context, getenv func(string) string) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux)
-	health.RegisterReady(mux, log, ch)
+	readiness := []health.ReadinessChecker{ch}
+	if keyStore != nil {
+		readiness = append(readiness, keyStore)
+	}
+	health.RegisterReady(mux, log, readiness...)
 	h.Register(mux)
 
 	srv := &http.Server{

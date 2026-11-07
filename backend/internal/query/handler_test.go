@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
+
+	"github.com/sinanturdu/logsage/backend/internal/keys"
 )
 
 const testKey = "query-key-0123456789"
@@ -56,7 +60,7 @@ func (s *fakeStore) QueryWithParams(_ context.Context, sql string, params, setti
 	from, to := parse("from"), parse("to")
 	var match []fakeRow
 	for _, r := range s.rows {
-		if r.project != params["project_id"] || r.ts.Before(from) || !r.ts.Before(to) {
+		if (r.project != params["project_id"] && r.project != params["project_alias"]) || r.ts.Before(from) || !r.ts.Before(to) {
 			continue
 		}
 		if v, ok := params["service"]; ok && r.service != v {
@@ -102,7 +106,7 @@ func (s *fakeStore) QueryWithParams(_ context.Context, sql string, params, setti
 func (s *fakeStore) Ready(context.Context) error { return nil }
 
 func testOpts() Options {
-	return Options{ProjectID: "default", MaxWindow: 168 * time.Hour, DefaultLimit: 100, MaxLimit: 1000, MaxTextLen: 256, Timeout: 10 * time.Second}
+	return Options{MaxWindow: 168 * time.Hour, DefaultLimit: 100, MaxLimit: 1000, MaxTextLen: 256, Timeout: 10 * time.Second}
 }
 
 var day = time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
@@ -110,7 +114,7 @@ var day = time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
 func newTestHandler(t *testing.T, store *fakeStore) (*Handler, *bytes.Buffer) {
 	t.Helper()
 	var logs bytes.Buffer
-	h, err := NewHandler(store, testKey, testOpts(), slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	h, err := NewHandler(store, queryAuth(), testOpts(), slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +269,7 @@ func TestHandlerPassesQuerySettings(t *testing.T) {
 			t.Errorf("setting %s = %q, want %q", k, store.settings[k], v)
 		}
 	}
-	if store.params["project_id"] != "default" || store.params["service"] != "checkout" {
+	if store.params["project_id"] != auth.DefaultProjectID || store.params["project_alias"] != "default" || store.params["service"] != "checkout" {
 		t.Errorf("params = %v", store.params)
 	}
 }
@@ -389,7 +393,6 @@ func TestNewHandlerValidation(t *testing.T) {
 	}{
 		{name: "nil store", key: testKey, mutate: func(*Options) {}},
 		{name: "empty key", store: &fakeStore{}, mutate: func(*Options) {}},
-		{name: "no project", store: &fakeStore{}, key: testKey, mutate: func(o *Options) { o.ProjectID = "" }},
 		{name: "default above max", store: &fakeStore{}, key: testKey, mutate: func(o *Options) { o.DefaultLimit = 2000 }},
 		{name: "sub-second timeout", store: &fakeStore{}, key: testKey, mutate: func(o *Options) { o.Timeout = time.Millisecond }},
 	}
@@ -397,7 +400,11 @@ func TestNewHandlerValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			o := testOpts()
 			tt.mutate(&o)
-			if _, err := NewHandler(tt.store, tt.key, o, nil); err == nil {
+			var a auth.Authenticator
+			if tt.key != "" {
+				a = queryAuth()
+			}
+			if _, err := NewHandler(tt.store, a, o, nil); err == nil {
 				t.Fatal("NewHandler() error = nil, want error")
 			}
 		})
@@ -414,4 +421,65 @@ type tWriter struct{ t *testing.T }
 func (w tWriter) Write(b []byte) (int, error) {
 	w.t.Log(strings.TrimSpace(string(b)))
 	return len(b), nil
+}
+
+func queryAuth() auth.Authenticator {
+	return auth.NewStaticKey(testKey, keys.KindQuery, auth.DefaultProjectID)
+}
+
+type stubAuth struct {
+	p   auth.Principal
+	err error
+}
+
+func (s stubAuth) Authenticate(context.Context, string, keys.Kind) (auth.Principal, error) {
+	return s.p, s.err
+}
+
+func TestQueryAuthOutcomes(t *testing.T) {
+	other := "55555555-5555-5555-5555-555555555555"
+	tests := []struct {
+		name       string
+		authn      auth.Authenticator
+		wantStatus int
+		wantIDs    string
+	}{
+		{name: "key store down is 503", authn: stubAuth{err: fmt.Errorf("%w: refused", auth.ErrUnavailable)}, wantStatus: 503},
+		{name: "rejected key is 401", authn: stubAuth{err: auth.ErrUnauthorized}, wantStatus: 401},
+		{name: "ingest key on query is 401", authn: auth.NewStaticKey(testKey, keys.KindIngest, auth.DefaultProjectID), wantStatus: 401},
+		{name: "default project sees legacy rows", authn: queryAuth(), wantStatus: 200, wantIDs: "2-0,1-0"},
+		{name: "other project sees only its rows", authn: stubAuth{p: auth.Principal{ProjectID: other, Kind: keys.KindQuery}}, wantStatus: 200, wantIDs: "3-0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeStore{rows: []fakeRow{
+				{project: "default", id: "1-0", ts: day.Add(time.Hour), level: "info", service: "s", message: "m"},
+				{project: auth.DefaultProjectID, id: "2-0", ts: day.Add(2 * time.Hour), level: "info", service: "s", message: "m"},
+				{project: other, id: "3-0", ts: day.Add(3 * time.Hour), level: "info", service: "s", message: "m"},
+			}}
+			h, err := NewHandler(store, tt.authn, testOpts(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec := do(h, http.MethodGet, okRange, testKey)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status %d (%s), want %d", rec.Code, rec.Body.String(), tt.wantStatus)
+			}
+			if tt.wantStatus != 200 {
+				if store.calls != 0 {
+					t.Error("query ran although authentication failed")
+				}
+				return
+			}
+			var resp Response
+			_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+			var ids []string
+			for _, e := range resp.Events {
+				ids = append(ids, e.EventID)
+			}
+			if strings.Join(ids, ",") != tt.wantIDs {
+				t.Errorf("ids = %v, want %s", ids, tt.wantIDs)
+			}
+		})
+	}
 }

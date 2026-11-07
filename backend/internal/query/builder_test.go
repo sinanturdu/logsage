@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
 )
 
 // injection holds hostile values for every free-text parameter.
@@ -60,7 +62,7 @@ func shapes(value string) []Filter {
 func TestBuildAlwaysScopesProject(t *testing.T) {
 	for _, value := range append([]string{"checkout"}, injection...) {
 		for i, f := range shapes(value) {
-			st, err := Build("default", f)
+			st, err := Build(ScopeFor(auth.DefaultProjectID), f)
 			if err != nil {
 				t.Fatalf("shape %d: %v", i, err)
 			}
@@ -69,19 +71,21 @@ func TestBuildAlwaysScopesProject(t *testing.T) {
 			}
 			// The scope fragment holds the two only mentions of project_id:
 			// no other condition can widen or override it.
-			if strings.Count(st.SQL, projectScope) != 1 || strings.Count(st.SQL, "project_id") != 2 {
+			if strings.Count(st.SQL, projectScope) != 1 || strings.Count(st.SQL, "project_id") != 3 {
 				t.Fatalf("shape %d: project_id used outside the scope condition:\n%s", i, st.SQL)
 			}
-			if st.Params["project_id"] != "default" {
-				t.Fatalf("shape %d: project_id param = %q", i, st.Params["project_id"])
+			if st.Params["project_id"] != auth.DefaultProjectID || st.Params["project_alias"] != "default" {
+				t.Fatalf("shape %d: project params = %q / %q", i, st.Params["project_id"], st.Params["project_alias"])
 			}
 		}
 	}
 }
 
 func TestBuildRejectsMissingProject(t *testing.T) {
-	if _, err := Build("", baseFilter()); err == nil {
-		t.Fatal("Build without project id succeeded")
+	for _, sc := range []Scope{{}, {ProjectID: "x"}, {Alias: "x"}} {
+		if _, err := Build(sc, baseFilter()); err == nil {
+			t.Fatalf("Build with scope %+v succeeded", sc)
+		}
 	}
 }
 
@@ -89,11 +93,11 @@ func TestBuildKeepsValuesOutOfSQL(t *testing.T) {
 	benign := shapes("benign")
 	for _, value := range injection {
 		for i, f := range shapes(value) {
-			st, err := Build("default", f)
+			st, err := Build(ScopeFor(auth.DefaultProjectID), f)
 			if err != nil {
 				t.Fatalf("shape %d: %v", i, err)
 			}
-			want, _ := Build("default", benign[i])
+			want, _ := Build(ScopeFor(auth.DefaultProjectID), benign[i])
 			if st.SQL != want.SQL {
 				t.Fatalf("shape %d: SQL depends on the value %q:\n%s", i, value, st.SQL)
 			}
@@ -123,7 +127,7 @@ func TestBuildKeepsValuesOutOfSQL(t *testing.T) {
 func TestBuildFetchesOneExtraRow(t *testing.T) {
 	f := baseFilter()
 	f.Limit = 3
-	st, err := Build("default", f)
+	st, err := Build(ScopeFor(auth.DefaultProjectID), f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +153,7 @@ func TestBuildValidatesInput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := baseFilter()
 			tt.mutate(&f)
-			if _, err := Build("default", f); err == nil {
+			if _, err := Build(ScopeFor(auth.DefaultProjectID), f); err == nil {
 				t.Fatal("Build() error = nil, want error")
 			}
 		})
@@ -161,7 +165,7 @@ func TestBuildParamFormats(t *testing.T) {
 	f.From = time.Date(2026, 11, 6, 12, 0, 0, 123_456_789, time.FixedZone("TRT", 3*3600))
 	f.Levels = []string{"warn", "error"}
 	f.After = &Cursor{Timestamp: time.Date(2026, 11, 6, 20, 0, 0, 5_000_000, time.UTC), EventID: "5-1"}
-	st, err := Build("default", f)
+	st, err := Build(ScopeFor(auth.DefaultProjectID), f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,5 +180,21 @@ func TestBuildParamFormats(t *testing.T) {
 		if st.Params[k] != v {
 			t.Errorf("param %s = %q, want %q", k, st.Params[k], v)
 		}
+	}
+}
+
+func TestScopeFor(t *testing.T) {
+	if sc := ScopeFor(auth.DefaultProjectID); sc.ProjectID != auth.DefaultProjectID || sc.Alias != "default" {
+		t.Errorf("default project scope = %+v", sc)
+	}
+	other := "44444444-4444-4444-4444-444444444444"
+	if sc := ScopeFor(other); sc.ProjectID != other || sc.Alias != other {
+		t.Errorf("other project scope = %+v: must not match legacy default rows", sc)
+	}
+	// The SQL is identical for every project; only parameters differ.
+	a, _ := Build(ScopeFor(auth.DefaultProjectID), baseFilter())
+	b, _ := Build(ScopeFor(other), baseFilter())
+	if a.SQL != b.SQL || b.Params["project_alias"] != other {
+		t.Error("scope changed the SQL text or the alias leaked another project")
 	}
 }

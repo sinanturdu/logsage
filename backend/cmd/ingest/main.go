@@ -16,6 +16,7 @@ import (
 	"github.com/sinanturdu/logsage/backend/internal/health"
 	"github.com/sinanturdu/logsage/backend/internal/ingest"
 	"github.com/sinanturdu/logsage/backend/internal/logging"
+	"github.com/sinanturdu/logsage/backend/internal/storage/postgres"
 )
 
 const (
@@ -42,9 +43,14 @@ func run(ctx context.Context) error {
 	}
 	log := logging.New(os.Stdout, cfg.LogLevel, cfg.LogFormat)
 
-	if cfg.IngestAPIKey == "" {
-		return errors.New("INGEST_API_KEY must be set")
+	if err := cfg.ValidateIngest(); err != nil {
+		return err
 	}
+	authn, keyStore, closeAuth, err := postgres.NewAuthenticator(ctx, cfg, log)
+	if err != nil {
+		return fmt.Errorf("authenticator: %w", err)
+	}
+	defer closeAuth()
 
 	pub, readiness, closePub, err := newPublisher(ctx, cfg, log)
 	if err != nil {
@@ -54,7 +60,7 @@ func run(ctx context.Context) error {
 
 	ingestHandler, err := ingest.NewHandler(
 		pub,
-		cfg.IngestAPIKey,
+		authn,
 		ingest.Limits{
 			MaxBodyBytes:      cfg.Ingest.MaxBodyBytes,
 			MaxEvents:         cfg.Ingest.MaxEvents,
@@ -72,6 +78,9 @@ func run(ctx context.Context) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux)
+	if keyStore != nil {
+		readiness = append(readiness, keyStore)
+	}
 	health.RegisterReady(mux, log, readiness...)
 	ingestHandler.Register(mux)
 	ingestHandler.RegisterStats(mux)
