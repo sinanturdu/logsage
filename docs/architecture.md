@@ -136,7 +136,9 @@ CREATE TABLE IF NOT EXISTS logsage.logs (
   fingerprint UInt64,                   -- 0 until fingerprinting lands
   trace_id    String,
   attributes  Map(String, String),
-  ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+  ingested_at DateTime64(3, 'UTC') DEFAULT now64(3),
+  inserted_at DateTime64(3, 'UTC') DEFAULT toDateTime64(0, 3, 'UTC'),  -- set by the processor per insert attempt (ADR 0015)
+  INDEX idx_inserted_at inserted_at TYPE minmax GRANULARITY 1
 ) ENGINE = ReplacingMergeTree
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (project_id, service, timestamp, event_id)
@@ -250,6 +252,25 @@ Session cookie, any member role. Order: membership (`404` for non-members and un
 
 - Histogram: without `bucket` the smallest size giving at most 240 buckets; an explicit `bucket` may give at most 500. Buckets are aligned to the Unix epoch, cover the bucket holding `from` up to `to`, and empty ones are zero.
 - Facets: level counts apply every filter except `level`, service counts every filter except `service`, `total` every filter. At most 50 services by count, then `{"name":"other","count":n,"other":true}`.
+
+### Live tail (v0.2 package I1b, ADR 0015)
+`GET /api/projects/{slug}/tail?level=&service=&q=&trace_id=`: session cookie, any member role. There is no `from`/`to`; the stream starts now. Request checks are those of the read endpoints: non-members and unknown slugs get `404`, no cookie gets `401`, bad parameters or an invalid `Last-Event-ID` get `400`. Above `TAIL_MAX_CONN_USER` (2), `TAIL_MAX_CONN_PROJECT` (10) or `TAIL_MAX_CONN_TOTAL` (50) open streams the answer is `429` with `Retry-After`.
+
+Response: `200`, `Content-Type: text/event-stream`, `Cache-Control: no-store`, `X-Accel-Buffering: no`; it begins with `retry: 5000`.
+
+| Event | `data` | Notes |
+|---|---|---|
+| `log` | one event, the same object as in `/logs` `events` | `id` is an opaque cursor; send it back as `Last-Event-ID` |
+| `status` | `{"state":"live"}`, `{"state":"degraded","reason":"storage_unavailable"}`, `{"state":"closed","reason":"max_duration\|shutdown\|session_ended\|access_revoked"}` | heartbeat `{"state":...,"heartbeat":true}` every `TAIL_HEARTBEAT` (15s) |
+| `reset` | `{"reason":"cursor_too_old\|overloaded"}` | refetch with `/logs`; the stream continues from now |
+
+How the stream works:
+- **Order:** rows are delivered in visibility order `(inserted_at, event_id)`.
+- **Late rows:** rows that become visible late within `TAIL_OVERLAP` (30s) are still delivered.
+- **Duplicates:** each event id is delivered once per stream.
+- **Old events:** logs with an event time older than `TAIL_MAX_LATENESS` (10m) at arrival are not streamed live.
+- **Resume:** a reconnect with `Last-Event-ID` within `TAIL_MAX_REPLAY` (5m) resumes without gaps or duplicates.
+- **Stream lifetime:** a stream closes after `TAIL_MAX_DURATION` (1h). Session and membership are re-checked every `TAIL_AUTH_RECHECK` (30s), and a client slower than `TAIL_WRITE_TIMEOUT` per write is dropped.
 
 ## Fingerprinting
 Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.
