@@ -80,6 +80,8 @@ jobs:
           docker compose -f infra/docker-compose.yml config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --services | grep -qx api
+          # The api service reads ClickHouse but needs no Redis.
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --format json             | jq -e '.services.api.environment | has("CLICKHOUSE_URL") and has("CLICKHOUSE_PASSWORD") and (has("REDIS_ADDR") | not)'
       - name: Image contains every binary
         run: docker run --rm --entrypoint ls logsage-backend:ci /usr/local/bin/ingest /usr/local/bin/processor /usr/local/bin/query /usr/local/bin/admin /usr/local/bin/api
       - name: App profile refuses to start without secrets

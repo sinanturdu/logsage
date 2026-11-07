@@ -32,6 +32,10 @@ type APIConfig struct {
 	LoginDelayBase   time.Duration // LOGIN_DELAY_BASE: first delay, doubled per further failure
 	LoginDelayMax    time.Duration // LOGIN_DELAY_MAX
 	LoginLimiterSize int           // LOGIN_LIMITER_SIZE: tracked IPs plus email hashes
+
+	// MaxConcurrentQueries (API_MAX_CONCURRENT_QUERIES) caps the log reads
+	// one user may run at once; the limits of each read are the QUERY_* ones.
+	MaxConcurrentQueries int
 }
 
 // DefaultAPIConfig returns the management API defaults.
@@ -51,6 +55,8 @@ func DefaultAPIConfig() APIConfig {
 		LoginDelayBase:   time.Second,
 		LoginDelayMax:    15 * time.Minute,
 		LoginLimiterSize: 10_000,
+
+		MaxConcurrentQueries: 4,
 	}
 }
 
@@ -149,6 +155,7 @@ func loadAPI(getenv func(string) string, cfg *Config) error {
 		{"ARGON2_MAX_CONCURRENT", 1, 256, &a.Argon2MaxConcurrent},
 		{"LOGIN_MAX_FAILURES", 1, 1000, &a.LoginMaxFailures},
 		{"LOGIN_LIMITER_SIZE", 100, 10_000_000, &a.LoginLimiterSize},
+		{"API_MAX_CONCURRENT_QUERIES", 1, 1000, &a.MaxConcurrentQueries},
 	}
 	for _, it := range ints {
 		if err := boundedInt(getenv, it.name, it.lo, it.hi, it.dst); err != nil {
@@ -164,9 +171,24 @@ func loadAPI(getenv func(string) string, cfg *Config) error {
 	return nil
 }
 
-// ValidateAPI checks what cmd/api needs: the API stores users and sessions
-// in PostgreSQL, so DATABASE_URL is required.
-func (c Config) ValidateAPI() error {
+// APIRequiredEnv are the variables cmd/api needs set explicitly: users and
+// sessions live in PostgreSQL, and the log read endpoints query ClickHouse,
+// where the defaults (localhost, user default, no password) are never what
+// a deployment wants.
+var APIRequiredEnv = []string{"DATABASE_URL", "CLICKHOUSE_URL", "CLICKHOUSE_DB", "CLICKHOUSE_USER", "CLICKHOUSE_PASSWORD"}
+
+// ValidateAPI checks what cmd/api needs beyond Load. getenv is the same
+// lookup Load used; every APIRequiredEnv variable must be non-empty.
+func (c Config) ValidateAPI(getenv func(string) string) error {
+	var unset []string
+	for _, name := range APIRequiredEnv {
+		if strings.TrimSpace(getenv(name)) == "" {
+			unset = append(unset, name)
+		}
+	}
+	if len(unset) > 0 {
+		return fmt.Errorf("config: the management API needs %s", strings.Join(unset, ", "))
+	}
 	if c.Postgres.URL == "" {
 		return errors.New("config: the management API needs DATABASE_URL")
 	}

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,7 +26,7 @@ func TestLoadAPI(t *testing.T) {
 				"COOKIE_SECURE": "false", "REGISTRATION_ENABLED": "true",
 				"ALLOWED_ORIGINS":   " https://App.Example.com , http://localhost:5173/ ,",
 				"ARGON2_MEMORY_KIB": "19456", "ARGON2_ITERATIONS": "2", "ARGON2_PARALLELISM": "1", "ARGON2_MAX_CONCURRENT": "8",
-				"LOGIN_MAX_FAILURES": "3", "LOGIN_DELAY_BASE": "2s", "LOGIN_DELAY_MAX": "1m", "LOGIN_LIMITER_SIZE": "500",
+				"LOGIN_MAX_FAILURES": "3", "LOGIN_DELAY_BASE": "2s", "LOGIN_DELAY_MAX": "1m", "LOGIN_LIMITER_SIZE": "500", "API_MAX_CONCURRENT_QUERIES": "8",
 			},
 			check: func(t *testing.T, a APIConfig) {
 				want := APIConfig{
@@ -32,7 +34,7 @@ func TestLoadAPI(t *testing.T) {
 					CookieSecure: false, RegistrationEnabled: true,
 					AllowedOrigins:  "https://app.example.com,http://localhost:5173",
 					Argon2MemoryKiB: 19456, Argon2Iterations: 2, Argon2Parallelism: 1, Argon2MaxConcurrent: 8,
-					LoginMaxFailures: 3, LoginDelayBase: 2 * time.Second, LoginDelayMax: time.Minute, LoginLimiterSize: 500,
+					LoginMaxFailures: 3, LoginDelayBase: 2 * time.Second, LoginDelayMax: time.Minute, LoginLimiterSize: 500, MaxConcurrentQueries: 8,
 				}
 				if a != want {
 					t.Errorf("got  %+v\nwant %+v", a, want)
@@ -74,17 +76,34 @@ func TestLoadAPI(t *testing.T) {
 }
 
 func TestValidateAPI(t *testing.T) {
-	cfg, _ := Load(func(string) string { return "" })
-	if cfg.ValidateAPI() == nil {
-		t.Error("API without DATABASE_URL accepted")
+	env := map[string]string{}
+	get := func(k string) string { return env[k] }
+	cfg, _ := Load(get)
+	if err := cfg.ValidateAPI(get); err == nil || !strings.Contains(err.Error(), "DATABASE_URL, CLICKHOUSE_URL, CLICKHOUSE_DB, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD") {
+		t.Errorf("empty env: %v", err)
 	}
-	cfg, _ = Load(func(k string) string {
-		if k == "DATABASE_URL" {
-			return "postgres://u:p@localhost:5432/db"
-		}
-		return ""
-	})
-	if err := cfg.ValidateAPI(); err != nil {
+	env["DATABASE_URL"] = "postgres://u:p@localhost:5432/db"
+	env["CLICKHOUSE_URL"], env["CLICKHOUSE_DB"], env["CLICKHOUSE_USER"] = "http://localhost:8123", "logsage", "logsage"
+	cfg, _ = Load(get)
+	if err := cfg.ValidateAPI(get); err == nil || err.Error() != "config: the management API needs CLICKHOUSE_PASSWORD" {
+		t.Errorf("API without ClickHouse password: %v", err)
+	}
+	env["CLICKHOUSE_PASSWORD"] = "secret"
+	cfg, _ = Load(get)
+	if err := cfg.ValidateAPI(get); err != nil {
 		t.Error(err)
+	}
+	if cfg.API.MaxConcurrentQueries != 4 {
+		t.Errorf("default MaxConcurrentQueries = %d", cfg.API.MaxConcurrentQueries)
+	}
+	for v, ok := range map[string]bool{"1": true, "16": true, "0": false, "x": false, "1001": false} {
+		env["API_MAX_CONCURRENT_QUERIES"] = v
+		cfg, err := Load(get)
+		if (err == nil) != ok {
+			t.Errorf("API_MAX_CONCURRENT_QUERIES=%s: err = %v", v, err)
+		}
+		if ok && strconv.Itoa(cfg.API.MaxConcurrentQueries) != v {
+			t.Errorf("API_MAX_CONCURRENT_QUERIES=%s: got %d", v, cfg.API.MaxConcurrentQueries)
+		}
 	}
 }
