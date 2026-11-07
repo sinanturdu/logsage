@@ -97,26 +97,40 @@ export async function request<T>(method: 'GET' | 'POST', path: string, opts: Req
     throw new ApiError('network', 0)
   }
   if (res.status === 204) return undefined as T
+  if (res.ok) {
+    try {
+      return (await res.json()) as T
+    } catch {
+      return undefined as T
+    }
+  }
+  const err = await errorFromResponse(res)
+  if (err.kind === 'unauthorized' && !opts.anonymous) notifySessionEnded()
+  throw err
+}
 
+/** Tells the app that the session ended (a 401 on a signed-in request). */
+export function notifySessionEnded(): void {
+  sessionEndedListeners.forEach((fn) => fn())
+}
+
+/** The ApiError for a failed response; reads the body for a 400's message. */
+export async function errorFromResponse(res: Response): Promise<ApiError> {
   let data: unknown
   try {
     data = await res.json()
   } catch {
     data = undefined
   }
-  if (res.ok) return data as T
-
   const kind = kindFor(res.status)
   const serverMessage =
     kind === 'invalid' && data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
       : undefined
-  const err = new ApiError(kind, res.status, {
+  return new ApiError(kind, res.status, {
     ...(serverMessage !== undefined && { serverMessage }),
     ...(kind === 'rate_limited' && { retryAfter: retryAfterSeconds(res.headers.get('Retry-After')) ?? 1 }),
   })
-  if (kind === 'unauthorized' && !opts.anonymous) sessionEndedListeners.forEach((fn) => fn())
-  throw err
 }
 
 export const api = {

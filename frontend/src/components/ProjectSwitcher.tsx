@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { errorMessage } from '../api/client'
 import { useProjects } from '../api/projects'
 
@@ -9,6 +9,8 @@ export function ProjectSwitcher() {
   const projects = useProjects()
   const { slug } = useParams()
   const navigate = useNavigate()
+  // Switching projects keeps the section (logs or API keys).
+  const section = useLocation().pathname.endsWith('/keys') ? 'keys' : 'logs'
   const id = useId()
 
   if (projects.isPending) {
@@ -40,7 +42,7 @@ export function ProjectSwitcher() {
       <select
         id={id}
         value={current}
-        onChange={(e) => navigate(`/projects/${encodeURIComponent(e.target.value)}/logs`)}
+        onChange={(e) => navigate(`/projects/${encodeURIComponent(e.target.value)}/${section}`)}
       >
         {current === '' && <option value="">Choose a project</option>}
         {projects.data.map((p) => (

@@ -284,9 +284,9 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b and I2c-1)
+## As built (I2b, I2c-1 and I2c-2)
 
-What the explorer does differently from B2 and its polish round, and why. Details are in ADR 0017 and ADR 0018.
+What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017, ADR 0018 and ADR 0019.
 
 - **List semantics:** the rows form a `treegrid`, not a `listbox`, so they can carry `aria-expanded` and hold an interactive detail.
 - **One open detail at a time** (B2 allows several). Escape and focus then have a single target, and the Same trace pivot switches the open detail.
@@ -299,6 +299,14 @@ What the explorer does differently from B2 and its polish round, and why. Detail
 - **Strip unit:** the strips are labeled with the server's bucket size ("per 10 s"), not a fixed 30 s.
 - **Service facets** are checkboxes with selection semantics. With none checked, all services are shown (I2b).
 - **The range heading** sits in the explorer head next to the range controls, not in the shell header (I2b).
+- **Live tail** (I2c-2):
+  - The Live toggle sits in the list header, not in the filter bar, so it sits next to the rows it changes.
+  - While live, the timeline is refetched every 10 seconds instead of growing with every bucket. That is one request per 10 seconds and respects 429.
+  - Arrivals fade from the selection color over 1.6 s, with no slide, and no fade under reduced motion.
+  - Live works at every width, including phones. The brief planned no live tail on phones, but auto-pause and the "N new logs" button keep a narrow list readable.
+- **Auto-pause and "N new logs":** new, not in B2. Rows never move under a reader who has a detail open, a selection below the top, or the list scrolled away.
+- **Account settings** are an account menu with dialogs (Change password, Sign out of all devices, Sign out), not a separate page. There is nothing else to set yet.
+- **API keys** is a page with a Logs / API keys nav in the header. On narrow screens the table scrolls sideways inside its frame; the page does not.
 
 ## Frontend plan for I2
 

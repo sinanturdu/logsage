@@ -17,7 +17,7 @@ const NOW = Date.parse('2026-11-07T02:17:00Z')
 
 describe('URL state', () => {
   it('defaults to the last 15 minutes with no filters', () => {
-    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '', zoom: false })
+    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '', zoom: false, live: false })
     expect(serializeState(p('')).toString()).toBe('')
   })
 
@@ -29,6 +29,7 @@ describe('URL state', () => {
       q: 'gateway timeout',
       traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
       zoom: true,
+      live: false,
     }
     const qs = serializeState(s).toString()
     expect(qs).toBe(
@@ -64,6 +65,13 @@ describe('URL state', () => {
     expect(p('trace_id=4BF92F3577B34DA6A3CE929D0E0E4736').traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736')
     const many = Array.from({ length: 30 }, (_, i) => `s${i}`).join(',')
     expect(p(`service=${many}`).services).toHaveLength(20)
+  })
+
+  it('keeps live only with a relative range and ignores from/to while live', () => {
+    expect(p('live=1')).toMatchObject({ live: true, range: { kind: 'relative', preset: '15m' } })
+    expect(p('range=1h&live=1&from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z')).toMatchObject({ live: true, range: { kind: 'relative', preset: '1h' } })
+    expect(serializeState(p('range=1h&live=1&from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z')).toString()).toBe('range=1h&live=1')
+    expect(p('live=yes').live).toBe(false)
   })
 
   it('keeps zoom only with an absolute range', () => {

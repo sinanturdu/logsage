@@ -91,7 +91,7 @@ describe('log explorer', () => {
     for (let i = 0; i < 9; i++) await user.click(await screen.findByRole('button', { name: 'Load more' }))
     expect(await screen.findByText(/1,000 logs loaded, the most this view shows\. Narrow the time range or add filters/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
-  })
+  }, 15_000) // renders up to 1,000 rows ten times in jsdom; slow when the suite runs in parallel
 
   it('shows the empty state with Clear filters', async () => {
     mockExplorer({ logs: () => json(200, { events: [], next_cursor: null }), facets: () => json(200, { ...facets(0), total: 0 }) })

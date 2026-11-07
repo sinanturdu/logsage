@@ -42,6 +42,8 @@ export type ExplorerState = {
   traceId: string
   /** Zoomed in: the timeline shows only the absolute selection (ADR 0018). */
   zoom: boolean
+  /** Live tail on (ADR 0019); only with a relative range. */
+  live: boolean
 }
 
 export const EMPTY_FILTERS = { levels: [] as Level[], services: [] as string[], q: '', traceId: '' }
@@ -81,7 +83,9 @@ export function parseState(params: URLSearchParams): ExplorerState {
   const from = parseInstant(params.get('from'))
   const to = parseInstant(params.get('to'))
   const preset = params.get('range')
-  if (from !== null && to !== null && from < to && to - from <= MAX_WINDOW_MS) {
+  // While live the list follows now: from/to are ignored.
+  const live = params.get('live') === '1'
+  if (!live && from !== null && to !== null && from < to && to - from <= MAX_WINDOW_MS) {
     range = { kind: 'absolute', from, to }
   } else if (isPreset(preset)) {
     range = { kind: 'relative', preset }
@@ -100,6 +104,7 @@ export function parseState(params: URLSearchParams): ExplorerState {
     q,
     traceId: validTraceId(tRaw) ? tRaw : '',
     zoom: range.kind === 'absolute' && params.get('zoom') === '1',
+    live,
   }
 }
 
@@ -127,6 +132,7 @@ export function serializeState(s: ExplorerState): URLSearchParams {
   if (s.q) p.set('q', s.q)
   if (s.traceId) p.set('trace_id', s.traceId)
   if (s.zoom && s.range.kind === 'absolute') p.set('zoom', '1')
+  if (s.live && s.range.kind === 'relative') p.set('live', '1')
   return p
 }
 

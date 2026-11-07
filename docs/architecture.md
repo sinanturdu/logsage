@@ -277,12 +277,14 @@ How the stream works:
 - `/login`: sign-in. A `next=<path>` parameter returns the user to that path afterwards; only same-app paths are accepted.
 - `/`: opens the first project, or shows the empty state with a create-project form.
 - `/projects/:slug/logs`: the log explorer (I2b, ADR 0017).
+  - Live tail (I2c-2, ADR 0019): `live=1` streams `/tail` through a fetch-based SSE client (Last-Event-ID, backoff 5 s doubling to 30 s, 401/404/400 stop, 429 waits Retry-After), batches rows per frame, caps the list at 1,000 and pauses while the reader is busy.
   - URL state: `range` or `from`/`to` (UTC), plus `level`, `service`, `q` and `trace_id`.
   - Layout: a two-strip SVG timeline with brushing, the facets column, and single-line rows with Load more (de-duplicated, capped at 1,000).
   - Data: it calls `/histogram` for the context window, and `/facets` and `/logs` for the selected range; changing a filter cancels requests in flight.
   - Row detail and zoom (I2c-1, ADR 0018): an expanded row lazily calls `/logs?trace_id=...&limit=50` for 10 minutes around the log (Same trace), cancelled on collapse. `zoom=1` (absolute ranges only) makes the timeline's window the selection itself. Filter chips and the narrow-screen Filters disclosure are client-side only.
+- `/projects/:slug/keys`: API keys (I2c-2, ADR 0019): list for every member; owners and admins create (one-time reveal kept only in component state) and revoke.
 
-The app uses `/api/auth/login`, `/logout` and `/me`, `GET/POST /api/projects`, and the explorer endpoints `/logs`, `/histogram` and `/facets`; I2c-2 adds `/tail`.
+The app uses `/api/auth/login`, `/logout` and `/me`, `GET/POST /api/projects`, and the explorer endpoints `/logs`, `/histogram` and `/facets`; The live tail uses `/tail` (I2c-2); the keys screen uses `GET/POST /api/projects/{slug}/keys` and `POST .../keys/{prefix}/revoke`; the account menu uses `/api/auth/change-password`, `/logout-all` and `/logout`.
 
 Error handling:
 - A 401 on any signed-in request clears the cache and goes to `/login?next=...&expired=1`.

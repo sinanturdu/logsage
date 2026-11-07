@@ -5,6 +5,19 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Live tail in the log explorer (ADR 0019):
+  - A Live toggle (also `l`, `live=1` in the URL) streams new logs through a fetch-based SSE client with Last-Event-ID.
+  - Backoff starts at 5 s and doubles up to 30 s, with a countdown and Retry now (`r`). A 401 returns to sign-in, a 404 or a 400 stops with a plain reason, and a 429 waits for Retry-After.
+  - It shows a degraded state and recovers from it.
+  - New logs are batched per frame, de-duplicated and capped at 1,000 rows.
+  - The list auto-pauses while you read, with "N new logs" and Resume.
+  - Screen readers get a polite summary at most every 5 seconds.
+  - The timeline refreshes every 10 seconds while Live is on.
+- API keys screen at `/projects/:slug/keys` with a Logs / API keys nav:
+  - The list puts active keys first, with UTC times and status in words.
+  - Owners and admins create keys in a dialog that reveals the key once, with Copy and a placeholder curl example, and revoke them after a confirmation.
+  - Viewers get the list read-only.
+- Account menu: Change password (12 to 128 characters; other sessions are signed out), Sign out of all devices, and Sign out, as a keyboard menu.
 - Log explorer row detail (ADR 0018): Enter, Space or a click expands a row (treegrid, Escape collapses) to show the full message, `trace_id` and `span_id` with copy buttons, Request and Context attributes by a fixed grouping rule, "Filter by this trace" (also `t`) and "Copy as JSON" with a clipboard fallback.
 - Same trace: the logs that share the trace within 10 minutes of the log, loaded lazily, cancelled on collapse, 5 shown then "Show all N", the current log marked; clicking one shows it in the open detail.
 - Filter chips above the list, one removable chip per active filter plus Clear filters, and a "Filters (N)" disclosure below 900px.

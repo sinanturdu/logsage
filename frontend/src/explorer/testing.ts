@@ -4,7 +4,7 @@ import { alice, json, project } from '../test/util'
 // Shared fetch mock for the explorer tests: routed by path, because the
 // explorer endpoints carry query strings.
 
-export type Req = { path: string; params: URLSearchParams; signal: AbortSignal | undefined }
+export type Req = { path: string; params: URLSearchParams; signal: AbortSignal | undefined; headers: Record<string, string> }
 
 export function event(i: number, extra: Partial<Record<string, string>> = {}) {
   return {
@@ -40,7 +40,7 @@ export const histogram = {
 export type Handler = (r: Req) => Response | Promise<Response>
 
 /** fetch mock routed by path; the explorer endpoints carry query strings. */
-export function mockExplorer(overrides: Partial<Record<'logs' | 'facets' | 'histogram' | 'projects', Handler>> = {}) {
+export function mockExplorer(overrides: Partial<Record<'logs' | 'facets' | 'histogram' | 'projects' | 'tail', Handler>> = {}) {
   const requests: Req[] = []
   const routes: Record<string, Handler> = {
     '/api/auth/me': () => json(200, alice),
@@ -54,7 +54,7 @@ export function mockExplorer(overrides: Partial<Record<'logs' | 'facets' | 'hist
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const u = new URL(url, 'http://localhost')
-      const r = { path: u.pathname, params: u.searchParams, signal: init?.signal ?? undefined }
+      const r = { path: u.pathname, params: u.searchParams, signal: init?.signal ?? undefined, headers: (init?.headers ?? {}) as Record<string, string> }
       requests.push(r)
       const h = routes[u.pathname]
       return h ? h(r) : json(404, { error: 'not found' })

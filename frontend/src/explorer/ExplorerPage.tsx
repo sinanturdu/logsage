@@ -20,6 +20,8 @@ import {
   type ExplorerState,
   type Preset,
 } from './model'
+import { LiveBar } from '../live/LiveBar'
+import { useLiveList } from '../live/useLiveList'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
 import { bucketTotal, rangeHeading } from './time'
@@ -53,6 +55,8 @@ export function explorerError(err: unknown): { text: string; retry: boolean } {
   return { text: errorMessage(err), retry: true }
 }
 
+const HISTOGRAM_EVERY_MS = 10_000
+
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
 
@@ -65,6 +69,8 @@ export function ExplorerPage() {
   // relative range resolves to stable query keys.
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000) * 1000)
   const refresh = useCallback(() => setNow(Math.floor(Date.now() / 1000) * 1000), [])
+  // Like refresh, but always a new window, so the list is fetched again.
+  const restart = useCallback(() => setNow((t) => Math.max(t + 1000, Math.floor(Date.now() / 1000) * 1000)), [])
   const search = useRef<HTMLInputElement>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Expanded>(null)
@@ -79,14 +85,69 @@ export function ExplorerPage() {
     [params, setParams],
   )
 
+  const live = state.live
+  // While live the timeline follows now: it is refetched every 10 seconds.
+  const [histNow, setHistNow] = useState(now)
   const win = resolveRange(state.range, now)
-  const ctx = contextWindow(state.range, now, state.zoom)
+  const ctx = contextWindow(state.range, live ? Math.max(histNow, now) : now, state.zoom)
   const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId }
   const histogram = useHistogram(slug, filters, ctx)
   const facets = useFacets(slug, filters, win)
   const logs = useLogs(slug, filters, win)
-  const events = useMemo(() => mergePages(logs.data?.pages), [logs.data])
+  const baseEvents = useMemo(() => mergePages(logs.data?.pages), [logs.data])
+
+  // The reader is busy: new live logs wait in a buffer instead of moving the list.
+  const [scrolledAway, setScrolledAway] = useState(false)
+  useEffect(() => {
+    if (!live) return
+    const onScroll = () => {
+      const top = document.querySelector('.results .rows')?.getBoundingClientRect().top ?? 0
+      setScrolledAway(top < -40)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [live])
+  const liveList = useLiveList({
+    slug,
+    filters,
+    live,
+    busy: expanded !== null || (selected !== null && selected !== 0) || scrolledAway,
+    base: baseEvents,
+    listKey: serializeState({ ...state, live: false }).toString() + now,
+    // The server restarted the stream at now: reload the list up to now.
+    onReset: restart,
+  })
+  const events = liveList.events
   const capped = events.length >= MAX_ROWS
+  const tail = liveList.tail
+
+  useEffect(() => {
+    if (!live) return
+    const id = setInterval(() => {
+      // Respect a 429 on the histogram: wait out its Retry-After.
+      const err = histogram.error
+      if (err instanceof ApiError && err.kind === 'rate_limited' && Date.now() < histogram.errorUpdatedAt + (err.retryAfter ?? 1) * 1000) return
+      setHistNow(Math.floor(Date.now() / 1000) * 1000)
+    }, HISTOGRAM_EVERY_MS)
+    return () => clearInterval(id)
+  }, [live, histogram.error, histogram.errorUpdatedAt])
+
+  const toggleLive = useCallback(() => {
+    if (live) {
+      update({ live: false })
+      return
+    }
+    refresh()
+    const preset = state.range.kind === 'relative' ? state.range.preset : '15m'
+    update({ live: true, range: { kind: 'relative', preset }, zoom: false })
+  }, [live, refresh, state.range, update])
+  const resume = useCallback(() => {
+    setExpanded(null)
+    setSelected(null)
+    liveList.showBuffered()
+    setScrolledAway(false)
+    document.querySelector('.results')?.scrollIntoView?.({ block: 'start' })
+  }, [liveList])
 
   // A new result set starts without a selection.
   const [selKey, setSelKey] = useState('')
@@ -131,6 +192,10 @@ export function ExplorerPage() {
           setExpanded(null)
           row?.focus()
         } else setSelected(null)
+      } else if (e.key === 'l') {
+        toggleLive()
+      } else if (e.key === 'r' && tail.state.kind === 'reconnecting') {
+        tail.retryNow()
       } else if (e.key === 't' && selected !== null) {
         const ev = events[selected]
         if (!ev) return
@@ -140,7 +205,7 @@ export function ExplorerPage() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [events, expanded, selected, filterTrace])
+  }, [events, expanded, selected, filterTrace, toggleLive, tail])
 
   const onSearch = useCallback((q: string, immediate: boolean) => update({ q }, { replace: !immediate }), [update])
 
@@ -178,11 +243,11 @@ export function ExplorerPage() {
             refresh()
             update({ range: { kind: 'relative', preset: p } })
           }}
-          onCustom={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: false })}
+          onCustom={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: false, live: false })}
           onRefresh={refresh}
         />
         <h1 className="range-heading">
-          {rangeHeading(win.from, win.to, now)} <small>{contextText}</small>
+          {live ? rangeHeading(ctx.from, ctx.to, ctx.to) : rangeHeading(win.from, win.to, now)} <small>{contextText}</small>
         </h1>
       </div>
 
@@ -193,7 +258,7 @@ export function ExplorerPage() {
           window={ctx}
           selection={state.range.kind === 'absolute' && !state.zoom ? win : null}
           // Brushing inside a zoomed view zooms further; Back undoes each step.
-          onSelect={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: state.zoom })}
+          onSelect={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: state.zoom, live: false })}
           scope={scopeText(histogram.data.buckets.reduce((n, b) => n + bucketTotal(b), 0), state.range.kind === 'absolute' && !state.zoom ? total : undefined)}
           tools={
             state.zoom ? (
@@ -242,6 +307,19 @@ export function ExplorerPage() {
 
         <section className="results" aria-label="Logs" aria-busy={logs.isFetching}>
           <FilterChips state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
+          <LiveBar
+            live={live}
+            state={tail.state}
+            now={tail.now}
+            paused={liveList.paused}
+            buffered={liveList.buffered}
+            onToggle={toggleLive}
+            onRetry={tail.retryNow}
+            onResume={resume}
+          />
+          <p className="visually-hidden" role="status" aria-live="polite">
+            {liveList.announcement}
+          </p>
           <p className="notice-line" role="status" aria-live="polite">
             {notice}
           </p>
@@ -250,7 +328,7 @@ export function ExplorerPage() {
               ? ''
               : loadingFirst
                 ? 'Loading logs…'
-                : total !== undefined
+                : total !== undefined && !live
                   ? `Showing ${events.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} logs, newest first.`
                   : `Showing ${events.length.toLocaleString('en-US')} logs, newest first.`}
           </p>
@@ -294,6 +372,7 @@ export function ExplorerPage() {
                 onShow={(shown) => setExpanded((cur) => (cur ? { ...cur, shown } : cur))}
                 onFilterTrace={filterTrace}
                 withDate={win.to - win.from > 86_400_000}
+                fresh={liveList.fresh}
               />
               {capped ? (
                 <p className="cap-note">

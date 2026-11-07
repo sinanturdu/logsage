@@ -38,7 +38,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package I2a:** dashboard foundation: Vite + React + TypeScript app, B2 design tokens and self-hosted fonts, login, app shell, project switcher, typed API client, frontend CI (ADR 0016)
 - [x] **Package I2b:** log explorer (B2): URL state, two-strip timeline with brushing and accessible alternatives, facets, search, single-line rows with pagination; `scripts/dev.ps1` and `loadgen seed` for local development (ADR 0017)
 - [x] **Package I2c-1:** row detail with Same trace and Copy as JSON, filter chips, Filters disclosure on narrow screens, zoom to selection, small-sample handling in the error share (ADR 0018)
-- [ ] **Package I2c-2 (next):** live tail UI in the explorer, API keys screen, command palette, production serving of the dashboard and CSP
+- [x] **Package I2c-2:** live tail UI in the explorer (fetch-based SSE client, state machine with backoff, auto-pause), API keys screen with one-time reveal, account menu with change password and sign out of all devices (ADR 0019)
+- [ ] **Package I2c-3 (next):** command palette, production serving of the dashboard and CSP, v0.2.0 release prep, final polish
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 
 ## v0.3: Live tail
