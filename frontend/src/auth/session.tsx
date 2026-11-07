@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 import { ApiError, api, onSessionEnded } from '../api/client'
@@ -33,15 +33,26 @@ export function SessionWatcher() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  // Several requests can fail with 401 at once; only the first one may
+  // redirect (a later one would see the cleared cache and drop the
+  // "session ended" notice). The refs avoid acting on a stale location.
+  const current = useRef(location)
+  const redirected = useRef(false)
+  useEffect(() => {
+    current.current = location
+    if (location.pathname !== '/login') redirected.current = false
+  }, [location])
   useEffect(
     () =>
       onSessionEnded(() => {
-        if (location.pathname === '/login') return
+        const at = current.current
+        if (at.pathname === '/login' || redirected.current) return
+        redirected.current = true
         const wasSignedIn = qc.getQueryData(meKey) !== undefined
         qc.clear()
-        navigate(loginPath(location.pathname + location.search, wasSignedIn), { replace: true })
+        navigate(loginPath(at.pathname + at.search, wasSignedIn), { replace: true })
       }),
-    [qc, navigate, location],
+    [qc, navigate],
   )
   return null
 }
