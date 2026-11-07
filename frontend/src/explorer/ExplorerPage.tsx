@@ -26,7 +26,7 @@ import { shortcutFor } from '../shortcuts'
 import { useExplorerBridge } from '../palette/bridge'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
-import { bucketTotal, rangeHeading } from './time'
+import { bucketTotal, onlyErrorLevels, rangeHeading } from './time'
 
 export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
 export const NO_RESULTS = 'No logs match these filters. Widen the time range or clear a filter.'
@@ -305,6 +305,7 @@ export function ExplorerPage() {
           buckets={histogram.data.buckets}
           bucketSeconds={histogram.data.bucketSeconds}
           window={ctx}
+          showShare={!onlyErrorLevels(state.levels)}
           selection={state.range.kind === 'absolute' && !state.zoom ? win : null}
           // Brushing inside a zoomed view zooms further; Back undoes each step.
           onSelect={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: state.zoom, live: false })}

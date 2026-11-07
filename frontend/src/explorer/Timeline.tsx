@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { minuteUtc, axisTicks, brushRange, bucketErrors, bucketLabel, bucketTotal, MIN_SHARE_SAMPLE, pixelToTime, shareOrNull, summarize, timeToFraction, type Bucket } from './time'
+import { minuteUtc, axisTicks, brushRange, bucketErrors, bucketLabel, bucketTotal, MIN_SHARE_SAMPLE, pixelToTime, SHARE_HIDDEN, shareOrNull, summarize, timeToFraction, type Bucket } from './time'
 
 type Props = {
   buckets: Bucket[]
@@ -11,6 +11,8 @@ type Props = {
   scope: string
   /** Zoom to selection / Zoom out. */
   tools?: ReactNode
+  /** Draw the error-share strip; off while only error and fatal are selected (it would be 100%). */
+  showShare?: boolean
 }
 
 const H = 60
@@ -50,7 +52,7 @@ export function segments(values: readonly (number | null)[], max: number): strin
  * buckets, Escape cancels); the range presets and the custom range form are
  * the keyboard alternative, and the summary line states the peaks in words.
  */
-export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools }: Props) {
+export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools, showShare = true }: Props) {
   const area = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null)
   const volumes = buckets.map(bucketTotal)
@@ -59,7 +61,7 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
   const peakShare = Math.max(0, ...shares.map((v) => v ?? 0))
   const hasErrors = buckets.some((b) => shareOrNull(b) !== null && bucketErrors(b) > 0)
   const small = volumes.some((v) => v < MIN_SHARE_SAMPLE)
-  const summary = summarize(buckets, bucketSeconds)
+  const summary = summarize(buckets, bucketSeconds, { share: showShare })
   const per = bucketLabel(bucketSeconds)
 
   useEffect(() => {
@@ -132,11 +134,17 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
           <span>peak {peak.toLocaleString('en-US')}</span>
         </p>
         {strip(volumes, Math.max(peak, 1), 'vol')}
-        <p className="label">
-          <b>Error and fatal, % of logs per {per}</b>
-          <span>{hasErrors ? `peak ${Math.round(peakShare)}%` : 'none'}</span>
-        </p>
-        {strip(shares, Math.max(peakShare, 10), 'err')}
+        {showShare ? (
+          <>
+            <p className="label">
+              <b>Error and fatal, % of logs per {per}</b>
+              <span>{hasErrors ? `peak ${Math.round(peakShare)}%` : 'none'}</span>
+            </p>
+            {strip(shares, Math.max(peakShare, 10), 'err')}
+          </>
+        ) : (
+          <p className="label share-hidden">{SHARE_HIDDEN}</p>
+        )}
       </div>
       <div className="axis" aria-hidden="true">
         {ticks.map((t) => (
