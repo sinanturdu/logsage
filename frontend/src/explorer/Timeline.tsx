@@ -152,7 +152,7 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
         ))}
       </div>
       <p className="key">
-        {summary} Drag across either strip to select a time range{drag ? '; press Escape to cancel' : ''}.
+        {summary} Drag across {showShare ? 'either strip' : 'the strip'} to select a time range{drag ? '; press Escape to cancel' : ''}.
       </p>
       <details className="about-chart">
         <summary>About this chart</summary>

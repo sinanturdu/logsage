@@ -127,5 +127,6 @@ describe('error share with only error and fatal selected', () => {
     expect(hidden === null).toBe(shown)
     const key = chart.querySelector('.key')?.textContent ?? ''
     expect(key.includes('error and fatal share') || key.includes('No errors') || key.includes('enough logs')).toBe(shown)
+    expect(key).toContain(shown ? 'Drag across either strip' : 'Drag across the strip')
   })
 })
