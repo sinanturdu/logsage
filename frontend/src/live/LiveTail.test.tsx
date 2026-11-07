@@ -51,7 +51,10 @@ describe('live toggle', () => {
     await user.click(screen.getByRole('searchbox'))
     await user.keyboard('l')
     expect(where()).not.toContain('live=1')
-    await user.keyboard('{Escape}')
+    // Undo the typed l, so the debounced search keeps q=timeout.
+    await user.keyboard('{Backspace}')
+    await new Promise((r) => setTimeout(r, 400))
+    expect(where()).toBe('/projects/shop/logs?service=api&q=timeout&from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z')
     ;(document.activeElement as HTMLElement).blur()
     await user.keyboard('l')
     await waitFor(() => expect(where()).toBe('/projects/shop/logs?service=api&q=timeout&live=1'))

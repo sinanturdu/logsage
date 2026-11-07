@@ -214,7 +214,9 @@ describe('create key', () => {
   })
 
   it('uses a placeholder in the curl example', () => {
-    expect(curlExample('shop')).toContain('X-API-Key: YOUR_KEY')
+    const c = curlExample('shop', Date.UTC(2026, 10, 7, 16, 40, 5, 250))
+    expect(c).toContain('X-API-Key: YOUR_KEY')
+    expect(c).toContain('"timestamp":"2026-11-07T16:40:05Z"') // the ingest API requires one
   })
 })
 

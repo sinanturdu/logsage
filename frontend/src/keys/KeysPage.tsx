@@ -34,11 +34,11 @@ function When({ iso, none = '–' }: { iso: string | null; none?: string }) {
 }
 
 /** The curl example uses a placeholder: the real key never appears in it. */
-export const curlExample = (slug: string) =>
+export const curlExample = (slug: string, now: number) =>
   [
     'curl -X POST http://localhost:8080/v1/ingest \\',
     '  -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" \\',
-    `  -d '{"events":[{"level":"info","service":"${slug.replace(/[^a-z0-9-]/g, '')}-app","message":"hello from curl"}]}'`,
+    `  -d '{"events":[{"timestamp":"${new Date(now).toISOString().slice(0, 19)}Z","level":"info","service":"${slug.replace(/[^a-z0-9-]/g, '')}-app","message":"hello from curl"}]}'`,
   ].join('\n')
 
 function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void }) {
@@ -93,7 +93,7 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
         {created.info.kind === 'ingest' && (
           <>
             <p>Send a test log (replace YOUR_KEY with the key):</p>
-            <pre className="curl">{curlExample(slug)}</pre>
+            <pre className="curl">{curlExample(slug, Date.parse(created.info.created_at))}</pre>
           </>
         )}
         <label className="check">
