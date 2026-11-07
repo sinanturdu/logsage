@@ -222,6 +222,50 @@ The per-service baseline can start simply: the error rate over the selected rang
 5. Should the theme preference be stored per user on the server, or per browser?
 6. Should the annunciator baseline (if A) be computed in ClickHouse per request, or precomputed by the processor?
 
+## Chosen direction: B2
+
+**Decision (owner):** direction B, Strip chart, is the base. The refined version is B2 ([mockups/direction-b2.html](mockups/direction-b2.html)); `direction-a`, `-b` and `-c` stay as the record of the exploration.
+
+**Changes from B:**
+- **Expanded row in zones, using the full width:**
+  - `trace_id` and `span_id` on one line at the top.
+  - Below them, three columns grouped by meaning:
+    - **Request:** method, route, gateway host, timeout, attempt.
+    - **Context:** order id, pod, service version, region.
+    - **Same trace:** every log that shares the `trace_id`, newest first, with time, level shape and color, service and message. The current log is marked, and clicking an entry selects and expands that log.
+  - A log without request attributes says so instead of showing an empty column.
+  - Actions: "Filter by this trace" and "Copy as JSON".
+  - The columns wrap to two below 1100px and to one below 700px.
+- **Timeline as two thin strips over one shared time axis:** logs per 30 s on top, the error and fatal share (% of logs per 30 s) below. Each strip is labeled with its unit and peak value.
+  - Brushing across either strip sets the range. The shaded band is the selected range, and the large heading shows it ("02:11:30 to 02:17:00 UTC, selected within the last 15 min").
+  - The strips keep the surrounding 15 minutes as context.
+  - Facet counts and the result count are for the selected range, and they add up.
+- **Keyboard:**
+  - `/` search, `j`/`k` move the selection, `Enter`/`Space` expand, `Esc` collapse.
+  - `t` filters by the selected log's trace, the same action as the button.
+  - The selected row has one tab stop (roving `tabindex`). Every control shows a focus outline.
+- **Tablet:** below 900px the filter column moves above the list in three columns instead of disappearing, so the trace id error stays visible. It is one column below 700px.
+
+**Taken from C, and why:**
+- **The Same trace list:** pivoting along a trace is the core move in an incident, and seeing the trace's other logs next to the attributes saves a round trip. It is placed inside the expanded row instead of C's side pane, so B's single list stays the only scroll area.
+- **The invalid trace id error:** "it must be 32 hexadecimal characters with no dashes", plus how to fix it ("paste the full trace_id, or select a log and press t"). The fix points to the same pivot the Same trace list uses, so both paths end in the same filter.
+- **Not taken:** the green trail signs. Undoing a pivot is covered by the URL (back button) and the trace field, and B spends its boldness on the strips.
+
+**Dropped from A:**
+- The annunciator row and its per-service 24 h baseline, which would need a new computation in the backend.
+- B612.
+- The dark default. B2 stays light by default, with the "night paper" dark theme from B.
+- **Kept from A's spirit:** color only on level marks, with messages in plain ink.
+
+**Self-critique of B2:**
+- **Decoration removed:** the white background and frame behind the chart. The strips sit directly on the chart paper with a single base line.
+- **Checked against the list of generic defaults:**
+  - no gradients, glass, card grids or KPI tiles;
+  - no upper-case eyebrows, middle-dot meta strings or trailing arrows;
+  - monospace only for machine text.
+- **Widths checked:** 1440, 1100 and 768 in a browser.
+- **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
+
 ## Frontend plan for I2
 
 **Stack:** React + TypeScript + Vite in `frontend/`, built to static files that the `api` service (or a static server on the same origin) serves. Each dependency below needs the owner's approval, and nothing is installed yet.
@@ -249,8 +293,9 @@ The per-service baseline can start simply: the error rate over the selected rang
 | endpoint | need |
 |---|---|
 | `GET logs?from&to&level&service&q&trace_id&cursor&limit` | session-based log search with the same filters and cursor as the query API's `/v1/logs`, newest first |
-| `GET logs/histogram?from&to&buckets=&level&service&q` | counts per time bucket and level, for the timeline and error rate; the server picks a bucket size from the range, for example 5 s to 1 h |
-| `GET logs/services?from&to` | services with counts (filter column) and, for A, the error rate and its 24 h baseline |
+| `GET logs/histogram?from&to&buckets=&level&service&q` | counts per time bucket and level; B2 draws volume and the error-plus-fatal share from it. The server picks a bucket size from the range (5 s to 1 h), and the strips request the wider context range (for example 15 min) separately from the selected range |
+| `GET logs/facets?from&to&level&service&q&trace_id` | counts per level and per service for the selected range and filters (the filter column); no baseline is needed for B2 |
+| `GET logs?trace_id=…` | the Same trace list: the existing search filtered by trace, newest first; log rows must include `span_id` and the attributes map so the expanded row can group them |
 | `GET logs/tail?level&service&q` | live tail as Server-Sent Events (`text/event-stream`). It is one-way, works with the session cookie and needs only the standard library. It sends a heartbeat every 15 s, a cap on events per second, and a "dropped N rows" event when the client is too slow |
 | `GET me`, `GET projects`, key endpoints | already exist from H2 |
 
