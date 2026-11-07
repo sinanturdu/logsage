@@ -10,8 +10,11 @@
 # static keys are optional and only honored with ALLOW_LEGACY_STATIC_KEYS.
 
 x-backend: &backend
+  # The context is the repository root so the image can build the dashboard
+  # (frontend stage); /.dockerignore keeps secrets and local state out.
   build:
-    context: ../backend
+    context: ..
+    dockerfile: backend/Dockerfile
   image: logsage-backend:dev
   profiles: ["app"]
   restart: unless-stopped
@@ -105,8 +108,10 @@ services:
       timeout: 3s
       retries: 10
 
-  # Management API: users, sessions, projects and keys (ADR 0013). Needs
-  # only PostgreSQL. Behind plain http (local), set COOKIE_SECURE=false.
+  # Management API: users, sessions, projects and keys (ADR 0013), the log
+  # reads and live tail, and the dashboard itself (ADR 0021) on
+  # http://localhost:8083. Behind plain http (local), set COOKIE_SECURE=false;
+  # with COOKIE_SECURE=true (TLS terminated in front) it also sends HSTS.
   api:
     <<: *backend
     command: ["/usr/local/bin/api"]
@@ -127,6 +132,9 @@ services:
       LOGIN_DELAY_BASE: ${LOGIN_DELAY_BASE:-1s}
       LOGIN_DELAY_MAX: ${LOGIN_DELAY_MAX:-15m}
       LOGIN_LIMITER_SIZE: ${LOGIN_LIMITER_SIZE:-10000}
+      # The dashboard and its runtime config (/config.json).
+      WEB_ENABLED: ${WEB_ENABLED:-true}
+      PUBLIC_INGEST_URL: ${PUBLIC_INGEST_URL:-http://localhost:8080}
       # Log read endpoints (ADR 0014): ClickHouse only, no Redis, no API keys.
       # They use the same QUERY_* limits as cmd/query.
       API_MAX_CONCURRENT_QUERIES: ${API_MAX_CONCURRENT_QUERIES:-4}

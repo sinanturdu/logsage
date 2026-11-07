@@ -5,12 +5,14 @@
 .DESCRIPTION
   powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 <command>
 
-    up      Create .env if missing (random secrets, COOKIE_SECURE=false), start
-            the compose app profile, run migrations, and create a dev user, the
+    up      Create .env if missing (random secrets, COOKIE_SECURE=false), build
+            and start the compose app profile (the api serves the dashboard on
+            http://localhost:8083), run migrations, and create a dev user, the
             project "demo" and an ingest key if they do not exist yet.
     seed    Send demo data to "demo": an hour of history plus an incident in
             the last 15 minutes (about 70k events, loadgen seed).
-    web     Run the dashboard dev server on http://localhost:5173.
+    web     Run the Vite dev server with hot reload on http://localhost:5173
+            (for working on the frontend; it proxies /api to the api).
     status  Show the services and where the dev login is.
     down    Stop everything and delete the data (docker compose down -v);
             asks before removing .dev/ (use -Yes to skip the question).
@@ -217,7 +219,8 @@ function Cmd-Up {
   Ensure-DevLogin
   Ensure-Project
   Ensure-IngestKey
-  Say 'ready. Next: dev.ps1 seed, then dev.ps1 web, and open http://localhost:5173'
+  Say 'ready. Dashboard: http://localhost:8083'
+  Say 'next: dev.ps1 seed for demo data; dev.ps1 web only for hot-reload frontend work (http://localhost:5173).'
 }
 
 function Cmd-Seed {
@@ -234,7 +237,7 @@ function Cmd-Seed {
     Remove-Item Env:LOADGEN_INGEST_KEY -ErrorAction SilentlyContinue
     Pop-Location
   }
-  Say 'seeded. Open http://localhost:5173/projects/demo/logs (dev.ps1 web).'
+  Say 'seeded. Open http://localhost:8083/projects/demo/logs'
 }
 
 function Cmd-Web {
@@ -248,7 +251,7 @@ function Cmd-Web {
       & npm ci
       if ($LASTEXITCODE -ne 0) { Fail 'npm ci failed.' }
     }
-    Say 'dashboard on http://localhost:5173 (Ctrl+C to stop).'
+    Say 'hot-reload dev server on http://localhost:5173 (Ctrl+C to stop); the built dashboard stays on http://localhost:8083.'
     & npm run dev
   } finally { Pop-Location }
 }

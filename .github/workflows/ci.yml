@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
-        run: docker build -t logsage-backend:ci backend
+        run: docker build -f backend/Dockerfile -t logsage-backend:ci .
       - name: Validate compose config
         env:
           # Dummy values: only the configuration is checked, nothing runs.
@@ -87,6 +87,11 @@ jobs:
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --format json             | jq -e '.services.api.environment | has("CLICKHOUSE_URL") and has("CLICKHOUSE_PASSWORD") and (has("REDIS_ADDR") | not)'
       - name: Image contains every binary
         run: docker run --rm --entrypoint ls logsage-backend:ci /usr/local/bin/ingest /usr/local/bin/processor /usr/local/bin/query /usr/local/bin/admin /usr/local/bin/api
+      - name: Image serves the dashboard and keeps secrets out
+        run: |
+          # No .env, .dev, node_modules or .git in the image; the api binary embeds index.html.
+          docker run --rm --entrypoint sh logsage-backend:ci -c 'test -z "$(find / -xdev \( -name .env -o -name .dev -o -name node_modules -o -name .git \) 2>/dev/null)"'
+          docker run --rm --entrypoint sh logsage-backend:ci -c 'grep -q "<title>LogSage</title>" /usr/local/bin/api'
       - name: App profile refuses to start without secrets
         run: |
           if docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet 2>/dev/null; then
