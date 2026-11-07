@@ -126,9 +126,12 @@ func where(scope Scope, f Filter, s skip) ([]string, map[string]string, error) {
 }
 
 // arrayElem escapes one string for a quoted element of an Array(String)
-// parameter value. The whole value is escaped again for transport by the
-// ClickHouse client, so backslashes are doubled on both levels.
-var arrayElem = strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+// parameter value. ClickHouse parses an array parameter with one level of
+// backslash escapes, and the client (clickhouse.EscapeParam) already
+// escapes every backslash and turns tab, newline, CR and NUL into escape
+// sequences on the way. So only the quote is escaped here, by doubling it,
+// which needs no backslash. Tested end to end against ClickHouse.
+var arrayElem = strings.NewReplacer(`'`, `''`)
 
 // arrayParam renders values as an Array(String) parameter value. It is a
 // value, never SQL: ClickHouse parses it as data of the declared type.

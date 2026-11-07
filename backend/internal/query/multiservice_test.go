@@ -9,16 +9,21 @@ import (
 	"time"
 
 	"github.com/sinanturdu/logsage/backend/internal/auth"
+	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 )
 
 // decodeArrayParam parses an Array(String) parameter value the way
-// ClickHouse does for quoted string elements, so the tests can check that
-// every value survives exactly and cannot end its element early.
-func decodeArrayParam(t *testing.T, v string) []string {
+// ClickHouse does after transport: the client escapes the value with
+// clickhouse.EscapeParam, and ClickHouse reads quoted elements with one
+// level of backslash escapes, where a doubled quote is one quote. The tests use it to
+// check that every value survives exactly and cannot end its element early.
+func decodeArrayParam(t *testing.T, raw string) []string {
 	t.Helper()
+	v := clickhouse.EscapeParam(raw)
 	if !strings.HasPrefix(v, "[") || !strings.HasSuffix(v, "]") {
 		t.Fatalf("not an array: %q", v)
 	}
+	unescape := map[byte]byte{'t': '\t', 'n': '\n', 'r': '\r', '0': 0, '\\': '\\', '\'': '\''}
 	body := v[1 : len(v)-1]
 	var out []string
 	for i := 0; i < len(body); {
@@ -34,10 +39,19 @@ func decodeArrayParam(t *testing.T, v string) []string {
 			c := body[i]
 			if c == '\\' {
 				i++
-				b.WriteByte(body[i])
+				u, ok := unescape[body[i]]
+				if !ok {
+					t.Fatalf("unknown escape \\%c in %q", body[i], v)
+				}
+				b.WriteByte(u)
 				continue
 			}
 			if c == '\'' {
+				if i+1 < len(body) && body[i+1] == '\'' {
+					b.WriteByte('\'')
+					i++
+					continue
+				}
 				break
 			}
 			b.WriteByte(c)
