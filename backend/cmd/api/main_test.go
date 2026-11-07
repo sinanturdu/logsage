@@ -78,6 +78,12 @@ func TestRunServesAndShutsDown(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Errorf("GET %s = %d, want %d", path, resp.StatusCode, want)
 		}
+		if resp.Header.Get("Content-Security-Policy") == "" || resp.Header.Get("X-Frame-Options") != "DENY" || resp.Header.Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("GET %s: missing security headers %v", path, resp.Header)
+		}
+		if resp.Header.Get("Strict-Transport-Security") != "" {
+			t.Errorf("GET %s: HSTS with COOKIE_SECURE=false", path)
+		}
 		if path != "/healthz" && path != "/readyz" && resp.Header.Get("Cache-Control") != "no-store" {
 			t.Errorf("GET %s: missing Cache-Control no-store", path)
 		}

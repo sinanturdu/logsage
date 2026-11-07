@@ -126,6 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy", HTMLPolicy)
 	w.Header().Set("Cache-Control", cacheRevalidate)
 	w.Header().Set("Content-Type", contentTypes[".html"])
 	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(h.index))

@@ -153,7 +153,7 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	}
 
 	hs := &http.Server{
-		Handler:           mux,
+		Handler:           web.Headers(mux, web.HeaderOptions{HSTS: a.CookieSecure}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
