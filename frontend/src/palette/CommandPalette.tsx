@@ -50,7 +50,7 @@ export function CommandPalette({ commands, recent, onRun, onClose }: Props) {
   }
 
   return (
-    <Dialog title="Command palette" titleHidden className="palette" onClose={onClose} initialFocus={input}>
+    <Dialog title="Command palette" titleHidden className="palette" onClose={onClose} initialFocus={input} closeOnBackdrop>
       <input
         ref={input}
         className="palette-input"
@@ -93,6 +93,12 @@ export function CommandPalette({ commands, recent, onRun, onClose }: Props) {
         {countText(results.length)}
       </p>
       {results.length === 0 && <p className="palette-empty">No commands match. Try fewer letters.</p>}
+      <div className="palette-footer">
+        <p>Up and down to move, Enter to run, Esc to close</p>
+        <button type="button" className="button button-quiet" onClick={onClose}>
+          Close
+        </button>
+      </div>
     </Dialog>
   )
 }
