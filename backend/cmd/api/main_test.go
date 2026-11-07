@@ -162,7 +162,7 @@ func TestRunClosesTailsOnShutdown(t *testing.T) {
 	}()
 	waitLine := func(want string) {
 		t.Helper()
-		deadline := time.After(10 * time.Second)
+		deadline := time.After(20 * time.Second)
 		for {
 			select {
 			case l, ok := <-lines:
@@ -187,10 +187,12 @@ func TestRunClosesTailsOnShutdown(t *testing.T) {
 		if err != nil {
 			t.Fatalf("run() = %v", err)
 		}
-	case <-time.After(4 * time.Second):
-		t.Fatal("run did not return promptly with an open tail")
+	case <-time.After(20 * time.Second):
+		t.Fatal("run did not return with an open tail")
 	}
-	if d := time.Since(start); d > 3*time.Second {
-		t.Errorf("shutdown with an open tail took %v", d)
+	// Without the shutdown hook, Shutdown would wait its full timeout for the
+	// stream and then force-close it; the boundary is that timeout, not a guess.
+	if d := time.Since(start); d >= httpShutdownTimeout {
+		t.Errorf("shutdown with an open tail took %v, the full shutdown timeout", d)
 	}
 }

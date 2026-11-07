@@ -22,16 +22,35 @@ type TailReader interface {
 	TailRange(ctx context.Context, scope query.Scope, f query.Filter, lower, upper query.TailKey, limit int) ([]query.TailRow, error)
 }
 
-// Clock is the time source of the live tail; tests replace it.
+// Clock is the time source of the live tail; tests replace it. Timer fires
+// once after d; stop releases it (a stream stops its timers when it ends).
 type Clock interface {
 	Now() time.Time
-	After(d time.Duration) <-chan time.Time
+	Timer(d time.Duration) (c <-chan time.Time, stop func())
 }
 
 type realClock struct{}
 
-func (realClock) Now() time.Time                         { return time.Now() }
-func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+func (realClock) Now() time.Time { return time.Now() }
+
+func (realClock) Timer(d time.Duration) (<-chan time.Time, func()) {
+	t := time.NewTimer(d)
+	return t.C, func() { t.Stop() }
+}
+
+// timerSlot is one re-armable timer of a stream.
+type timerSlot struct {
+	clock Clock
+	c     <-chan time.Time
+	stop  func()
+}
+
+func (s *timerSlot) arm(d time.Duration) {
+	if s.stop != nil {
+		s.stop()
+	}
+	s.c, s.stop = s.clock.Timer(d)
+}
 
 // TailOptions configure the live tail (ADR 0015). Zero values take the
 // defaults of DefaultTailOptions.
@@ -330,11 +349,16 @@ func (t *tailStream) run(resume *tailCursor) {
 	}
 	defer func() { t.s.resume.put(t.token, t.st, t.now()) }()
 
-	clock := t.o.Clock
-	end := clock.After(t.o.MaxDuration)
-	beat := clock.After(t.o.Heartbeat)
-	recheck := clock.After(t.o.AuthRecheck)
-	poll := clock.After(0)
+	end, beat, recheck, poll := &timerSlot{clock: t.o.Clock}, &timerSlot{clock: t.o.Clock}, &timerSlot{clock: t.o.Clock}, &timerSlot{clock: t.o.Clock}
+	defer func() {
+		for _, s := range []*timerSlot{end, beat, recheck, poll} {
+			s.stop()
+		}
+	}()
+	end.arm(t.o.MaxDuration)
+	beat.arm(t.o.Heartbeat)
+	recheck.arm(t.o.AuthRecheck)
+	poll.arm(0)
 	for {
 		select {
 		case <-t.ctx.Done():
@@ -342,10 +366,10 @@ func (t *tailStream) run(resume *tailCursor) {
 		case <-t.s.shutdown:
 			_ = t.close("shutdown")
 			return
-		case <-end:
+		case <-end.c:
 			_ = t.close("max_duration")
 			return
-		case <-beat:
+		case <-beat.c:
 			state := "live"
 			if t.degraded {
 				state = "degraded"
@@ -353,19 +377,19 @@ func (t *tailStream) run(resume *tailCursor) {
 			if t.status(state, "", true) != nil {
 				return
 			}
-			beat = clock.After(t.o.Heartbeat)
-		case <-recheck:
+			beat.arm(t.o.Heartbeat)
+		case <-recheck.c:
 			if reason := t.s.tailAuthorized(t.ctx, t.tokenHash, t.user, t.slug); reason != "" {
 				_ = t.close(reason)
 				return
 			}
-			recheck = clock.After(t.o.AuthRecheck)
-		case <-poll:
+			recheck.arm(t.o.AuthRecheck)
+		case <-poll.c:
 			next, err := t.tick()
 			if errors.Is(err, errClosed) || errors.Is(err, errWrite) {
 				return
 			}
-			poll = clock.After(next)
+			poll.arm(next)
 		}
 	}
 }
