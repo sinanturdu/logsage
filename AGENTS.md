@@ -20,6 +20,8 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 - Run ingest API: `cd backend && INGEST_API_KEY=dev-key go run ./cmd/ingest` (health check: `GET /healthz`; ingest: `POST /v1/ingest`)
 - Run processor: `cd backend && REDIS_ADDR=localhost:6379 CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/processor` (`GET :8081/healthz`, `/readyz`, `/stats`)
 - Load generator: `cd backend && LOADGEN_INGEST_KEY=... go run ./cmd/loadgen ingest|demo`, `LOADGEN_QUERY_KEY=... go run ./cmd/loadgen query` (local targets only unless `--allow-remote`). No-loss check: `ingest --wait-drain http://127.0.0.1:8081/stats --verify` with `LOADGEN_CLICKHOUSE_USER/PASSWORD` set; add `--retry-on-429` to retry backpressure. Benchmark procedure in `docs/benchmarks.md`
+- Admin CLI (projects, API keys): `docker compose -f infra/docker-compose.yml up -d postgres`, then `cd backend && DATABASE_URL='postgres://logsage:change-me@localhost:5432/logsage?sslmode=disable' go run ./cmd/admin migrate|create-project|list-projects|disable-project|create-key|list-keys|revoke-key|verify-key` (keys only via stdin or `LOGSAGE_API_KEY`, never flags; non-local DB needs `--allow-remote`)
+- PostgreSQL integration tests: add `POSTGRES_TEST_URL='postgres://logsage:change-me@localhost:5432/logsage?sslmode=disable'` (tests create and drop their own databases)
 - Run query API: `cd backend && QUERY_API_KEY=dev-read-key CLICKHOUSE_USER=logsage CLICKHOUSE_PASSWORD=change-me go run ./cmd/query` (`GET :8082/v1/logs`, `/healthz`, `/readyz`); the query key must differ from the ingest key.
 
 ## Conventions

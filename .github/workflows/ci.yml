@@ -30,6 +30,17 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+      postgres:
+        image: postgres:16
+        ports: ["5432:5432"]
+        env:
+          # Throwaway CI container; tests create and drop their own databases.
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -42,6 +53,7 @@ jobs:
           # Enable the Redis and ClickHouse integration tests.
           REDIS_TEST_ADDR: localhost:6379
           CLICKHOUSE_TEST_URL: http://localhost:8123
+          POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
         run: |
           go vet ./...
           go build ./...

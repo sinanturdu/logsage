@@ -157,7 +157,27 @@ Delivery is at-least-once, so a redelivered entry can be inserted twice. Duplica
   `failed_batches_total` counts failed insert attempts. `oldest_unprocessed_age_s` is the age of the oldest entry the group has not acknowledged (0 when caught up). Stream fields are `null` (with `stream_error`) when Redis is down. The same figures are logged every `PROCESSOR_STATS_INTERVAL` (10s), with a warning when `oldest_unprocessed_age_s` exceeds `PROCESSOR_LAG_WARN_AGE` (30s).
 
 ### PostgreSQL
-`users`, `projects`, `api_keys` (hash only), `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
+Created by `backend/migrations/postgres` (hand-written SQL, applied by `cmd/admin migrate` with checksums and an advisory lock; ADR 0011):
+
+```sql
+projects (id uuid PK, name text, slug text UNIQUE CHECK (slug ~ '^[a-z0-9-]{3,40}$'),
+          created_at timestamptz, disabled_at timestamptz NULL)
+api_keys (id uuid PK, project_id uuid FK -> projects ON DELETE CASCADE,
+          kind text CHECK (kind IN ('ingest','query')), name text,
+          key_prefix text UNIQUE,      -- public lookup part
+          key_hash bytea (32 bytes),   -- SHA-256 of the whole key; the key itself is never stored
+          created_at, expires_at NULL, revoked_at NULL, last_used_at NULL)
+schema_migrations (version, name, checksum, applied_at)
+```
+The project with slug `default` (id `00000000-0000-0000-0000-000000000001`) owns all v0.1 data: ClickHouse rows carry `project_id = 'default'`, its slug.
+
+Planned: `users`, `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
+
+### API key lifecycle (v0.2 package G)
+- **Create:** `admin create-key --project SLUG --kind ingest|query --name N [--expires-in 720h]` generates `lsk_<ing|qry>_<8 base32 chars>_<43 base64url chars>` from `crypto/rand` (40-bit prefix, 256-bit secret), stores only prefix and SHA-256, and prints the key once.
+- **Verify** (`keys.Verifier`): parse, look up by prefix, constant-time hash comparison, then kind, revocation, expiry and project status. Every rejection returns the same "invalid API key"; storage errors are distinct. `last_used_at` is written at most once per minute per key.
+- **Revoke:** `admin revoke-key --prefix P` sets `revoked_at`; `admin disable-project --slug S` stops all keys of a project. Keys expire at `expires_at`.
+- **Not yet wired:** ingest and query still use the static `INGEST_API_KEY` / `QUERY_API_KEY`; package H switches them to per-project keys.
 
 ## Fingerprinting
 Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.

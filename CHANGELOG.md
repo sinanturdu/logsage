@@ -2,6 +2,15 @@
 
 All notable changes to LogSage. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- PostgreSQL foundation for v0.2 (ADR 0011): `github.com/jackc/pgx/v5` v5.7.4; hand-written embedded migrations with checksums (line-ending independent) and an advisory lock; `projects` and `api_keys` tables plus the `default` project that v0.1 data belongs to.
+- Per-project API keys `lsk_<ing|qry>_<prefix>_<secret>`: only the prefix and SHA-256 are stored, constant-time verification with one generic rejection error, throttled `last_used_at`.
+- `cmd/admin`: `migrate`, `create-project`, `list-projects`, `disable-project`, `create-key` (key shown once), `list-keys`, `revoke-key`, `verify-key`.
+- Config: `DATABASE_URL` (or `POSTGRES_*`), `DATABASE_MAX_CONNS`, `DATABASE_CONNECT_TIMEOUT`, `DATABASE_QUERY_TIMEOUT`.
+- Compose: PostgreSQL on a named volume with a healthcheck. CI: PostgreSQL service and `POSTGRES_TEST_URL` for the integration tests.
+
 ## [v0.1.0] - unreleased
 
 First milestone: ingest and search. Release notes: [docs/releases/v0.1.0.md](docs/releases/v0.1.0.md).
