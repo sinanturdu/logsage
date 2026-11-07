@@ -61,6 +61,27 @@ docker compose -f infra/docker-compose.yml exec clickhouse clickhouse-client --u
 
 The cost of `FINAL` was measured in ClickHouse directly: the API's query with and without `FINAL`, 11 runs each with the first discarded, durations from `system.query_log` (`log_comment` tags), before and after `OPTIMIZE TABLE logsage.logs FINAL`.
 
+## v0.2 regression check (2026-11-07)
+
+Before the v0.2.0 release: the same N1 scenario as the re-run below, against the full v0.2 stack (`scripts\dev.ps1 up`, the dashboard served by `cmd/api`, 69k seeded events already stored). Ingest authenticated with a per-project key from PostgreSQL (`ALLOW_LEGACY_STATIC_KEYS` off, key cache 30 s).
+- Same laptop, Docker Desktop 29.9.2, services built from commit `21e3b3c`; loadgen from the same commit, on the Windows host.
+- C: had about 27 GB free.
+
+```bash
+loadgen ingest --duration 15s --concurrency 16 --batch-size 100 --rate 10000 --wait-drain http://127.0.0.1:8081/stats --verify
+```
+
+| Run | Accepted (events/s) | p50 | p95 | p99 | max | Statuses | Drain after stop | Stored / lost |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 150,100 (10,004) | 3.80 ms | 5.76 ms | 6.66 ms | 13.72 ms | 1,501 × 202 | 1.13 s | 150,100 / 0 |
+| 2 | 150,100 (10,005) | 3.23 ms | 4.99 ms | 6.34 ms | 14.64 ms | 1,501 × 202 | 1.13 s | 150,100 / 0 |
+| 3 | 150,000 (10,000) | 3.78 ms | 5.85 ms | 7.38 ms | 12.26 ms | 1,500 × 202 | 0.10 s | 150,000 / 0 |
+
+**No regression: p99 6.3–7.4 ms (the v0.1 re-run had 5.9–7.9 ms), no errors, nothing lost.**
+- Each p99 rests on about 15 samples (1,500 requests), so treat it as an indication.
+- End to end, the processor kept up: 9,302, 9,303 and 9,930 events/s including the drain.
+- Only three runs, on a laptop, with the loadgen sharing the CPU.
+
 ## 2026-11-07: after the no-loss fix
 
 Same laptop, Docker Desktop 29.9.2, services and loadgen built from commit `07fa556` (fix/no-loss-under-bursts). Fresh Docker state (images re-pulled, empty volumes). Redis runs with `--maxmemory 1gb --maxmemory-policy noeviction`; ingest with `INGEST_MAX_STREAM_LEN=500000` unless noted. **C: had 18.3 GB free at the start, 5.3–5.6 GB during the N1 and demo runs** (Docker's virtual disk grew, and other space went for reasons outside this work). So the disk was not much emptier than in the older session; see the N1 note below.

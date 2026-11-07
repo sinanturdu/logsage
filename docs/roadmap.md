@@ -40,11 +40,17 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package I2c-1:** row detail with Same trace and Copy as JSON, filter chips, Filters disclosure on narrow screens, zoom to selection, small-sample handling in the error share (ADR 0018)
 - [x] **Package I2c-2:** live tail UI in the explorer (fetch-based SSE client, state machine with backoff, auto-pause), API keys screen with one-time reveal, account menu with change password and sign out of all devices (ADR 0019)
 - [x] **Package I2c-3:** command palette (Ctrl K) with a fuzzy matcher, one shared shortcut definition and a "?" help, per-route titles, and polish: new-key dialog, chart text, live status and order, sentence-case labels, detail layout (ADR 0020)
-- [ ] **Package I2c-4 (next):** production serving of the dashboard, CSP, configurable ingest URL, v0.2.0 release prep
-- [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
+- [x] **Package I2c-4:** the dashboard served from `cmd/api` (embedded build, SPA fallback, caching), strict security headers and CSP, runtime `/config.json` with `PUBLIC_INGEST_URL`, Docker frontend stage and root `.dockerignore`, legacy static keys off by default, v0.2.0 release notes (ADR 0021)
+- [x] **v0.2.0 released** ([release notes](releases/v0.2.0.md))
 
-## v0.3: Live tail
-- [ ] WebSocket streaming with filters
+## v0.3 candidates
+- [ ] Error groups: fingerprinting and an error groups view
+- [ ] Alerts and incidents
+- [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
+- [ ] Per-project quotas (ingest rate, retention, query budget)
+- [ ] Email verification and password reset
+- [ ] Prometheus metrics endpoint
+- [ ] Remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`)
 
 ## v0.4: Error groups and alerts
 - [ ] Fingerprinting, error groups UI

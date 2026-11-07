@@ -4,7 +4,30 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-07
+
+Second milestone: accounts and dashboard. Release notes: [docs/releases/v0.2.0.md](docs/releases/v0.2.0.md).
+
+### Upgrade notes
+- **Breaking:** the legacy static keys are off by default. `INGEST_API_KEY` and `QUERY_API_KEY` are ignored unless `ALLOW_LEGACY_STATIC_KEYS=true`. To keep the old behavior while clients move to per-project keys, set it to `true` in `.env` (compose passes it through); the static keys are removed in v0.3.
+- Deploy order: run the PostgreSQL migrations, then the processor (ClickHouse migrations 0003/0004 add `logs.inserted_at`), then `cmd/api`, ingest and query. Rows stored before the upgrade never appear in a live tail.
+- `service=a,b` is now a list (at most 20 names); a service name containing a comma can no longer be searched exactly.
+- The Docker build context is the repository root: `docker build -f backend/Dockerfile .`.
+
 ### Added
+- The dashboard is served by `cmd/api` (ADR 0021):
+  - It is embedded at build time from `backend/internal/web/dist` (the Docker image's Node stage fills it).
+  - Only GET and HEAD are allowed, with a single-page-app fallback.
+  - Hashed assets are cached for a year as immutable; `index.html` gets `no-cache`.
+  - Unknown `/api/` paths get a JSON 404, and traversal attempts get a plain 404.
+  - `WEB_ENABLED` turns it off.
+- `GET /config.json` with the public ingest address (`PUBLIC_INGEST_URL`, validated at start-up). The dashboard reads it before rendering and uses it in the new-key examples.
+- Security headers on every response:
+  - The dashboard gets a strict Content-Security-Policy without `unsafe-inline` or `unsafe-eval`.
+  - Everything gets `nosniff`, `Referrer-Policy: no-referrer`, a Permissions-Policy, COOP, CORP and `X-Frame-Options: DENY`.
+  - HSTS is sent only with `COOKIE_SECURE=true` (TLS in front).
+- `scripts/dev.ps1 up` builds the dashboard into the image and prints `Dashboard: http://localhost:8083`; `web` stays for hot-reload frontend work.
+- Root `.dockerignore` (allow-list) that keeps `.env`, `.dev`, keys, `node_modules`, `dist` and `.git` out of the build. CI builds the image from the root and checks it.
 - Command palette (ADR 0020):
   - Opens with `Ctrl K` or `⌘ K` (also while typing) or the Commands button.
   - It is a combobox with a listbox, a focus trap and a polite result count.
@@ -64,7 +87,7 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 - Compose: one-shot `migrate` service; ingest and query depend on it and on PostgreSQL. The image contains `cmd/admin`.
 
 ### Deprecated
-- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (default for now), mapped to the default project, with a startup warning.
+- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (off by default since v0.2.0), mapped to the default project, with a startup warning. Removed in v0.3.
 
 - PostgreSQL foundation for v0.2 (ADR 0011): `github.com/jackc/pgx/v5` v5.7.4; hand-written embedded migrations with checksums (line-ending independent) and an advisory lock; `projects` and `api_keys` tables plus the `default` project that v0.1 data belongs to.
 - Per-project API keys `lsk_<ing|qry>_<prefix>_<secret>`: only the prefix and SHA-256 are stored, constant-time verification with one generic rejection error, throttled `last_used_at`.
