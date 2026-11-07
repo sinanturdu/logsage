@@ -4,7 +4,7 @@
 
 LogSage is a log and incident analysis platform. Applications send their logs to an ingest API; LogSage stores them in ClickHouse and lets you search them. Later milestones group similar errors, detect anomalies and suggest likely root causes when an incident opens ("mini Datadog + AI").
 
-> **Status: v0.1 (ingest and search).** Ingest, queue, processor, storage and search work end to end and run with one Docker Compose command. Accounts, the dashboard, alerting and AI features are planned: see [docs/roadmap.md](docs/roadmap.md) and the [v0.1.0 release notes](docs/releases/v0.1.0.md).
+> **Status: v0.2 (accounts and dashboard).** Ingest, storage and search, plus accounts, projects with roles, hashed per-project API keys and a web dashboard (log explorer, timeline, row detail with Same trace, live tail, API keys, command palette) served by the API. Error groups, alerting and AI features are planned: see [docs/roadmap.md](docs/roadmap.md) and the [v0.2.0 release notes](docs/releases/v0.2.0.md).
 
 ## Architecture
 
@@ -29,7 +29,21 @@ Details: [docs/architecture.md](docs/architecture.md) and the decision records i
 
 ## Quick start
 
-Requirements: Docker with Compose v2. On Windows use Docker Desktop.
+On Windows (Docker Desktop; Go 1.23+ only for the demo data), from PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 up
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 seed
+```
+
+Open http://localhost:8083 and sign in with the dev login that `up` printed (also in `.dev\login.txt`). `scripts\dev.ps1 down` stops everything and deletes the data. More in [Run the dashboard locally](#run-the-dashboard-locally).
+
+### With Docker Compose (any OS)
+
+Requirements: Docker with Compose v2.
 
 ```bash
 cp .env.example .env    # then replace the change-me keys and password in .env
@@ -40,10 +54,10 @@ docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compo
 ```
 
 ```bash
-cd backend && LOADGEN_INGEST_KEY=<INGEST_API_KEY from .env> go run ./cmd/loadgen demo --duration 30s
+cd backend && LOADGEN_INGEST_KEY=<an ingest key> go run ./cmd/loadgen demo --duration 30s
 ```
 
-This starts Redis, ClickHouse, PostgreSQL and the LogSage services. Their ports are bound to 127.0.0.1 only: ingest on `:8080`, processor stats on `:8081`, query on `:8082`, management API on `:8083` (set `COOKIE_SECURE=false` in `.env` to log in over plain http). Compose refuses to start the app profile if a key or the ClickHouse password is missing from `.env`. The third command sends a realistic stream of events for 30 seconds; it needs Go 1.23+, or send single events with curl as below.
+This starts Redis, ClickHouse, PostgreSQL and the LogSage services. Their ports are bound to 127.0.0.1 only: ingest on `:8080`, processor stats on `:8081`, query on `:8082`, and the management API with the dashboard on `:8083` (set `COOKIE_SECURE=false` in `.env` to log in over plain http). Compose refuses to start the app profile if the ClickHouse or PostgreSQL password is missing from `.env`. Create a user, a project and an ingest key with the admin CLI (see [Development](#development)), or in the dashboard's API keys screen. The static `INGEST_API_KEY` works only with `ALLOW_LEGACY_STATIC_KEYS=true` (deprecated, removed in v0.3). The third command sends a realistic stream of events for 30 seconds; it needs Go 1.23+, or send single events with curl as below.
 
 To stop: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down` (add `-v` to delete the stored data).
 
@@ -59,11 +73,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 up
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 seed
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 web
-```
-
-Then open http://localhost:5173/projects/demo/logs. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets. Press `l` (or the Live button) to follow new logs while `go run ./cmd/loadgen demo --rate 2` sends some, and use API keys in the header to create an ingest key; it is shown once.
+Then open http://localhost:8083/projects/demo/logs (the api serves the built dashboard). For hot-reload frontend work, also run `scripts\dev.ps1 web` and use http://localhost:5173; it proxies `/api` and `/config.json` to the api. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets. Press `l` (or the Live button) to follow new logs while `go run ./cmd/loadgen demo --rate 2` sends some, and use API keys in the header to create an ingest key; it is shown once.
 
 Keyboard shortcuts (press `?` in the dashboard for the same list):
 
@@ -198,12 +208,18 @@ curl -b jar.txt "http://localhost:8083/api/projects/demo/facets?from=2026-11-07T
 
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.
 
+## Security
+
+- **Browser headers:** the dashboard is served with a strict Content-Security-Policy (same-origin scripts, styles, fonts and requests only; no `unsafe-inline`, no `unsafe-eval`, no framing). Every response also carries `nosniff`, `Referrer-Policy: no-referrer`, a Permissions-Policy, COOP, CORP and `X-Frame-Options: DENY` ([ADR 0021](docs/adr/0021-serve-dashboard-csp-runtime-config.md)).
+- **TLS:** LogSage does not terminate TLS. In production, put a reverse proxy or load balancer with TLS in front of `cmd/api` (`:8083`) and ingest (`:8080`), and set `COOKIE_SECURE=true`. That gives `__Host-` cookies and turns on HSTS. Keep the ports bound to 127.0.0.1 or a private network behind the proxy.
+- **Keys and passwords:** API keys are stored as hashes and shown once; passwords use argon2id; sessions are server-side; nothing secret is kept in browser storage. Report security issues privately to the maintainer rather than in a public issue.
+
 ## Documentation
 
 - [Requirements](docs/requirements.md) · [Architecture](docs/architecture.md) · [Decision records](docs/adr)
-- [Roadmap](docs/roadmap.md) · [Changelog](CHANGELOG.md) · [v0.1.0 release notes](docs/releases/v0.1.0.md)
+- [Roadmap](docs/roadmap.md) · [Changelog](CHANGELOG.md) · [v0.2.0 release notes](docs/releases/v0.2.0.md) · [v0.1.0 release notes](docs/releases/v0.1.0.md)
 - [Benchmarks](docs/benchmarks.md) · [Claude Code workflow](docs/claude-code-workflow.md)
 
 ## Tech stack
 
-Go (standard library plus go-redis) · Redis Streams · ClickHouse · Docker Compose · GitHub Actions. Planned: PostgreSQL, React + TypeScript dashboard, Python + FastAPI AI service.
+Go (standard library, go-redis, pgx, x/crypto) · Redis Streams · ClickHouse · PostgreSQL · React + TypeScript (Vite) · Docker Compose · GitHub Actions. Planned: Python + FastAPI AI service.

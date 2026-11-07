@@ -273,7 +273,17 @@ How the stream works:
 - **Stream lifetime:** a stream closes after `TAIL_MAX_DURATION` (1h). Session and membership are re-checked every `TAIL_AUTH_RECHECK` (30s), and a client slower than `TAIL_WRITE_TIMEOUT` per write is dropped.
 
 ## Dashboard (v0.2)
-`frontend/`, ADR 0016. Routes:
+`frontend/`, ADR 0016.
+
+**Serving (ADR 0021):**
+- `cmd/api` serves the built dashboard from `internal/web`, embedded at build time; the Docker frontend stage fills `backend/internal/web/dist`.
+- Routes: `/api/*`, `/healthz`, `/readyz` and `/config.json` have their own handlers. The dashboard is the catch-all: GET and HEAD only, `index.html` for extension-less paths, a plain 404 for missing files and traversal attempts, and a JSON 404 for unknown `/api/` paths.
+- Caching: `/assets/*` is cached for a year as immutable, `index.html` gets `no-cache`, and API responses and `/config.json` get `no-store`.
+- Settings: `WEB_ENABLED` (default true) and `PUBLIC_INGEST_URL` (served as `/config.json`, read by the dashboard before it renders).
+- Every response carries the security headers; HTML gets the strict CSP, and HSTS is sent only with `COOKIE_SECURE=true`.
+- In development the Vite dev server proxies `/api` and `/config.json` instead.
+
+Routes:
 - `/login`: sign-in. A `next=<path>` parameter returns the user to that path afterwards; only same-app paths are accepted.
 - `/`: opens the first project, or shows the empty state with a create-project form.
 - `/projects/:slug/logs`: the log explorer (I2b, ADR 0017).

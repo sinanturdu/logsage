@@ -1,9 +1,0 @@
-# Only Go sources and go.mod/go.sum are needed to build.
-.git
-*.exe
-*.test
-*.out
-*.prof
-bin/
-Dockerfile
-.dockerignore

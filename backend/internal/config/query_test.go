@@ -62,7 +62,7 @@ func TestValidateQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := Load(func(k string) string {
-				return map[string]string{"QUERY_API_KEY": tt.queryKey, "INGEST_API_KEY": tt.ingestKey}[k]
+				return map[string]string{"QUERY_API_KEY": tt.queryKey, "INGEST_API_KEY": tt.ingestKey, "ALLOW_LEGACY_STATIC_KEYS": "true"}[k]
 			})
 			if err != nil {
 				t.Fatal(err)

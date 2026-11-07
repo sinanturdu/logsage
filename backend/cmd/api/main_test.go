@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
+	"github.com/sinanturdu/logsage/backend/internal/config"
 	"github.com/sinanturdu/logsage/backend/internal/password"
 	"github.com/sinanturdu/logsage/backend/internal/storage/postgres/pgtest"
 )
@@ -65,7 +68,8 @@ func TestRunServesAndShutsDown(t *testing.T) {
 		t.Fatal("server did not start")
 	}
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
-	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/api/auth/me": 401, "/api/nope": 404} {
+	// A test binary embeds no dashboard: pages say so, /config.json and the API still work.
+	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/api/auth/me": 401, "/api/nope": 404, "/config.json": 200} {
 		resp, err := client.Get("http://" + addr + path)
 		if err != nil {
 			t.Fatal(err)
@@ -73,6 +77,12 @@ func TestRunServesAndShutsDown(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != want {
 			t.Errorf("GET %s = %d, want %d", path, resp.StatusCode, want)
+		}
+		if resp.Header.Get("Content-Security-Policy") == "" || resp.Header.Get("X-Frame-Options") != "DENY" || resp.Header.Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("GET %s: missing security headers %v", path, resp.Header)
+		}
+		if resp.Header.Get("Strict-Transport-Security") != "" {
+			t.Errorf("GET %s: HSTS with COOKIE_SECURE=false", path)
 		}
 		if path != "/healthz" && path != "/readyz" && resp.Header.Get("Cache-Control") != "no-store" {
 			t.Errorf("GET %s: missing Cache-Control no-store", path)
@@ -194,5 +204,38 @@ func TestRunClosesTailsOnShutdown(t *testing.T) {
 	// stream and then force-close it; the boundary is that timeout, not a guess.
 	if d := time.Since(start); d >= httpShutdownTimeout {
 		t.Errorf("shutdown with an open tail took %v, the full shutdown timeout", d)
+	}
+}
+
+// TestRegisterWebRouting: with the dashboard mounted as the catch-all, the
+// API, health and config routes keep their handlers.
+func TestRegisterWebRouting(t *testing.T) {
+	files := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>LogSage</title>")}, "assets/a-1.js": {Data: []byte("x")}}
+	for _, enabled := range []bool{true, false} {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("ok")) })
+		mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
+		a := config.DefaultAPIConfig()
+		a.WebEnabled = enabled
+		built, err := registerWeb(mux, a, files)
+		if err != nil || built != enabled {
+			t.Fatalf("registerWeb: built=%v err=%v", built, err)
+		}
+		want := map[string]int{"/healthz": 200, "/api/auth/me": http.StatusTeapot, "/config.json": 200, "/": 404, "/projects/demo/logs": 404, "/assets/a-1.js": 404}
+		if enabled {
+			want["/"], want["/projects/demo/logs"], want["/assets/a-1.js"] = 200, 200, 200
+		}
+		for path, code := range want {
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+			if w.Code != code {
+				t.Errorf("enabled=%v GET %s = %d, want %d", enabled, path, w.Code, code)
+			}
+		}
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("GET", "/config.json", nil))
+		if !strings.Contains(w.Body.String(), `"ingestUrl":"http://localhost:8080"`) {
+			t.Errorf("config.json = %s", w.Body.String())
+		}
 	}
 }

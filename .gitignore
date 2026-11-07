@@ -18,6 +18,10 @@ __pycache__/
 # Node
 node_modules/
 dist/
+# The dashboard embedded into cmd/api (the Docker frontend stage fills it); keep only the placeholder.
+!/backend/internal/web/dist/
+/backend/internal/web/dist/*
+!/backend/internal/web/dist/.gitkeep
 .next/
 
 # Data & OS

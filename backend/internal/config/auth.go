@@ -20,7 +20,7 @@ type AuthConfig struct {
 
 // DefaultAuthConfig returns the auth defaults.
 func DefaultAuthConfig() AuthConfig {
-	return AuthConfig{CacheTTL: 30 * time.Second, NegativeTTL: 5 * time.Second, CacheSize: 10_000, AllowLegacy: true}
+	return AuthConfig{CacheTTL: 30 * time.Second, NegativeTTL: 5 * time.Second, CacheSize: 10_000, AllowLegacy: false}
 }
 
 func loadAuth(getenv func(string) string, cfg *Config) error {
