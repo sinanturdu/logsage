@@ -165,6 +165,20 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 .notice-line { margin: 0; color: var(--ink); font-size: var(--text-md); }
 .notice-line:empty { display: none; }
 
+/* Live tail (ADR 0019) */
+.live-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0 0 var(--space-2); }
+.live-bar p { margin: 0; font-size: var(--text-md); }
+.live-toggle[aria-pressed='true'] { background: var(--pen); border-color: var(--pen); color: var(--white); }
+.live-state .shape { font-family: var(--font-mono); }
+.live-live .shape { color: var(--level-info); }
+.live-degraded .shape, .live-reconnecting .shape { color: var(--level-warn); }
+.live-stopped .shape { color: var(--level-error); }
+.live-paused { color: var(--pencil); }
+@media (prefers-reduced-motion: no-preference) {
+  .row.arrived { animation: arrive 1.6s ease-out; }
+  @keyframes arrive { from { background: var(--select); } to { background: transparent; } }
+}
+
 /* Row detail (ADR 0018) */
 .row[aria-expanded='true'] { background: var(--select); }
 .detail-row { border-bottom: 1px solid var(--line-strong); background: var(--white); box-shadow: inset 3px 0 0 var(--pen); }

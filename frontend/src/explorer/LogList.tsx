@@ -17,6 +17,8 @@ type Props = {
   onShow: (e: LogEvent) => void
   onFilterTrace: (traceId: string) => void
   withDate: boolean
+  /** Live arrivals: they get a short highlight when they appear. */
+  fresh?: ReadonlySet<string>
 }
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * aria-expanded, and an expanded row is followed by its detail. Messages are
  * text only (LogText).
  */
-export function LogList({ slug, events, selected, expanded, onSelect, onToggle, onShow, onFilterTrace, withDate }: Props) {
+export function LogList({ slug, events, selected, expanded, onSelect, onToggle, onShow, onFilterTrace, withDate, fresh }: Props) {
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (selected === null) return
@@ -55,7 +57,7 @@ export function LogList({ slug, events, selected, expanded, onSelect, onToggle, 
               aria-expanded={open}
               tabIndex={selected === i || (selected === null && i === 0) ? 0 : -1}
               data-index={i}
-              className={`row level-${e.level}`}
+              className={`row level-${e.level}${fresh?.has(e.event_id) ? ' arrived' : ''}`}
               onClick={() => {
                 onSelect(i)
                 onToggle(i)
