@@ -215,6 +215,7 @@ export function ExplorerPage() {
       selectedServices: state.services,
       levels: state.levels,
       hasFilters: hasFilters(state),
+      preset: state.range.kind === 'relative' ? state.range.preset : null,
     },
     run: (a) => {
       switch (a.type) {

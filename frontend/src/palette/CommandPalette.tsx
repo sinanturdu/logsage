@@ -1,12 +1,13 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Dialog } from '../components/Dialog'
-import { defaultCommands, type Command } from './commands'
+import type { Command } from './commands'
 import { rank } from './fuzzy'
 import { Highlight } from './Highlight'
 
 type Props = {
   commands: readonly Command[]
-  recent: readonly string[]
+  /** What an empty query shows (defaultCommands). */
+  defaults: readonly Command[]
   onRun: (c: Command) => void
   onClose: () => void
 }
@@ -19,14 +20,14 @@ export const countText = (n: number) => (n === 0 ? 'No commands match.' : n === 
  * Arrow keys wrap, Home and End jump, Enter runs, Escape closes. Hovering
  * does not move the keyboard selection; a click runs the command.
  */
-export function CommandPalette({ commands, recent, onRun, onClose }: Props) {
+export function CommandPalette({ commands, defaults, onRun, onClose }: Props) {
   const id = useId()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const results = useMemo(
-    () => (query.trim() === '' ? defaultCommands(commands, recent).map((item) => ({ item, positions: [] as number[] })) : rank(query, commands)),
-    [query, commands, recent],
+    () => (query.trim() === '' ? defaults.map((item) => ({ item, positions: [] as number[] })) : rank(query, commands)),
+    [query, commands, defaults],
   )
   const current = Math.min(active, Math.max(0, results.length - 1))
   const optionId = (i: number) => `${id}-opt-${i}`

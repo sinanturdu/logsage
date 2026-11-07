@@ -4,7 +4,7 @@ import { useProjects } from '../api/projects'
 import { copyText } from '../explorer/clipboard'
 import { BridgeContext, type ExplorerBridge } from '../palette/bridge'
 import { CommandPalette } from '../palette/CommandPalette'
-import { commandsFor, type Command } from '../palette/commands'
+import { commandsFor, defaultCommands, type Command } from '../palette/commands'
 import { shortcutFor } from '../shortcuts'
 import { AccountDialogs, AccountMenu, useSignOut, type AccountDialog } from './AccountMenu'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -158,7 +158,7 @@ export function Shell() {
       <p className="shell-notice" role="status" aria-live="polite">
         {notice}
       </p>
-      {palette && <CommandPalette commands={commands} recent={recent} onRun={run} onClose={closePalette} />}
+      {palette && <CommandPalette commands={commands} defaults={defaultCommands(commands, recent, m?.[2] === 'logs' ? explorerCtx : null)} onRun={run} onClose={closePalette} />}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
       <AccountDialogs dialog={account} onClose={() => setAccount(null)} />
     </BridgeContext.Provider>

@@ -4,6 +4,8 @@
 import type { Level, Preset } from '../explorer/model'
 
 export type ExplorerContext = {
+  /** The relative range in view; null for an absolute selection. */
+  preset: Preset | null
   live: boolean
   zoom: boolean
   /** An absolute selection exists that is not zoomed yet. */
@@ -96,14 +98,45 @@ export function commandsFor(ctx: AppContext): Command[] {
   return out
 }
 
-/** With an empty query: recent commands that still apply, then navigation, at most 8. */
-export function defaultCommands(all: readonly Command[], recent: readonly string[]): Command[] {
+/** The two ranges most likely next from the current one (usually wider). */
+export const NEXT_RANGES: Record<Preset | 'absolute', [Preset, Preset]> = {
+  '15m': ['1h', '6h'],
+  '1h': ['6h', '24h'],
+  '6h': ['24h', '1h'],
+  '24h': ['7d', '6h'],
+  '7d': ['24h', '1h'],
+  absolute: ['15m', '1h'],
+}
+
+export const DEFAULT_LIST_MAX = 8
+
+/**
+ * The list for an empty query, at most 8: up to two recent commands that
+ * still apply, the other page, live tail on or off, Clear filters when
+ * filters are active, the two likely next ranges, project switches, and
+ * Show keyboard shortcuts last (always kept). Typed input is ranked instead.
+ */
+export function defaultCommands(all: readonly Command[], recent: readonly string[], explorer: ExplorerContext | null = null): Command[] {
   const byId = new Map(all.map((c) => [c.id, c]))
+  const help = byId.get('help')
+  const room = DEFAULT_LIST_MAX - (help ? 1 : 0)
   const out: Command[] = []
   const push = (c: Command | undefined) => {
-    if (c && !out.includes(c) && out.length < 8) out.push(c)
+    if (c && c !== help && !out.includes(c) && out.length < room) out.push(c)
   }
-  for (const id of recent) push(byId.get(id))
-  for (const c of all) if (c.group === 'Navigation') push(c)
+  let recentShown = 0
+  for (const id of recent) {
+    const c = byId.get(id) // a recent command that no longer applies is skipped
+    if (!c || recentShown === 2) continue
+    push(c)
+    recentShown++
+  }
+  push(byId.get('go-logs'))
+  push(byId.get('go-keys'))
+  push(byId.get('live'))
+  push(byId.get('clear'))
+  if (explorer) for (const p of NEXT_RANGES[explorer.preset ?? 'absolute']) push(byId.get(`range:${p}`))
+  for (const c of all) if (c.id.startsWith('project:')) push(c)
+  if (help) out.push(help)
   return out
 }

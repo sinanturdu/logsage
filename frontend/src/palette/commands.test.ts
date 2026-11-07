@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { commandsFor, defaultCommands, type AppContext, type ExplorerContext } from './commands'
 
-const EX: ExplorerContext = { live: false, zoom: false, canZoom: false, services: ['api', 'checkout'], selectedServices: [], levels: [], hasFilters: false }
+const EX: ExplorerContext = { preset: '15m', live: false, zoom: false, canZoom: false, services: ['api', 'checkout'], selectedServices: [], levels: [], hasFilters: false }
 const ctx = (over: Partial<AppContext> = {}): AppContext => ({ slug: 'demo', section: 'logs', projects: ['demo', 'shop'], explorer: EX, ...over })
 const labels = (c: AppContext) => commandsFor(c).map((x) => x.label)
 
@@ -74,9 +74,32 @@ describe('commandsFor', () => {
 })
 
 describe('defaultCommands', () => {
-  it('shows recent commands that still apply, then navigation', () => {
-    const all = commandsFor(ctx())
-    expect(defaultCommands(all, ['refresh', 'zoom:out', 'go-keys']).map((c) => c.label)).toEqual(['Refresh', 'Go to API keys', 'Switch project: shop'])
-    expect(defaultCommands(all, []).map((c) => c.label)).toEqual(['Go to API keys', 'Switch project: shop'])
+  const labels = (c: AppContext, recent: string[] = []) => defaultCommands(commandsFor(c), recent, c.explorer).map((x) => x.label)
+
+  it('on the logs page: the other page, live, the next ranges, projects, shortcuts', () => {
+    expect(labels(ctx())).toEqual(['Go to API keys', 'Turn live tail on', 'Last 1 hour', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
+  })
+
+  it('adds Clear filters only with filters, and says Turn live tail off while live', () => {
+    const l = labels(ctx({ explorer: { ...EX, hasFilters: true, live: true, preset: '24h' } }))
+    expect(l).toEqual(['Go to API keys', 'Turn live tail off', 'Clear filters', 'Last 7 days', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
+  })
+
+  it('picks ranges for an absolute selection', () => {
+    expect(labels(ctx({ explorer: { ...EX, preset: null } }))).toContain('Last 15 minutes')
+  })
+
+  it('on the keys page and with one project: no explorer commands, no switch', () => {
+    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Show keyboard shortcuts'])
+  })
+
+  it('puts up to two recent commands first, at most 8 in all, and always keeps the shortcuts help', () => {
+    const many = ctx({ projects: ['demo', 'a', 'b', 'c', 'd', 'e'], explorer: { ...EX, hasFilters: true } })
+    const l = labels(many, ['refresh', 'zoom:out', 'range:7d', 'focus:search'])
+    expect(l[0]).toBe('Refresh') // zoom:out does not apply, so it is skipped
+    expect(l[1]).toBe('Last 7 days')
+    expect(l).not.toContain('Focus search') // only two recent
+    expect(l).toHaveLength(8)
+    expect(l.at(-1)).toBe('Show keyboard shortcuts')
   })
 })
