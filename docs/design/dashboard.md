@@ -234,7 +234,7 @@ The per-service baseline can start simply: the error rate over the selected rang
     - **Context:** order id, pod, service version, region.
     - **Same trace:** every log that shares the `trace_id`, newest first, with time, level shape and color, service and message. The current log is marked, and clicking an entry selects and expands that log.
   - A log without request attributes says so instead of showing an empty column.
-  - Actions: "Filter by this trace" and "Copy as JSON".
+  - Actions: "Filter by this trace" and "Copy as JSON" (placement revised in the polish round below).
   - The columns wrap to two below 1100px and to one below 700px.
 - **Timeline as two thin strips over one shared time axis:** logs per 30 s on top, the error and fatal share (% of logs per 30 s) below. Each strip is labeled with its unit and peak value.
   - Brushing across either strip sets the range. The shaded band is the selected range, and the large heading shows it ("02:11:30 to 02:17:00 UTC, selected within the last 15 min").
@@ -245,6 +245,24 @@ The per-service baseline can start simply: the error rate over the selected rang
   - `t` filters by the selected log's trace, the same action as the button.
   - The selected row has one tab stop (roving `tabindex`). Every control shows a focus outline.
 - **Tablet:** below 900px the filter column moves above the list in three columns instead of disappearing, so the trace id error stays visible. It is one column below 700px.
+
+**Polish round** (follow-up 2):
+- **Single-line rows, as in C:** fixed-width columns for time (monospace), level (shape plus word) and service; the message takes the rest of the width on one line, ends in an ellipsis, and has the full text in `title`.
+  - Rows are compact (3px vertical padding).
+  - Below 700px rows return to the two-line layout, with the message wrapped under the time.
+  - The demo includes one checkout error of about 230 characters to show the ellipsis.
+- **Expanded row:**
+  - The full message comes first, wrapped and in monospace.
+  - Next comes one line with `trace_id` and `span_id`, with "Filter by this trace" and "Copy as JSON" at its right end. This saves a row of height; below about 1200px the buttons wrap under the ids.
+  - The Request, Context and Same trace zones follow unchanged.
+  - Several rows can be expanded at once.
+- **Same trace:**
+  - Each item is one line with an ellipsis and a `title`.
+  - The current log is marked with a left bar and `aria-current`, with no "(this log)" text.
+  - At most 5 items are shown, then a "Show all N" link (the demo trace has 7). Items stay clickable.
+- **Logs without a `trace_id`:** they show `trace_id none`, have no Same trace zone and no "Filter by this trace" button, and Request and Context share the width. The demo expands the auth "session refreshed" log to show this.
+- **Keyboard:** `t` on such a log does nothing and says "This log has no trace_id, so there is no trace to filter by." in the polite status line.
+- **Why Same trace stays next to "Filter by this trace":** the filter replaces the list, so you lose the surrounding logs and the selection. Same trace shows the trace while the rest of the investigation stays on screen. The two are complementary: Same trace is for a glance, and the filter is for working only inside that trace.
 
 **Taken from C, and why:**
 - **The Same trace list:** pivoting along a trace is the core move in an incident, and seeing the trace's other logs next to the attributes saves a round trip. It is placed inside the expanded row instead of C's side pane, so B's single list stays the only scroll area.
@@ -263,7 +281,7 @@ The per-service baseline can start simply: the error rate over the selected rang
   - no gradients, glass, card grids or KPI tiles;
   - no upper-case eyebrows, middle-dot meta strings or trailing arrows;
   - monospace only for machine text.
-- **Widths checked:** 1440, 1100 and 768 in a browser.
+- **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
 ## Frontend plan for I2
