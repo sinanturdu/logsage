@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -75,11 +74,5 @@ func loadQuery(getenv func(string) string, cfg *Config) error {
 // ValidateQuery checks the settings cmd/query needs beyond Load: a query
 // key that differs from the ingest key, so neither key works on the other API.
 func (c Config) ValidateQuery() error {
-	if c.Query.APIKey == "" {
-		return errors.New("config: QUERY_API_KEY is required for the query API")
-	}
-	if c.IngestAPIKey != "" && c.Query.APIKey == c.IngestAPIKey {
-		return errors.New("config: QUERY_API_KEY must differ from INGEST_API_KEY")
-	}
-	return nil
+	return c.validateKeySource("query", "QUERY_API_KEY", c.Query.APIKey)
 }
