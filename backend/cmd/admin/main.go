@@ -303,9 +303,6 @@ func (c *createKeyCmd) validate() error {
 	return nil
 }
 
-// maxPrefixAttempts bounds retries when a random 40-bit prefix collides.
-const maxPrefixAttempts = 5
-
 func (c *createKeyCmd) run(e *env) error {
 	kind, _ := keys.ParseKind(*c.kind)
 	var expires *time.Time
@@ -313,25 +310,16 @@ func (c *createKeyCmd) run(e *env) error {
 		t := e.now().Add(*c.expiresIn).UTC()
 		expires = &t
 	}
-	for attempt := 1; ; attempt++ {
-		g, err := keys.Generate(kind)
-		if err != nil {
-			return err
-		}
-		info, err := e.store.CreateKey(e.ctx, *c.project, kind, *c.name, g.Prefix, g.Hash[:], expires)
-		if errors.Is(err, postgres.ErrPrefixTaken) && attempt < maxPrefixAttempts {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		// The warning goes to stderr and the key alone to stdout, so
-		// KEY=$(admin create-key ...) captures only the key.
-		fmt.Fprintf(e.stderr, "Created %s key %q for project %s (prefix %s, expires %s).\n", info.Kind, info.Name, info.ProjectSlug, info.Prefix, fmtTime(info.ExpiresAt))
-		fmt.Fprintln(e.stderr, "WARNING: the key is shown only this once and cannot be recovered. Store it in a secret manager now.")
-		fmt.Fprintln(e.stdout, g.Plaintext)
-		return nil
+	g, info, err := e.store.IssueKey(e.ctx, *c.project, kind, *c.name, expires)
+	if err != nil {
+		return err
 	}
+	// The warning goes to stderr and the key alone to stdout, so
+	// KEY=$(admin create-key ...) captures only the key.
+	fmt.Fprintf(e.stderr, "Created %s key %q for project %s (prefix %s, expires %s).\n", info.Kind, info.Name, info.ProjectSlug, info.Prefix, fmtTime(info.ExpiresAt))
+	fmt.Fprintln(e.stderr, "WARNING: the key is shown only this once and cannot be recovered. Store it in a secret manager now.")
+	fmt.Fprintln(e.stdout, g.Plaintext)
+	return nil
 }
 
 type listKeysCmd struct{ project *string }
