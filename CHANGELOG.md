@@ -25,7 +25,7 @@ First milestone: ingest and search. Release notes: [docs/releases/v0.1.0.md](doc
 ### Added
 - Go backend skeleton: environment config with fail-fast validation, structured logging (`log/slog`), `/healthz` and `/readyz` on every service.
 - `POST /v1/ingest` (`cmd/ingest`): strict JSON batch validation with configurable limits, static API key compared in constant time, JSON errors with the failing event index.
-- Redis Streams publisher (one pipelined `XADD MAXLEN ~` per batch), selectable with `PUBLISHER=memory|redis`.
+- Redis Streams publisher (one pipelined `XADD` per batch, no length trimming), selectable with `PUBLISHER=memory|redis`.
 - Processor (`cmd/processor`): consumer group with own-pending recovery and `XAUTOCLAIM`, batched `INSERT ... FORMAT JSONEachRow` over HTTP, ack after write, retry with backoff and backpressure, dead-letter stream, `/stats`, graceful shutdown.
 - ClickHouse schema (`logsage.logs`, `ReplacingMergeTree` keyed by `event_id`) applied idempotently on startup.
 - `GET /v1/logs` (`cmd/query`): time range, level, service, text and trace filters; keyset cursor pagination; separate read key; single project-scoped query builder with server-side parameters, `readonly=1` and execution limits.
