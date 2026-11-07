@@ -4,6 +4,8 @@ import { ApiError, errorMessage } from '../api/client'
 import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
 import { MAX_ROWS, mergePages, useFacets, useHistogram, useLogs } from './api'
+import { activeFilterCount } from './detail'
+import { FilterChips } from './FilterChips'
 import { FilterPanel, SearchBox } from './FilterPanel'
 import { LogList, SkeletonRows, type Expanded } from './LogList'
 import {
@@ -59,6 +61,8 @@ export function ExplorerPage() {
   const [selected, setSelected] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Expanded>(null)
   const [notice, setNotice] = useState('')
+  // The narrow-screen Filters disclosure; component state, not the URL.
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const update = useCallback(
     (next: Partial<ExplorerState>, opts: { replace?: boolean } = {}) => {
@@ -191,16 +195,28 @@ export function ExplorerPage() {
       <div className="explorer-body">
         <aside aria-label="Filters">
           <SearchBox ref={search} value={state.q} onSearch={onSearch} />
-          <FilterPanel
-            filters={filters}
-            facets={facets.data}
-            onChange={(next) => update(next)}
-            onClear={() => update(EMPTY_FILTERS)}
-            canClear={hasFilters(state)}
-          />
+          <button
+            type="button"
+            className="button filters-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="filter-panel"
+            onClick={() => setFiltersOpen((o) => !o)}
+          >
+            Filters ({activeFilterCount(state)})
+          </button>
+          <div id="filter-panel" className="filter-panel" data-open={filtersOpen}>
+            <FilterPanel
+              filters={filters}
+              facets={facets.data}
+              onChange={(next) => update(next)}
+              onClear={() => update(EMPTY_FILTERS)}
+              canClear={hasFilters(state)}
+            />
+          </div>
         </aside>
 
         <section className="results" aria-label="Logs" aria-busy={logs.isFetching}>
+          <FilterChips state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
           <p className="notice-line" role="status" aria-live="polite">
             {notice}
           </p>
