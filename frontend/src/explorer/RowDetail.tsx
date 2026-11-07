@@ -15,6 +15,8 @@ type Props = {
   onShow: (e: LogEvent) => void
 }
 
+const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`
+
 export const COPY_FALLBACK = 'Copy is not available here. Select the text and copy it with Ctrl+C.'
 export const TRACE_EMPTY = 'No other logs share this trace in this window.'
 export const TRACE_ERROR = 'The other logs of this trace could not be loaded.'
@@ -116,7 +118,7 @@ function SameTrace({ slug, event, onShow }: { slug: string; event: LogEvent; onS
   }
   return (
     <section className="zone same" aria-labelledby={`${id}-h`}>
-      <h3 id={`${id}-h`}>Same trace{trace.data ? ` (${trace.data.events.length} logs)` : ''}</h3>
+      <h3 id={`${id}-h`}>Same trace{trace.data ? ` (${plural(trace.data.events.length, 'log')})` : ''}</h3>
       {body}
     </section>
   )

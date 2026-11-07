@@ -209,6 +209,7 @@ describe('same trace', () => {
     answer = () => json(200, { events: [ev(0)], next_cursor: null }) // only the log itself
     await user.click(rows()[0] as HTMLElement)
     expect(await within(detail() as HTMLElement).findByText(TRACE_EMPTY)).toBeTruthy()
+    expect(within(detail() as HTMLElement).getByRole('heading', { name: 'Same trace (1 log)' })).toBeTruthy()
   })
 
   it('shows an error with retry', async () => {

@@ -159,6 +159,7 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 .fchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 var(--space-2); }
 .fchip { display: inline-flex; align-items: baseline; max-width: 100%; background: var(--white); border: 1px solid var(--line-strong); border-radius: var(--radius);
   padding: 1px 8px; font: inherit; font-size: var(--text-sm); color: var(--ink); cursor: pointer; overflow-wrap: anywhere; }
+.fchip [aria-hidden='true'] { margin-left: 4px; color: var(--pencil); }
 .fchip:hover { border-color: var(--pen); }
 .filters-toggle { display: none; margin-top: var(--space-2); }
 .notice-line { margin: 0; color: var(--ink); font-size: var(--text-md); }
