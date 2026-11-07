@@ -2,6 +2,7 @@ import { render } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { vi } from 'vitest'
 import { App, newQueryClient } from '../App'
+import { ConfigContext, DEFAULT_CONFIG, type PublicConfig } from '../config'
 
 export function json(status: number, body?: unknown, headers: Record<string, string> = {}): Response {
   if (status === 204) return new Response(null, { status })
@@ -54,13 +55,15 @@ function LocationProbe() {
   )
 }
 
-export function renderApp(path: string, opts: { retries?: number } = { retries: 0 }) {
+export function renderApp(path: string, opts: { retries?: number; config?: PublicConfig } = { retries: 0 }) {
   const client = newQueryClient(opts)
   const utils = render(
-    <MemoryRouter initialEntries={[path]}>
-      <App client={client} />
-      <LocationProbe />
-    </MemoryRouter>,
+    <ConfigContext.Provider value={opts.config ?? DEFAULT_CONFIG}>
+      <MemoryRouter initialEntries={[path]}>
+        <App client={client} />
+        <LocationProbe />
+      </MemoryRouter>
+    </ConfigContext.Provider>,
   )
   return { ...utils, client }
 }

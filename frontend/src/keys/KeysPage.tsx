@@ -2,6 +2,7 @@ import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'rea
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { errorMessage } from '../api/client'
+import { DEFAULT_INGEST_URL, useConfig } from '../config'
 import { useProjects } from '../api/projects'
 import { Dialog } from '../components/Dialog'
 import { LogText } from '../components/LogText'
@@ -33,15 +34,16 @@ function When({ iso, none = '–' }: { iso: string | null; none?: string }) {
   return iso ? <time dateTime={d.title} title={d.title}>{d.text}</time> : <>{none}</>
 }
 
-const INGEST_URL = 'http://localhost:8080/v1/ingest'
+/** The ingest endpoint under the configured base URL (a trailing slash is dropped). */
+const endpoint = (base: string) => `${base.replace(/\/+$/, '')}/v1/ingest`
 const stamp = (now: number) => `${new Date(now).toISOString().slice(0, 19)}Z`
 const body = (slug: string, now: number, from: string) =>
   `{"events":[{"timestamp":"${stamp(now)}","level":"info","service":"${slug.replace(/[^a-z0-9-]/g, '')}-app","message":"hello from ${from}"}]}`
 
 /** macOS / Linux: curl with a single-quoted body. Always the placeholder, never the key. */
-export const curlExample = (slug: string, now: number) =>
+export const curlExample = (slug: string, now: number, base = DEFAULT_INGEST_URL) =>
   [
-    `curl -X POST ${INGEST_URL} \\`,
+    `curl -X POST ${endpoint(base)} \\`,
     '  -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" \\',
     `  -d '${body(slug, now, 'curl')}'`,
   ].join('\n')
@@ -50,12 +52,12 @@ export const curlExample = (slug: string, now: number) =>
  * Windows PowerShell: the body goes to a temp file (ASCII, so no BOM), then
  * curl.exe sends it; the bare curl alias would run Invoke-WebRequest.
  */
-export const powershellExample = (slug: string, now: number) =>
+export const powershellExample = (slug: string, now: number, base = DEFAULT_INGEST_URL) =>
   [
     `$body = '${body(slug, now, 'PowerShell')}'`,
     "$file = Join-Path $env:TEMP 'logsage-event.json'",
     'Set-Content -Path $file -Value $body -Encoding ascii -NoNewline',
-    `curl.exe -X POST ${INGEST_URL} -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" --data-binary "@$file"`,
+    `curl.exe -X POST ${endpoint(base)} -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" --data-binary "@$file"`,
   ].join('\n')
 
 const EXAMPLES = [
@@ -66,6 +68,7 @@ const EXAMPLES = [
 /** The test-log example in two tabs (WAI-ARIA tabs: arrow keys, Home, End). */
 function ExampleTabs({ slug }: { slug: string }) {
   const id = useId()
+  const { ingestUrl } = useConfig()
   // The timestamp is taken when the example first renders.
   const [now] = useState(() => Date.now())
   const [active, setActive] = useState(0)
@@ -113,7 +116,7 @@ function ExampleTabs({ slug }: { slug: string }) {
           hidden={i !== active}
           className="curl"
         >
-          {x.text(slug, now)}
+          {x.text(slug, now, ingestUrl)}
         </pre>
       ))}
     </div>
@@ -200,7 +203,7 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
         </p>
         {created.info.kind === 'ingest' && (
           <>
-            <p>Send a test log. Replace YOUR_KEY with the key, and the address if your ingest API runs elsewhere.</p>
+            <p>Send a test log. Replace YOUR_KEY with the key.</p>
             <ExampleTabs slug={slug} />
           </>
         )}

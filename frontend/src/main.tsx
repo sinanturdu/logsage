@@ -8,14 +8,20 @@ import '@fontsource/red-hat-mono/400.css'
 import '@fontsource/red-hat-mono/500.css'
 import './styles/app.css'
 import { App, newQueryClient } from './App'
+import { ConfigContext, loadConfig } from './config'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('missing #root')
 
-createRoot(root).render(
-  <StrictMode>
-    <BrowserRouter>
-      <App client={newQueryClient()} />
-    </BrowserRouter>
-  </StrictMode>,
+// The runtime config comes first; it never blocks for long (short timeout, then defaults).
+void loadConfig({ dev: import.meta.env.DEV }).then((config) =>
+  createRoot(root).render(
+    <StrictMode>
+      <ConfigContext.Provider value={config}>
+        <BrowserRouter>
+          <App client={newQueryClient()} />
+        </BrowserRouter>
+      </ConfigContext.Provider>
+    </StrictMode>,
+  ),
 )

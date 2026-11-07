@@ -6,7 +6,11 @@ import react from '@vitejs/plugin-react'
 // origin and the session cookie is first-party. changeOrigin stays false:
 // the API then sees Host: localhost:5173, the same host as the Origin
 // header, and its CSRF check accepts the request without ALLOWED_ORIGINS.
-const api = { '/api': { target: 'http://127.0.0.1:8083', changeOrigin: false } }
+// /config.json comes from cmd/api too, so development reads the same runtime config as production.
+const api = {
+  '/api': { target: 'http://127.0.0.1:8083', changeOrigin: false },
+  '/config.json': { target: 'http://127.0.0.1:8083', changeOrigin: false },
+}
 
 export default defineConfig({
   plugins: [react()],

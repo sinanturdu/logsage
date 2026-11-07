@@ -278,3 +278,29 @@ describe('revoke key', () => {
     expect(screen.getByRole('dialog', { name: 'Revoke this key?' })).toBeTruthy()
   })
 })
+
+describe('configured ingest URL', () => {
+  it('uses the runtime config in both examples, with the placeholder', async () => {
+    setup('owner', { 'POST /api/projects/shop/keys': () => json(201, { key: SECRET, info: key('lsk_cfg') }) })
+    renderApp('/projects/shop/keys', { retries: 0, config: { ingestUrl: 'https://ingest.example.com/base' } })
+    await screen.findByRole('table')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Create key' }))
+    await user.type(screen.getByLabelText('Name'), 'cfg')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+    const reveal = await screen.findByRole('dialog', { name: 'Your new ingest key' })
+    const texts = Array.from(reveal.querySelectorAll('pre')).map((p) => p.textContent ?? '')
+    expect(texts).toHaveLength(2)
+    for (const t of texts) {
+      expect(t).toContain('https://ingest.example.com/base/v1/ingest')
+      expect(t).not.toContain('localhost:8080')
+      expect(t).toContain('YOUR_KEY')
+      expect(t).not.toContain(SECRET)
+    }
+  })
+
+  it('drops a trailing slash from the base', () => {
+    expect(curlExample('shop', 0, 'https://ingest.example.com/')).toContain('curl -X POST https://ingest.example.com/v1/ingest ')
+    expect(powershellExample('shop', 0, 'https://ingest.example.com//')).toContain('curl.exe -X POST https://ingest.example.com/v1/ingest ')
+  })
+})
