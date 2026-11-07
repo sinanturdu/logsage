@@ -1,0 +1,44 @@
+/* Design tokens from direction B2 (docs/design/dashboard.md, "Chosen direction: B2").
+   Contrast ratios are against --paper; all text pairs meet WCAG AA (4.5:1). */
+:root {
+  /* palette */
+  --paper: #f4f6f5;   /* page background, cool green-grey chart paper */
+  --white: #ffffff;   /* raised areas: inputs, expanded rows */
+  --grid: #d6deda;    /* lines, separators (non-text) */
+  --line-strong: #7f8a85; /* input borders: 3.3:1 on paper, 3.6:1 on white (WCAG 1.4.11) */
+  --ink: #18211e;     /* primary text, 15.2:1 */
+  --pencil: #5b6661;  /* secondary text, 5.5:1 */
+  --pen: #1f5aa6;     /* links, selection, focus; info level, 6.3:1 */
+  --select: #e6edf6;  /* selected row background */
+
+  /* levels: colour is never the only signal (shape + word, see LevelMark) */
+  --level-debug: #5b6661; /* ○ 5.5:1 */
+  --level-info: #1f5aa6;  /* ● 6.3:1 */
+  --level-warn: #8a5a00;  /* ▲ 5.5:1 */
+  --level-error: #b42318; /* ■ 6.1:1 */
+  --level-fatal: #7b2269; /* ◆ 8.5:1 */
+  --danger: #b42318;
+
+  /* type: Red Hat Text for UI, Red Hat Mono only for machine text */
+  --font-sans: 'Red Hat Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Red Hat Mono', Consolas, 'Liberation Mono', monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px; /* used once: the time range heading */
+  --leading: 1.45;
+
+  /* spacing: 4px scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  --radius: 4px;
+  --focus: 2px solid var(--pen);
+}
