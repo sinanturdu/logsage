@@ -97,7 +97,7 @@ X-API-Key: <query key>
 |-----------|-------|
 | `from`, `to` | Required, RFC3339. `from` inclusive, `to` exclusive, `from < to`, `to - from <= QUERY_MAX_WINDOW` (168h). Millisecond precision. |
 | `level` | Optional, comma-separated subset of `debug,info,warn,error,fatal`. |
-| `service` | Optional, exact match. |
+| `service` | Optional, exact match; or a comma-separated list of up to 20 names (any of them, sent as one `Array(String)` parameter). A comma always separates names. |
 | `q` | Optional, case-insensitive substring of `message` (UTF-8, at most `QUERY_MAX_TEXT_LEN` = 256 characters). |
 | `trace_id` | Optional, exact match. |
 | `limit` | Optional, 1..`QUERY_MAX_LIMIT` (1000), default 100. |
@@ -115,7 +115,7 @@ Unknown or repeated parameters are rejected. Results are ordered newest first (`
 
 Auth (ADR 0012): a per-project **query** key; the project comes only from the key (a `project_id` parameter is rejected). `401` for bad keys, `503` when PostgreSQL cannot verify an uncached key. Deprecated static `QUERY_API_KEY` (default project, only with `ALLOW_LEGACY_STATIC_KEYS=true`).
 
-Safety: every query is built by `query.Build`, which always starts with `(project_id = {project_id:String} OR project_id = {project_alias:String})`: the key's project UUID, and as alias the legacy `"default"` for the default project (otherwise the UUID again). All values are server-side parameters (`{name:Type}` + `param_<name>`), never part of the SQL text. ClickHouse settings per query: `readonly=1`, `max_execution_time=QUERY_TIMEOUT` (10s), `max_result_rows=QUERY_MAX_LIMIT+1`.
+Safety: every query is built in `internal/query` (`Build` and the histogram and facet builders share one `where()`; ADR 0014), which always starts with `(project_id = {project_id:String} OR project_id = {project_alias:String})`: the key's project UUID, and as alias the legacy `"default"` for the default project (otherwise the UUID again). All values are server-side parameters (`{name:Type}` + `param_<name>`), never part of the SQL text. ClickHouse settings per query: `readonly=1`, `max_execution_time=QUERY_TIMEOUT` (10s), `max_result_rows=QUERY_MAX_LIMIT+1`.
 
 Cost: queries without `service` read more of the primary index than queries with it (sorting key `(project_id, service, timestamp, event_id)`), and `q` scans every `message` in the time window. Both are bounded by `QUERY_MAX_WINDOW` and `QUERY_TIMEOUT` (ADR 0009).
 
@@ -222,8 +222,11 @@ principal.project_id ──> ingest: stream entry project_id ──> processor �
 | `GET /api/projects/{slug}/keys` | member | prefix, kind, name, dates, status; never hashes |
 | `POST /api/projects/{slug}/keys` `{kind,name,expires_in?}` | owner, admin | `201 {key, info}`; the key is shown once |
 | `POST /api/projects/{slug}/keys/{prefix}/revoke` | owner, admin | `200 {info}` |
+| `GET /api/projects/{slug}/logs` | member | the `/v1/logs` search for this project (see below) |
+| `GET /api/projects/{slug}/histogram` | member | counts per time bucket and level |
+| `GET /api/projects/{slug}/facets` | member | counts per level and per service |
 
-Non-members get `404` on every project endpoint (never `403`); members without the right get `403`. Unauthenticated, expired, revoked or disabled-user sessions get `401`; PostgreSQL errors `503`. `/healthz`, `/readyz` (PostgreSQL).
+Non-members get `404` on every project endpoint (never `403`); members without the right get `403`. Unauthenticated, expired, revoked or disabled-user sessions get `401`; PostgreSQL errors `503`. `/healthz`, `/readyz` (PostgreSQL and ClickHouse).
 
 Request checks, in order: CORS (only listed `ALLOWED_ORIGINS`, with credentials; preflight GET/POST), CSRF for every non-GET (JSON content type and a trusted `Origin`/`Referer`, else `403`), body limit, session, membership, role.
 
@@ -235,6 +238,18 @@ login ──> limiter(IP, sha256(email)) ──429──> Retry-After
 request ──> cookie ──> SHA-256 ──> sessions JOIN users ──> revoked / expired / disabled ──> 401
                                                     └─> touch at most once a minute ──> handler
 ```
+
+### Dashboard read endpoints (v0.2 package I1, ADR 0014)
+Session cookie, any member role. Order: membership (`404` for non-members and unknown slugs, before parameters are read), parameters (`400` with the `/v1/logs` messages), per-user cap (`API_MAX_CONCURRENT_QUERIES`, default 4, else `429` + `Retry-After: 1`), query. Errors use the `/v1/logs` statuses and messages; ClickHouse text is never returned. All three use the shared `query.Service`: the same `QUERY_*` limits, the same project scope (the member's project; the default project also matches legacy `"default"` rows), `FINAL`, `readonly=1`.
+
+| Endpoint | Parameters | `200` body |
+|---|---|---|
+| `logs` | as `/v1/logs`: `from`, `to`, `level`, `service`, `q`, `trace_id`, `limit`, `cursor` | `{"events":[...],"next_cursor":...,"took_ms":N}` |
+| `histogram` | `from`, `to`, `level`, `service`, `q`, `trace_id`, optional `bucket` (`10s`, `30s`, `1m`, `5m`, `15m`, `1h`, `6h`, `1d`) | `{"bucket_seconds":N,"buckets":[{"t":"2026-11-07T10:07:00Z","debug":n,"info":n,"warn":n,"error":n,"fatal":n}],"took_ms":N}` |
+| `facets` | `from`, `to`, `level`, `service`, `q`, `trace_id` | `{"total":n,"levels":{"debug":n,...},"services":[{"name":"payments","count":n}],"took_ms":N}` |
+
+- Histogram: without `bucket` the smallest size giving at most 240 buckets; an explicit `bucket` may give at most 500. Buckets are aligned to the Unix epoch, cover the bucket holding `from` up to `to`, and empty ones are zero.
+- Facets: level counts apply every filter except `level`, service counts every filter except `service`, `total` every filter. At most 50 services by count, then `{"name":"other","count":n,"other":true}`.
 
 ## Fingerprinting
 Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.
