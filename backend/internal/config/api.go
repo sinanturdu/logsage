@@ -36,6 +36,12 @@ type APIConfig struct {
 	// MaxConcurrentQueries (API_MAX_CONCURRENT_QUERIES) caps the log reads
 	// one user may run at once; the limits of each read are the QUERY_* ones.
 	MaxConcurrentQueries int
+
+	// WebEnabled (WEB_ENABLED) serves the built dashboard from this binary (ADR 0021).
+	WebEnabled bool
+	// PublicIngestURL (PUBLIC_INGEST_URL) is the ingest address the dashboard
+	// shows in its examples, served as /config.json.
+	PublicIngestURL string
 }
 
 // DefaultAPIConfig returns the management API defaults.
@@ -57,6 +63,9 @@ func DefaultAPIConfig() APIConfig {
 		LoginLimiterSize: 10_000,
 
 		MaxConcurrentQueries: 4,
+
+		WebEnabled:      true,
+		PublicIngestURL: "http://localhost:8080",
 	}
 }
 
@@ -77,6 +86,18 @@ func NormalizeOrigin(s string) (string, error) {
 		return "", fmt.Errorf("invalid origin %q: want scheme://host[:port]", s)
 	}
 	return strings.ToLower(u.Scheme + "://" + u.Host), nil
+}
+
+// NormalizePublicURL checks that s is an http or https URL with a host and
+// an optional path, without credentials, query or fragment, and returns it
+// without a trailing slash.
+func NormalizePublicURL(s string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" || u.User != nil ||
+		u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(s, "#") || u.Opaque != "" {
+		return "", fmt.Errorf("invalid URL %q: want http(s)://host[:port][/path] without credentials, query or fragment", s)
+	}
+	return strings.TrimRight(u.Scheme+"://"+u.Host+u.EscapedPath(), "/"), nil
 }
 
 func parseBool(getenv func(string) string, name string, dst *bool) error {
@@ -128,6 +149,16 @@ func loadAPI(getenv func(string) string, cfg *Config) error {
 	}
 	if err := parseBool(getenv, "REGISTRATION_ENABLED", &a.RegistrationEnabled); err != nil {
 		return err
+	}
+	if err := parseBool(getenv, "WEB_ENABLED", &a.WebEnabled); err != nil {
+		return err
+	}
+	if v := strings.TrimSpace(getenv("PUBLIC_INGEST_URL")); v != "" {
+		u, err := NormalizePublicURL(v)
+		if err != nil {
+			return fmt.Errorf("config: PUBLIC_INGEST_URL: %w", err)
+		}
+		a.PublicIngestURL = u
 	}
 	if v := strings.TrimSpace(getenv("ALLOWED_ORIGINS")); v != "" {
 		var out []string

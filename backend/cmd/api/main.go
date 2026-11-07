@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/sinanturdu/logsage/backend/internal/query"
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 	"github.com/sinanturdu/logsage/backend/internal/storage/postgres"
+	"github.com/sinanturdu/logsage/backend/internal/web"
 )
 
 // defaultPageSize is the log page size when the request has no limit,
@@ -61,6 +63,23 @@ func tailOptions(t config.TailConfig) api.TailOptions {
 
 // run serves until ctx is canceled, then shuts down within
 // httpShutdownTimeout. ready, if not nil, receives the listening address.
+// registerWeb adds /config.json and, when enabled, the dashboard as the
+// catch-all route; /api/, /healthz and /readyz keep their own handlers.
+// It reports whether a built dashboard is served.
+func registerWeb(mux *http.ServeMux, a config.APIConfig, files fs.FS) (bool, error) {
+	cfgHandler, err := web.ConfigHandler(web.PublicConfig{IngestURL: a.PublicIngestURL})
+	if err != nil {
+		return false, err
+	}
+	mux.Handle("/config.json", cfgHandler)
+	if !a.WebEnabled {
+		return false, nil
+	}
+	h := web.New(files)
+	mux.Handle("/", h)
+	return h.Built(), nil
+}
+
 func run(ctx context.Context, getenv func(string) string, ready chan<- string) error {
 	cfg, err := config.Load(getenv)
 	if err != nil {
@@ -128,6 +147,10 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	health.Register(mux)
 	health.RegisterReady(mux, log, store, ch)
 	srv.Register(mux)
+	dashboard, err := registerWeb(mux, a, web.Dist())
+	if err != nil {
+		return err
+	}
 
 	hs := &http.Server{
 		Handler:           mux,
@@ -143,6 +166,12 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 	ln, err := net.Listen("tcp", a.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
+	}
+	switch {
+	case !a.WebEnabled:
+		log.Info("WEB_ENABLED=false: the dashboard is not served; /config.json still is")
+	case !dashboard:
+		log.Warn("the dashboard is not built into this binary; use the Vite dev server or the Docker image")
 	}
 	if !a.CookieSecure {
 		log.Warn("COOKIE_SECURE=false: session cookies are sent over plain http; use only for local development")
