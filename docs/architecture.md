@@ -24,6 +24,7 @@ flowchart LR
 - **Alert Engine**: evaluates rules on a sliding window; opens incidents and sends notifications.
 - **Query API** (`cmd/query`): read-only REST search over ClickHouse (`GET /v1/logs`, v0.1); WebSocket live tail later. Always scoped by `project_id` through one query builder. See "Query API (v0.1 contract)" and ADR 0009.
 - **AI Service**: anomaly detection and root-cause suggestions. Called by the backend over HTTP.
+- **Management API** (`cmd/api`, v0.2): login with server-side sessions, projects, member roles and API keys over JSON. PostgreSQL only. See "Management API (v0.2 contract)" and ADR 0013.
 - **Dashboard**: React + TypeScript.
 
 ## Ingestion API (v0.1 contract)
@@ -172,7 +173,22 @@ schema_migrations (version, name, checksum, applied_at)
 ```
 The project with slug `default` (id `00000000-0000-0000-0000-000000000001`) owns all v0.1 data: ClickHouse rows carry `project_id = 'default'`, its slug.
 
-Planned: `users`, `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
+Migration 0002 (ADR 0013):
+
+```sql
+users (id uuid PK, email text, password_hash text CHECK (LIKE '$argon2id$%'),  -- PHC string
+       created_at, disabled_at NULL)                    -- UNIQUE INDEX on lower(email)
+sessions (id uuid PK, user_id FK -> users, token_hash bytea (32) UNIQUE,     -- SHA-256 of the cookie token
+          created_at, last_seen_at, idle_expires_at, absolute_expires_at, revoked_at NULL,
+          user_agent text (<= 256))                     -- indexes: active sessions per user, absolute_expires_at
+project_members (project_id FK, user_id FK, role text CHECK (role IN ('owner','admin','viewer')),
+                 created_at, PRIMARY KEY (project_id, user_id))           -- index on user_id
+projects.created_by uuid NULL FK -> users ON DELETE SET NULL
+audit_log (id bigint identity PK, at, user_id NULL FK, action text, target text, detail text)  -- never secrets
+```
+The default project has no members; assign an owner with `admin add-member --project default --email E --role owner`.
+
+Planned: `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
 
 ### API key lifecycle (v0.2 package G)
 - **Create:** `admin create-key --project SLUG --kind ingest|query --name N [--expires-in 720h]` generates `lsk_<ing|qry>_<8 base32 chars>_<43 base64url chars>` from `crypto/rand` (40-bit prefix, 256-bit secret), stores only prefix and SHA-256, and prints the key once.
@@ -188,6 +204,36 @@ X-API-Key ──> legacy static key? (only with ALLOW_LEGACY_STATIC_KEYS) ──
                  ok -> cache 30s -> principal{project_id}     invalid -> cache 5s -> 401     DB error -> 503 (not cached)
 principal.project_id ──> ingest: stream entry project_id ──> processor ──> ClickHouse logs.project_id
                      └─> query: Scope{project_id, alias} ──> query.Build
+```
+
+## Management API (v0.2 contract)
+`cmd/api`, default `:8083` (`API_HTTP_ADDR`). JSON bodies only, at most 16 KiB, unknown fields rejected. Every response has `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`; errors are generic (`{"error":"unauthorized"}`).
+
+| Method and path | Who | Result |
+|---|---|---|
+| `POST /api/auth/login` `{email,password}` | anyone | `200 {user}` + session cookie; `401` for any bad credential; `429` + `Retry-After` when throttled |
+| `POST /api/auth/register` `{email,password}` | anyone, only with `REGISTRATION_ENABLED=true` | `201 {user}`; `404` when disabled; `409` duplicate |
+| `POST /api/auth/logout`, `/logout-all` | session | `204`, cookie cleared; logout-all revokes every session of the user |
+| `GET /api/auth/me` | session | `200 {user, session}` |
+| `POST /api/auth/change-password` `{current_password,new_password}` | session | `204`, other sessions revoked; `403` wrong current |
+| `GET /api/projects` / `POST /api/projects` `{name,slug}` | session | own projects with role / `201`, creator becomes owner |
+| `GET /api/projects/{slug}` | member | `200 {project}` |
+| `POST /api/projects/{slug}/disable` | owner | `200` |
+| `GET /api/projects/{slug}/keys` | member | prefix, kind, name, dates, status; never hashes |
+| `POST /api/projects/{slug}/keys` `{kind,name,expires_in?}` | owner, admin | `201 {key, info}`; the key is shown once |
+| `POST /api/projects/{slug}/keys/{prefix}/revoke` | owner, admin | `200 {info}` |
+
+Non-members get `404` on every project endpoint (never `403`); members without the right get `403`. Unauthenticated, expired, revoked or disabled-user sessions get `401`; PostgreSQL errors `503`. `/healthz`, `/readyz` (PostgreSQL).
+
+Request checks, in order: CORS (only listed `ALLOWED_ORIGINS`, with credentials; preflight GET/POST), CSRF for every non-GET (JSON content type and a trusted `Origin`/`Referer`, else `403`), body limit, session, membership, role.
+
+```
+login ──> limiter(IP, sha256(email)) ──429──> Retry-After
+      └─> user by email ── unknown ──> dummy argon2id verify ──> 401
+      └─> argon2id verify (semaphore) ── wrong / disabled ──> 401 (+ audit, limiter)
+      └─> rehash if parameters changed ──> new session row (token hash) ──> Set-Cookie ──> 200
+request ──> cookie ──> SHA-256 ──> sessions JOIN users ──> revoked / expired / disabled ──> 401
+                                                    └─> touch at most once a minute ──> handler
 ```
 
 ## Fingerprinting

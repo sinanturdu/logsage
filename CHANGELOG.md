@@ -5,6 +5,12 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Users, server-side sessions and the management API `cmd/api` on `:8083` (ADR 0013): login, logout, logout-all, me, change-password, optional registration (`REGISTRATION_ENABLED`, off by default), projects with `owner`/`admin`/`viewer` roles, key list/create (shown once)/revoke. Non-members get `404`. Session cookie `HttpOnly`, `SameSite=Lax`, `__Host-` prefix and `Secure` with `COOKIE_SECURE=true` (default); idle (12h) and absolute (7d) TTLs.
+- Passwords hashed with argon2id (PHC strings, rehash on login, bounded concurrency, dummy verification for unknown emails); policy 12–128 characters, not the email. New direct dependency `golang.org/x/crypto` v0.33.0 (was indirect via pgx).
+- CSRF (JSON content type plus trusted `Origin`/`Referer`), CORS only for `ALLOWED_ORIGINS`, per-IP and per-email login throttling with `429` + `Retry-After` (per instance), audit log of security events.
+- PostgreSQL migration 0002: `users`, `sessions` (token hash only), `project_members`, `projects.created_by`, `audit_log`.
+- `cmd/admin`: `create-user`, `set-password`, `disable-user`, `add-member`, `list-members`; key creation shared with the API.
+- Config: `API_HTTP_ADDR`, `SESSION_IDLE_TTL`, `SESSION_ABSOLUTE_TTL`, `COOKIE_SECURE`, `ALLOWED_ORIGINS`, `REGISTRATION_ENABLED`, `ARGON2_*`, `LOGIN_*`. Compose: `api` service (app profile, 127.0.0.1:8083); the image contains `cmd/api`.
 - Ingest and query authenticate with per-project keys from PostgreSQL (ADR 0012); the verified key decides the project end to end: stream entries and ClickHouse rows carry the project UUID, queries are scoped to it (the default project also matches legacy `"default"` rows). One shared authenticator with a bounded SHA-256-keyed cache (`AUTH_CACHE_TTL`, `AUTH_NEGATIVE_TTL`, `AUTH_CACHE_SIZE`), single lookup per key, `503` when PostgreSQL cannot verify an uncached key, `/readyz` checks PostgreSQL. The processor dead-letters entries without a valid project id.
 - End-to-end isolation tests (`internal/e2e`) against PostgreSQL, Redis and ClickHouse.
 - Compose: one-shot `migrate` service; ingest and query depend on it and on PostgreSQL. The image contains `cmd/admin`.

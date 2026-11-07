@@ -43,7 +43,7 @@ docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compo
 cd backend && LOADGEN_INGEST_KEY=<INGEST_API_KEY from .env> go run ./cmd/loadgen demo --duration 30s
 ```
 
-This starts Redis, ClickHouse, PostgreSQL (unused until v0.2) and the three LogSage services. Their ports are bound to 127.0.0.1 only: ingest on `:8080`, processor stats on `:8081`, query on `:8082`. Compose refuses to start the app profile if a key or the ClickHouse password is missing from `.env`. The third command sends a realistic stream of events for 30 seconds; it needs Go 1.23+, or send single events with curl as below.
+This starts Redis, ClickHouse, PostgreSQL and the LogSage services. Their ports are bound to 127.0.0.1 only: ingest on `:8080`, processor stats on `:8081`, query on `:8082`, management API on `:8083` (set `COOKIE_SECURE=false` in `.env` to log in over plain http). Compose refuses to start the app profile if a key or the ClickHouse password is missing from `.env`. The third command sends a realistic stream of events for 30 seconds; it needs Go 1.23+, or send single events with curl as below.
 
 To stop: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down` (add `-v` to delete the stored data).
 
@@ -128,6 +128,17 @@ INGEST_KEY=$(go run ./cmd/admin create-key --project demo --kind ingest --name a
 QUERY_KEY=$(go run ./cmd/admin create-key --project demo --kind query --name dashboard)
 curl -X POST http://127.0.0.1:8080/v1/ingest -H "X-API-Key: $INGEST_KEY" -H "Content-Type: application/json" -d @events.json
 curl -H "X-API-Key: $QUERY_KEY" "http://127.0.0.1:8082/v1/logs?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z"
+```
+
+Users and the management API (`cmd/api`, `:8083`; contract in [docs/architecture.md](docs/architecture.md), design in ADR 0013). Passwords are read from `LOGSAGE_PASSWORD` or stdin, never flags:
+
+```bash
+printf '%s\n' 'a long passphrase here' | go run ./cmd/admin create-user --email you@example.com
+go run ./cmd/admin add-member --project demo --email you@example.com --role owner
+COOKIE_SECURE=false go run ./cmd/api        # COOKIE_SECURE=false only for local plain http
+curl -c jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:8083" \
+  -d '{"email":"you@example.com","password":"a long passphrase here"}' http://localhost:8083/api/auth/login
+curl -b jar.txt http://localhost:8083/api/projects
 ```
 
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.
