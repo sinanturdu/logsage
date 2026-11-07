@@ -114,22 +114,13 @@ func (s *Service) ParseSearch(rawQuery string) (Filter, error) {
 	return f, nil
 }
 
-// parse checks the parameter names, then the filters every endpoint shares.
+// parse checks the parameter names, the time range, then the filters every
+// endpoint shares.
 func (s *Service) parse(rawQuery string, allowed []string) (url.Values, Filter, error) {
-	vals, err := url.ParseQuery(rawQuery)
+	vals, err := parseNames(rawQuery, allowed)
 	if err != nil {
-		return nil, Filter{}, errors.New("malformed query string")
+		return nil, Filter{}, err
 	}
-	for k, v := range vals {
-		if !contains(allowed, k) {
-			return nil, Filter{}, fmt.Errorf("unknown parameter %s; allowed: %s", quoteShort(k), strings.Join(allowed, ", "))
-		}
-		if len(v) > 1 {
-			return nil, Filter{}, fmt.Errorf("%s: given more than once", k)
-		}
-	}
-	has := func(k string) bool { _, ok := vals[k]; return ok }
-
 	var f Filter
 	if f.From, err = parseTime(vals.Get("from"), "from"); err != nil {
 		return nil, Filter{}, err
@@ -143,12 +134,37 @@ func (s *Service) parse(rawQuery string, allowed []string) (url.Values, Filter, 
 	if w := f.To.Sub(f.From); w > s.opts.MaxWindow {
 		return nil, Filter{}, fmt.Errorf("to: range from..to is %s, max %s", w, s.opts.MaxWindow)
 	}
+	if err := s.parseContent(vals, &f); err != nil {
+		return nil, Filter{}, err
+	}
+	return vals, f, nil
+}
 
+// parseNames parses the query string and rejects unknown or repeated names.
+func parseNames(rawQuery string, allowed []string) (url.Values, error) {
+	vals, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return nil, errors.New("malformed query string")
+	}
+	for k, v := range vals {
+		if !contains(allowed, k) {
+			return nil, fmt.Errorf("unknown parameter %s; allowed: %s", quoteShort(k), strings.Join(allowed, ", "))
+		}
+		if len(v) > 1 {
+			return nil, fmt.Errorf("%s: given more than once", k)
+		}
+	}
+	return vals, nil
+}
+
+// parseContent reads the content filters: level, service, q, trace_id.
+func (s *Service) parseContent(vals url.Values, f *Filter) error {
+	has := func(k string) bool { _, ok := vals[k]; return ok }
 	if has("level") {
 		seen := map[string]bool{}
 		for _, l := range strings.Split(vals.Get("level"), ",") {
 			if !validLevel(l) {
-				return nil, Filter{}, fmt.Errorf("level: unknown value %s; allowed: debug, info, warn, error, fatal (comma separated)", quoteShort(l))
+				return fmt.Errorf("level: unknown value %s; allowed: debug, info, warn, error, fatal (comma separated)", quoteShort(l))
 			}
 			if !seen[l] {
 				seen[l] = true
@@ -157,8 +173,9 @@ func (s *Service) parse(rawQuery string, allowed []string) (url.Values, Filter, 
 		}
 	}
 	if has("service") {
+		var err error
 		if f.Services, err = s.parseServices(vals.Get("service")); err != nil {
-			return nil, Filter{}, err
+			return err
 		}
 	}
 	for _, p := range []struct {
@@ -170,11 +187,11 @@ func (s *Service) parse(rawQuery string, allowed []string) (url.Values, Filter, 
 		}
 		v := vals.Get(p.name)
 		if err := s.checkText(p.name, v); err != nil {
-			return nil, Filter{}, err
+			return err
 		}
 		*p.dst = v
 	}
-	return vals, f, nil
+	return nil
 }
 
 // parseServices validates the service filter: one name as in v0.1, or a
