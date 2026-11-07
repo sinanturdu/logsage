@@ -5,6 +5,9 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Live tail `GET /api/projects/{slug}/tail` on `cmd/api` (ADR 0015): Server-Sent Events with the read endpoints' filters, in visibility order with late-visible rows and redeliveries handled, resume with `Last-Event-ID` (reset when older than `TAIL_MAX_REPLAY`), heartbeats, `degraded`/`live` on ClickHouse errors, connection limits per user/project/total, auth re-check, per-write deadlines and close on shutdown. Settings `TAIL_*`.
+- ClickHouse migrations 0003/0004: `logs.inserted_at` (fixed epoch for old rows) with a minmax index; the processor sets it per insert attempt.
+- `loadgen tail`: end-to-end live tail latency (p50/p95/p99) and missing events.
 - Dashboard read endpoints on `cmd/api` (ADR 0014): `GET /api/projects/{slug}/logs`, `/histogram` (per-level counts in buckets of 10s to 1d, zero-filled) and `/facets` (levels without the level filter, services without the service filter, top 50 plus other) for members with a session; non-members get `404`. Per-user cap `API_MAX_CONCURRENT_QUERIES` (default 4, `429` + `Retry-After`).
 - Log search accepts a comma-separated `service` list (at most 20 names), also on `/v1/logs`.
 - `cmd/api` needs `CLICKHOUSE_URL`, `CLICKHOUSE_DB`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD`, uses the `QUERY_*` limits and checks ClickHouse in `/readyz`; the compose `api` service gets the ClickHouse settings (no Redis).

@@ -176,6 +176,15 @@ type fakeStore struct {
 	failAlways atomic.Bool // fail every insert while set
 	batches    [][]jsonRow
 	calls      atomic.Int64
+	// attemptInsertedAt is the inserted_at of every insert attempt,
+	// failed ones included.
+	attemptInsertedAt []string
+}
+
+func (s *fakeStore) attempts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.attemptInsertedAt...)
 }
 
 func (s *fakeStore) InsertJSONEachRow(_ context.Context, table string, body []byte) error {
@@ -185,6 +194,9 @@ func (s *fakeStore) InsertJSONEachRow(_ context.Context, table string, body []by
 	if table != "logs" {
 		return fmt.Errorf("unexpected table %q", table)
 	}
+	var first jsonRow
+	_ = json.Unmarshal(bytes.SplitN(body, []byte("\n"), 2)[0], &first)
+	s.attemptInsertedAt = append(s.attemptInsertedAt, first.InsertedAt)
 	if s.failAlways.Load() || s.failFirst > 0 {
 		if s.failFirst > 0 {
 			s.failFirst--

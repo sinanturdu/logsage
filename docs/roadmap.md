@@ -34,8 +34,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package H2:** users, server-side sessions, project roles and the management API (`cmd/api`); admin CLI user and member commands (ADR 0013)
 - [x] **Package I0:** dashboard design brief; chosen direction B2 (`docs/design/dashboard.md`)
 - [x] **Package I1:** dashboard read API on `cmd/api`: session-authenticated logs, histogram and facets through one shared query service; multi-value service filter; per-user query cap (ADR 0014)
-- [ ] **Package I1b (next):** live tail for the dashboard (Server-Sent Events, filters, rate cap)
-- [ ] **Package I2:** React dashboard: login, log explorer (B2), timeline, keys
+- [x] **Package I1b:** live tail for the dashboard: Server-Sent Events with a visibility-ordered cursor (`inserted_at`), resume with Last-Event-ID, connection limits, auth re-check (ADR 0015)
+- [ ] **Package I2 (next):** React dashboard: login, log explorer (B2), timeline, live tail, keys
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 
 ## v0.3: Live tail

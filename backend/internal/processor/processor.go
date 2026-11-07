@@ -310,17 +310,20 @@ func (p *Processor) deadLetter(ctx context.Context, e Entry, reason string) {
 // flush inserts the batch, retrying with backoff until it succeeds or ctx
 // ends; nothing new is read meanwhile (backpressure). Entries are acked only
 // after a successful insert. On ctx end the batch is kept unacked.
+//
+// Each attempt is encoded again with inserted_at = the attempt's start time,
+// so a batch that becomes visible only after retries is not stamped with the
+// time of its first, failed attempt (the live tail relies on it, ADR 0015).
 func (p *Processor) flush(ctx context.Context, b *batch) {
-	body, err := encodeRows(b.rows)
-	if err != nil {
-		// Unreachable for rows produced by parseEntry; keep entries pending.
-		p.log.Error("encode batch failed; entries stay pending", "rows", b.len(), "err", err)
-		b.reset()
-		return
-	}
-
 	for attempt := 0; ; attempt++ {
-		err := p.store.InsertJSONEachRow(ctx, p.opts.Table, body)
+		body, err := encodeRows(b.rows, p.now())
+		if err != nil {
+			// Unreachable for rows produced by parseEntry; keep entries pending.
+			p.log.Error("encode batch failed; entries stay pending", "rows", b.len(), "err", err)
+			b.reset()
+			return
+		}
+		err = p.store.InsertJSONEachRow(ctx, p.opts.Table, body)
 		if err == nil {
 			break
 		}

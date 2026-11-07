@@ -3,6 +3,7 @@ package processor
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 // BenchmarkParseAndEncodeBatch measures the processor's CPU work for one
@@ -24,7 +25,7 @@ func BenchmarkParseAndEncodeBatch(b *testing.B) {
 			}
 			rows = append(rows, row)
 		}
-		if _, err := encodeRows(rows); err != nil {
+		if _, err := encodeRows(rows, time.Now()); err != nil {
 			b.Fatal(err)
 		}
 	}

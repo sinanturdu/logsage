@@ -65,6 +65,35 @@ func TestAckOnlyAfterSuccessfulInsert(t *testing.T) {
 	}
 }
 
+// TestInsertedAtIsSetPerAttempt: a batch that succeeds only after retries
+// must carry the time of the successful attempt, not of the first one, or
+// the live tail's visibility cursor would see it as older than it is.
+func TestInsertedAtIsSetPerAttempt(t *testing.T) {
+	opts := testOptions()
+	opts.RetryInitial, opts.RetryMax = 5*time.Millisecond, 20*time.Millisecond // attempts land on different milliseconds
+	h := newHarness(t, opts)
+	h.store.failFirst = 2
+	h.stream.push(entries("1-0", "2-0", "3-0")...)
+	h.start(t)
+	waitFor(t, "insert", func() bool { return h.store.rowCount() == 3 })
+
+	got := h.store.attempts()
+	if len(got) != 3 {
+		t.Fatalf("attempts = %v, want 3", got)
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] <= got[i-1] {
+			t.Errorf("attempt %d inserted_at %s is not after attempt %d (%s)", i+1, got[i], i, got[i-1])
+		}
+	}
+	h.store.mu.Lock()
+	stored := h.store.batches[0][0].InsertedAt
+	h.store.mu.Unlock()
+	if stored != got[2] {
+		t.Errorf("stored inserted_at %s, want the successful attempt's %s", stored, got[2])
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	opts := testOptions()
 	opts.RetryInitial = 100 * time.Millisecond

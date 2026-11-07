@@ -129,10 +129,15 @@ type jsonRow struct {
 	TraceID     string            `json:"trace_id"`
 	Attributes  map[string]string `json:"attributes"`
 	IngestedAt  string            `json:"ingested_at"`
+	// InsertedAt is when this insert attempt started (ADR 0015): the live
+	// tail orders rows by it, so it is set per attempt, not per batch.
+	InsertedAt string `json:"inserted_at"`
 }
 
-// encodeRows renders rows as JSONEachRow (one object per line).
-func encodeRows(rows []Row) ([]byte, error) {
+// encodeRows renders rows as JSONEachRow (one object per line), with
+// insertedAt as the inserted_at of every row.
+func encodeRows(rows []Row, insertedAt time.Time) ([]byte, error) {
+	ins := insertedAt.UTC().Format(chTime)
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	for i, r := range rows {
@@ -151,6 +156,7 @@ func encodeRows(rows []Row) ([]byte, error) {
 			TraceID:     r.TraceID,
 			Attributes:  attrs,
 			IngestedAt:  r.IngestedAt.UTC().Format(chTime),
+			InsertedAt:  ins,
 		}); err != nil {
 			return nil, fmt.Errorf("encode row %d: %w", i, err)
 		}

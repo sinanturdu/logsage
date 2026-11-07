@@ -79,7 +79,7 @@ func TestEncodeRows(t *testing.T) {
 		Level:     "error", Service: "checkout", Message: "a \"quoted\" <msg>\nline2",
 		TraceID: "t1", IngestedAt: time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC),
 	}}
-	body, err := encodeRows(rows)
+	body, err := encodeRows(rows, time.Date(2026, 11, 6, 9, 0, 1, 500_000_000, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestEncodeRows(t *testing.T) {
 	want := map[string]any{
 		"project_id": "default", "event_id": "1-0", "timestamp": "2026-11-06 09:15:30.123",
 		"level": "error", "service": "checkout", "message": "a \"quoted\" <msg>\nline2",
-		"fingerprint": 0.0, "trace_id": "t1", "attributes": map[string]any{}, "ingested_at": "2026-11-06 09:00:00.000",
+		"fingerprint": 0.0, "trace_id": "t1", "attributes": map[string]any{}, "ingested_at": "2026-11-06 09:00:00.000", "inserted_at": "2026-11-06 09:00:01.500",
 	}
 	for k, v := range want {
 		if gv, ok := got[k]; !ok || !equalJSON(gv, v) {
