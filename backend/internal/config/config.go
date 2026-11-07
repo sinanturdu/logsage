@@ -32,6 +32,7 @@ type Config struct {
 	Processor  ProcessorConfig
 	Query      QueryConfig
 	Postgres   PostgresConfig
+	Auth       AuthConfig
 }
 
 // RedisConfig configures the Redis Streams publisher.
@@ -98,6 +99,7 @@ func Load(getenv func(string) string) (Config, error) {
 		Processor:  DefaultProcessorConfig(),
 		Query:      DefaultQueryConfig(),
 		Postgres:   DefaultPostgresConfig(),
+		Auth:       DefaultAuthConfig(),
 	}
 
 	if v := strings.TrimSpace(getenv("HTTP_ADDR")); v != "" {
@@ -165,6 +167,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if err := loadPostgres(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadAuth(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
 

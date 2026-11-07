@@ -8,11 +8,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ \
-      ./cmd/ingest ./cmd/processor ./cmd/query
+      ./cmd/ingest ./cmd/processor ./cmd/query ./cmd/admin
 
 # Alpine rather than distroless: compose healthchecks use busybox wget.
 FROM alpine:3.20
 RUN addgroup -S logsage && adduser -S -G logsage -H -s /sbin/nologin logsage
 COPY --from=build /out/ /usr/local/bin/
 USER logsage
-# No default command: compose picks ingest, processor or query.
+# No default command: compose picks ingest, processor, query or admin.

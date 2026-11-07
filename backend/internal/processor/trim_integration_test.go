@@ -197,7 +197,7 @@ func TestIntegrationBurstNoLoss(t *testing.T) {
 			for time.Now().Before(sendUntil) {
 				batch := make([]ingest.Event, 100)
 				for i := range batch {
-					batch[i] = ingest.Event{Timestamp: time.Now().UTC(), Level: "info", Service: "burst", Message: "m"}
+					batch[i] = ingest.Event{Timestamp: time.Now().UTC(), Level: "info", Service: "burst", Message: "m", ProjectID: "default"}
 				}
 				err := pub.Publish(ctx, batch)
 				switch {

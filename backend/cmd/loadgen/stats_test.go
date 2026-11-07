@@ -14,6 +14,10 @@ import (
 	"time"
 
 	"github.com/sinanturdu/logsage/backend/internal/ingest"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
+
+	"github.com/sinanturdu/logsage/backend/internal/keys"
 )
 
 func ms(n int) time.Duration { return time.Duration(n) * time.Millisecond }
@@ -115,7 +119,7 @@ func TestRunRequiresKeyFromEnvAndLocalTarget(t *testing.T) {
 // publisher) and checks counts, statuses and the max-events cap.
 func TestRunIngestAgainstRealHandler(t *testing.T) {
 	pub := ingest.NewMemoryPublisher(0)
-	h, err := ingest.NewHandler(pub, "k", ingest.DefaultLimits(), nil)
+	h, err := ingest.NewHandler(pub, auth.NewStaticKey("k", keys.KindIngest, auth.DefaultProjectID), ingest.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

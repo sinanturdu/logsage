@@ -63,7 +63,7 @@ func TestRedisIntegrationPublish(t *testing.T) {
 		if len(m.Values) != 3 {
 			t.Errorf("entry %d fields = %v, want payload, project_id, ingested_at", i, m.Values)
 		}
-		if m.Values["project_id"] != "default" {
+		if m.Values["project_id"] != "33333333-3333-3333-3333-333333333333" {
 			t.Errorf("entry %d project_id = %v", i, m.Values["project_id"])
 		}
 		ts, _ := m.Values["ingested_at"].(string)

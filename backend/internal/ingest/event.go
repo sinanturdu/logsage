@@ -16,6 +16,9 @@ type Event struct {
 	Message    string            `json:"message"`
 	TraceID    string            `json:"trace_id,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
+	// ProjectID is set from the authenticated key, never from the request
+	// body; it is written as the stream entry's project_id field.
+	ProjectID string `json:"-"`
 }
 
 // Limits bounds what a single ingest request may contain.

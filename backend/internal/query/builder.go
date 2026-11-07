@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/auth"
 )
 
 // Filter is a validated log search.
@@ -29,17 +31,38 @@ type Statement struct {
 // chTime is the parameter format of DateTime64(3, 'UTC').
 const chTime = "2006-01-02 15:04:05.000"
 
-// projectScope is the condition every statement starts with.
-const projectScope = "project_id = {project_id:String}"
+// projectScope is the condition every statement starts with. Alias is the
+// legacy value "default" for the default project and equals the project id
+// for every other project, so the SQL is the same for all projects.
+const projectScope = "(project_id = {project_id:String} OR project_id = {project_alias:String})"
+
+// LegacyDefaultProject is the project_id of v0.1 rows (ADR 0011/0012).
+const LegacyDefaultProject = "default"
+
+// Scope is the project a query is limited to. It comes from the verified
+// key only (ScopeFor), never from the request.
+type Scope struct {
+	ProjectID string
+	Alias     string
+}
+
+// ScopeFor returns the scope for a project id: the default project also
+// matches its legacy id "default".
+func ScopeFor(projectID string) Scope {
+	if projectID == auth.DefaultProjectID {
+		return Scope{ProjectID: projectID, Alias: LegacyDefaultProject}
+	}
+	return Scope{ProjectID: projectID, Alias: projectID}
+}
 
 // Build is the only place that produces log search SQL. Every statement is
 // scoped to projectID, reads FROM logs FINAL (redelivered rows collapsed),
 // orders newest first with event_id as tie-break, and fetches Limit+1 rows.
 // All values are passed as parameters; the SQL is assembled only from the
 // constant fragments below.
-func Build(projectID string, f Filter) (Statement, error) {
-	if projectID == "" {
-		return Statement{}, errors.New("query: project id is required")
+func Build(scope Scope, f Filter) (Statement, error) {
+	if scope.ProjectID == "" || scope.Alias == "" {
+		return Statement{}, errors.New("query: project scope is required")
 	}
 	if f.Limit <= 0 {
 		return Statement{}, errors.New("query: limit must be positive")
@@ -54,10 +77,11 @@ func Build(projectID string, f Filter) (Statement, error) {
 		"timestamp < {to:DateTime64(3, 'UTC')}",
 	}
 	params := map[string]string{
-		"project_id": projectID,
-		"from":       f.From.UTC().Format(chTime),
-		"to":         f.To.UTC().Format(chTime),
-		"limit":      strconv.Itoa(f.Limit + 1),
+		"project_id":    scope.ProjectID,
+		"project_alias": scope.Alias,
+		"from":          f.From.UTC().Format(chTime),
+		"to":            f.To.UTC().Format(chTime),
+		"limit":         strconv.Itoa(f.Limit + 1),
 	}
 
 	if len(f.Levels) > 0 {

@@ -108,3 +108,32 @@ func equalJSON(a, b any) bool {
 	bb, _ := json.Marshal(b)
 	return string(ab) == string(bb)
 }
+
+func TestParseEntryProjectID(t *testing.T) {
+	tests := []struct {
+		project    any
+		wantReason string
+	}{
+		{project: "default"},
+		{project: "6f1e2d3c-4b5a-4f60-8a91-0b2c3d4e5f60"},
+		{project: "6F1E2D3C-4B5A-4F60-8A91-0B2C3D4E5F60", wantReason: "neither a project UUID"},
+		{project: "other-project", wantReason: "neither a project UUID"},
+		{project: "' OR 1=1 --", wantReason: "neither a project UUID"},
+		{project: "6f1e2d3c4b5a4f608a910b2c3d4e5f60", wantReason: "neither a project UUID"},
+		{project: 42, wantReason: "missing project_id"},
+	}
+	for _, tt := range tests {
+		v := validEntry("1-0").Values
+		v["project_id"] = tt.project
+		row, reason := parseEntry(Entry{ID: "1-0", Values: v})
+		if tt.wantReason == "" {
+			if reason != "" || row.ProjectID != tt.project {
+				t.Errorf("project %v: reason %q, row project %q", tt.project, reason, row.ProjectID)
+			}
+			continue
+		}
+		if !strings.Contains(reason, tt.wantReason) {
+			t.Errorf("project %v: reason %q, want %q", tt.project, reason, tt.wantReason)
+		}
+	}
+}

@@ -30,7 +30,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 
 ## v0.2: Accounts and dashboard
 - [x] **Package G:** PostgreSQL foundation: migrations, projects, hashed per-project API keys, admin CLI (ADR 0011)
-- [ ] **Package H:** users and login (JWT); ingest and query verify per-project keys and scope data by project
+- [x] **Package H1:** ingest and query verify per-project keys; the key decides the project end to end; isolation tests (ADR 0012)
+- [ ] **Package H2:** users, login (JWT) and project membership
 - [ ] **Package I:** React dashboard: login, log explorer, charts
 
 ## v0.3: Live tail

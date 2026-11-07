@@ -4,9 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// legacyDefaultProject is the project_id v0.1 wrote for every entry; it
+// belongs to the default project (ADR 0011, 0012).
+const legacyDefaultProject = "default"
+
+// projectUUID matches the canonical lowercase project ids PostgreSQL returns.
+var projectUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // Entry is one Redis stream entry as read from the consumer group.
 type Entry struct {
@@ -53,6 +61,9 @@ func parseEntry(e Entry) (Row, string) {
 	projectID, _ := stringField(e.Values, "project_id")
 	if strings.TrimSpace(projectID) == "" {
 		return Row{}, "missing project_id field"
+	}
+	if projectID != legacyDefaultProject && !projectUUID.MatchString(projectID) {
+		return Row{}, "project_id is neither a project UUID nor the legacy \"default\""
 	}
 	ingestedRaw, _ := stringField(e.Values, "ingested_at")
 	ingestedAt, err := time.Parse(time.RFC3339Nano, ingestedRaw)

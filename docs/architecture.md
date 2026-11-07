@@ -43,7 +43,8 @@ Responses (all bodies are JSON):
 |--------|------|------|
 | `202` | batch accepted | `{"accepted": N}` |
 | `400` | malformed JSON, unknown field, trailing data, or an invalid event | `{"error": "events[3]: level must be one of ...", "index": 3}` (`index` only for per-event errors) |
-| `401` | `X-API-Key` missing or wrong | `{"error": "missing or invalid API key"}` |
+| `401` | `X-API-Key` missing, wrong, revoked, expired, of a disabled project, or a query key | `{"error": "missing or invalid API key"}` |
+| `503` (auth) | the key is not cached and PostgreSQL cannot verify it | `{"error": "authentication temporarily unavailable, retry later"}` |
 | `405` | method other than `POST` (`Allow: POST` is set) | `{"error": ...}` |
 | `413` | body larger than the limit (by `Content-Length` or while reading) | `{"error": ...}` |
 | `415` | `Content-Type` is not `application/json` (parameters such as `charset` are allowed) | `{"error": ...}` |
@@ -60,7 +61,7 @@ Validation rules:
 
 Limits (env var, default): body `INGEST_MAX_BODY_BYTES` 1 MiB; events per batch `INGEST_MAX_EVENTS` 1000; message `INGEST_MAX_MESSAGE_BYTES` 8 KiB; attributes per event `INGEST_MAX_ATTRIBUTES` 32; attribute key `INGEST_MAX_ATTR_KEY_CHARS` 64 characters; attribute value `INGEST_MAX_ATTR_VALUE_CHARS` 1024 characters; `trace_id` `INGEST_MAX_TRACE_ID_LEN` 128 characters.
 
-Authentication in v0.1 is a single static key from `INGEST_API_KEY`, compared in constant time and never logged. Per-project hashed keys replace it in v0.2.
+Authentication (v0.2 H1, ADR 0012): a per-project **ingest** key from PostgreSQL. The verified key decides the project: every event is stamped with the key's project id (UUID) and nothing in the body can set it. Deprecated static `INGEST_API_KEY` works only with `ALLOW_LEGACY_STATIC_KEYS=true` and maps to the default project.
 
 ### Publishing (v0.1)
 `PUBLISHER` selects where accepted events go:
@@ -111,9 +112,9 @@ Unknown or repeated parameters are rejected. Results are ordered newest first (`
 ```
 `next_cursor` is `null` on the last page. Errors are `{"error":"..."}`: `400` (names the bad parameter), `401` (missing or wrong key, including the ingest key), `405` (not GET), `503` (ClickHouse unreachable or failing), `504` (query timed out), `500` (ClickHouse rejected the query). ClickHouse messages are never returned to clients.
 
-Auth: `QUERY_API_KEY`, separate from `INGEST_API_KEY` (they must differ); constant-time comparison of SHA-256 digests, never logged.
+Auth (ADR 0012): a per-project **query** key; the project comes only from the key (a `project_id` parameter is rejected). `401` for bad keys, `503` when PostgreSQL cannot verify an uncached key. Deprecated static `QUERY_API_KEY` (default project, only with `ALLOW_LEGACY_STATIC_KEYS=true`).
 
-Safety: every query is built by `query.Build`, which always adds `project_id = {project_id:String}` (`"default"` until v0.2). All values are server-side parameters (`{name:Type}` + `param_<name>`), never part of the SQL text. ClickHouse settings per query: `readonly=1`, `max_execution_time=QUERY_TIMEOUT` (10s), `max_result_rows=QUERY_MAX_LIMIT+1`.
+Safety: every query is built by `query.Build`, which always starts with `(project_id = {project_id:String} OR project_id = {project_alias:String})`: the key's project UUID, and as alias the legacy `"default"` for the default project (otherwise the UUID again). All values are server-side parameters (`{name:Type}` + `param_<name>`), never part of the SQL text. ClickHouse settings per query: `readonly=1`, `max_execution_time=QUERY_TIMEOUT` (10s), `max_result_rows=QUERY_MAX_LIMIT+1`.
 
 Cost: queries without `service` read more of the primary index than queries with it (sorting key `(project_id, service, timestamp, event_id)`), and `q` scans every `message` in the time window. Both are bounded by `QUERY_MAX_WINDOW` and `QUERY_TIMEOUT` (ADR 0009).
 
@@ -177,7 +178,17 @@ Planned: `users`, `alert_rules`, `error_groups`, `incidents`, `incident_events`,
 - **Create:** `admin create-key --project SLUG --kind ingest|query --name N [--expires-in 720h]` generates `lsk_<ing|qry>_<8 base32 chars>_<43 base64url chars>` from `crypto/rand` (40-bit prefix, 256-bit secret), stores only prefix and SHA-256, and prints the key once.
 - **Verify** (`keys.Verifier`): parse, look up by prefix, constant-time hash comparison, then kind, revocation, expiry and project status. Every rejection returns the same "invalid API key"; storage errors are distinct. `last_used_at` is written at most once per minute per key.
 - **Revoke:** `admin revoke-key --prefix P` sets `revoked_at`; `admin disable-project --slug S` stops all keys of a project. Keys expire at `expires_at`.
-- **Not yet wired:** ingest and query still use the static `INGEST_API_KEY` / `QUERY_API_KEY`; package H switches them to per-project keys.
+- **Use (H1, ADR 0012):** ingest and query verify keys through one authenticator with a bounded cache keyed by SHA-256 (`AUTH_CACHE_TTL` 30s, `AUTH_NEGATIVE_TTL` 5s, `AUTH_CACHE_SIZE` 10000). A revoked key or disabled project can keep working for up to `AUTH_CACHE_TTL`. PostgreSQL down + uncached key → `503`.
+
+### Auth flow (H1)
+```
+X-API-Key ──> legacy static key? (only with ALLOW_LEGACY_STATIC_KEYS) ──> default project
+          └─> cache[SHA-256(key)+kind] hit? ──> valid: principal / rejected: 401
+          └─> one lookup per key: keys.Verifier (prefix -> hash compare -> kind, revoked, expired, project)
+                 ok -> cache 30s -> principal{project_id}     invalid -> cache 5s -> 401     DB error -> 503 (not cached)
+principal.project_id ──> ingest: stream entry project_id ──> processor ──> ClickHouse logs.project_id
+                     └─> query: Scope{project_id, alias} ──> query.Build
+```
 
 ## Fingerprinting
 Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.

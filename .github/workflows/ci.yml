@@ -72,6 +72,8 @@ jobs:
           QUERY_API_KEY: ci-query-key
           CLICKHOUSE_USER: ci
           CLICKHOUSE_PASSWORD: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
         run: |
           docker compose -f infra/docker-compose.yml config --quiet
           docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app config --quiet

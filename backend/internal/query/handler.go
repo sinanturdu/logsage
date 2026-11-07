@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,14 +17,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sinanturdu/logsage/backend/internal/auth"
+	"github.com/sinanturdu/logsage/backend/internal/keys"
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 )
 
 // Path is the route served by Handler.
 const Path = "/v1/logs"
-
-// DefaultProjectID scopes every query until projects exist (v0.2).
-const DefaultProjectID = "default"
 
 // Store runs a parameterized read query and reports readiness.
 type Store interface {
@@ -36,7 +33,6 @@ type Store interface {
 
 // Options bounds what a request may ask for.
 type Options struct {
-	ProjectID    string
 	MaxWindow    time.Duration
 	DefaultLimit int
 	MaxLimit     int
@@ -46,22 +42,20 @@ type Options struct {
 
 // Handler serves GET /v1/logs.
 type Handler struct {
-	store     Store
-	keyDigest [sha256.Size]byte
-	opts      Options
-	log       *slog.Logger
-	now       func() time.Time
+	store Store
+	auth  auth.Authenticator
+	opts  Options
+	log   *slog.Logger
+	now   func() time.Time
 }
 
 // NewHandler returns a Handler that accepts apiKey in X-API-Key.
-func NewHandler(store Store, apiKey string, opts Options, log *slog.Logger) (*Handler, error) {
+func NewHandler(store Store, authn auth.Authenticator, opts Options, log *slog.Logger) (*Handler, error) {
 	switch {
 	case store == nil:
 		return nil, errors.New("query: store is nil")
-	case apiKey == "":
-		return nil, errors.New("query: API key is empty")
-	case opts.ProjectID == "":
-		return nil, errors.New("query: project id is empty")
+	case authn == nil:
+		return nil, errors.New("query: authenticator is nil")
 	case opts.MaxWindow <= 0 || opts.MaxLimit <= 0 || opts.MaxTextLen <= 0 || opts.Timeout < time.Second:
 		return nil, errors.New("query: invalid limits")
 	case opts.DefaultLimit <= 0 || opts.DefaultLimit > opts.MaxLimit:
@@ -70,7 +64,7 @@ func NewHandler(store Store, apiKey string, opts Options, log *slog.Logger) (*Ha
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Handler{store: store, keyDigest: sha256.Sum256([]byte(apiKey)), opts: opts, log: log, now: time.Now}, nil
+	return &Handler{store: store, auth: authn, opts: opts, log: log, now: time.Now}, nil
 }
 
 // Register mounts the handler on mux at Path.
@@ -103,7 +97,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed, use GET")
 		return
 	}
-	if !h.authorized(r.Header.Get("X-API-Key")) {
+	principal, err := h.auth.Authenticate(r.Context(), r.Header.Get("X-API-Key"), keys.KindQuery)
+	if err != nil {
+		if errors.Is(err, auth.ErrUnavailable) {
+			h.log.WarnContext(r.Context(), "key verification unavailable", "err", err)
+			writeError(w, http.StatusServiceUnavailable, "authentication temporarily unavailable, retry later")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid API key")
 		return
 	}
@@ -113,7 +113,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, next, err := h.search(r.Context(), f)
+	events, next, err := h.search(r.Context(), ScopeFor(principal.ProjectID), f)
 	if err != nil {
 		status, msg := classify(err)
 		h.log.WarnContext(r.Context(), "log query failed", "status", status, "took_ms", h.now().Sub(start).Milliseconds(), "err", err)
@@ -124,8 +124,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // search builds the statement (always project-scoped) and runs it.
-func (h *Handler) search(ctx context.Context, f Filter) ([]Event, *string, error) {
-	stmt, err := Build(h.opts.ProjectID, f)
+func (h *Handler) search(ctx context.Context, scope Scope, f Filter) ([]Event, *string, error) {
+	stmt, err := Build(scope, f)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -223,15 +223,6 @@ func classify(err error) (int, string) {
 	default:
 		return http.StatusServiceUnavailable, "log storage unavailable, retry later"
 	}
-}
-
-// authorized compares SHA-256 digests in constant time.
-func (h *Handler) authorized(key string) bool {
-	if key == "" {
-		return false
-	}
-	got := sha256.Sum256([]byte(key))
-	return subtle.ConstantTimeCompare(got[:], h.keyDigest[:]) == 1
 }
 
 var allowedParams = map[string]bool{

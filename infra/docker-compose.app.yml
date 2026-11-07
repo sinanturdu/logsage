@@ -3,7 +3,11 @@
 # Kept in a separate file because ${VAR:?} is evaluated for every service in
 # a file, even inactive ones; here it cannot block `up redis clickhouse`.
 # Secrets come from .env without defaults, so compose fails if one is
-# missing, and each service gets only the secrets it uses.
+# missing, and each service gets only the secrets it uses. Ingest and query
+# verify per-project keys in PostgreSQL (DATABASE_URL, built from the
+# POSTGRES_* values; percent-encode special characters in the password);
+# migrate applies the PostgreSQL schema once before they start. The legacy
+# static keys are optional and only honored with ALLOW_LEGACY_STATIC_KEYS.
 
 x-backend: &backend
   build:
@@ -13,6 +17,16 @@ x-backend: &backend
   restart: unless-stopped
 
 services:
+  # One-shot: applies the PostgreSQL migrations, then exits 0.
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["/usr/local/bin/admin", "--allow-remote", "migrate"]
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-logsage}?sslmode=disable"
+    depends_on:
+      postgres: { condition: service_healthy }
+
   ingest:
     <<: *backend
     command: ["/usr/local/bin/ingest"]
@@ -23,10 +37,17 @@ services:
       REDIS_ADDR: redis:6379
       REDIS_STREAM: ${REDIS_STREAM:-logsage:events}
       INGEST_MAX_STREAM_LEN: ${INGEST_MAX_STREAM_LEN:-500000}
-      INGEST_API_KEY: ${INGEST_API_KEY:?set INGEST_API_KEY in .env}
+      DATABASE_URL: "postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-logsage}?sslmode=disable"
+      AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
+      AUTH_NEGATIVE_TTL: ${AUTH_NEGATIVE_TTL:-5s}
+      AUTH_CACHE_SIZE: ${AUTH_CACHE_SIZE:-10000}
+      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-true}
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 5s
@@ -63,7 +84,12 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       QUERY_HTTP_ADDR: ":8082"
-      QUERY_API_KEY: ${QUERY_API_KEY:?set QUERY_API_KEY in .env}
+      DATABASE_URL: "postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-logsage}?sslmode=disable"
+      AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
+      AUTH_NEGATIVE_TTL: ${AUTH_NEGATIVE_TTL:-5s}
+      AUTH_CACHE_SIZE: ${AUTH_CACHE_SIZE:-10000}
+      ALLOW_LEGACY_STATIC_KEYS: ${ALLOW_LEGACY_STATIC_KEYS:-true}
+      QUERY_API_KEY: ${QUERY_API_KEY:-}
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logsage}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
@@ -71,6 +97,8 @@ services:
     ports: ["127.0.0.1:8082:8082"]
     depends_on:
       clickhouse: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/healthz"]
       interval: 5s

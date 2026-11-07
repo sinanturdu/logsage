@@ -57,9 +57,9 @@ func TestIntegrationEndToEnd(t *testing.T) {
 	defer pub.Close()
 	ts := time.Date(2026, 11, 6, 10, 15, 30, 123_000_000, time.UTC)
 	events := []ingest.Event{
-		{Timestamp: ts, Level: "error", Service: "checkout", Message: "payment gateway timeout", TraceID: "abc", Attributes: map[string]string{"env": "it"}},
-		{Timestamp: ts.Add(time.Second), Level: "info", Service: "checkout", Message: "retry ok"},
-		{Timestamp: ts.Add(2 * time.Second), Level: "warn", Service: "search", Message: "slow query"},
+		{Timestamp: ts, Level: "error", Service: "checkout", Message: "payment gateway timeout", TraceID: "abc", Attributes: map[string]string{"env": "it"}, ProjectID: "default"},
+		{Timestamp: ts.Add(time.Second), Level: "info", Service: "checkout", Message: "retry ok", ProjectID: "default"},
+		{Timestamp: ts.Add(2 * time.Second), Level: "warn", Service: "search", Message: "slow query", ProjectID: "default"},
 	}
 	if err := pub.Publish(ctx, events); err != nil {
 		t.Fatalf("publish: %v", err)
