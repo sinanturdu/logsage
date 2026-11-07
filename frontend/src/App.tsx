@@ -5,7 +5,7 @@ import { RequireAuth, SessionWatcher } from './auth/session'
 import { Shell } from './components/Shell'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
-import { LogsPage } from './pages/LogsPage'
+import { ExplorerPage } from './explorer/ExplorerPage'
 
 export function newQueryClient(opts: { retries?: number } = {}): QueryClient {
   const retries = opts.retries ?? 2
@@ -47,7 +47,7 @@ export function App({ client }: { client: QueryClient }) {
           }
         >
           <Route index element={<HomePage />} />
-          <Route path="/projects/:slug/logs" element={<LogsPage />} />
+          <Route path="/projects/:slug/logs" element={<ExplorerPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

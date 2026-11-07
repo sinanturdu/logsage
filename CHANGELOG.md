@@ -5,6 +5,12 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Log explorer at `/projects/:slug/logs` (ADR 0017): range and filters in the URL (relative or absolute UTC ranges), a two-strip SVG timeline with brushing, presets, a custom UTC range and a summary line, level and service facets with counts, trace id validation, debounced search with `/`, single-line B2 rows through `<LogText>` with `j`/`k`/Escape selection, Load more with de-duplication and a 1,000-row cap, and plain-language empty and error states (400, 429 with Retry-After, 503 or network, 404).
+- `scripts/dev.ps1` (Windows PowerShell 5.1 and pwsh): `up`, `seed`, `web`, `status` and `down` for one-command local development, with a dev user, a project and an ingest key created idempotently.
+- `loadgen seed`: an hour of demo history with an incident in the last 15 minutes (payments timeouts cascading into checkout and api errors), at most 100k events.
+
+### Fixed
+- Dashboard: a second request failing with 401 no longer replaces the "session ended" notice after sign-out elsewhere.
 - Dashboard foundation in `frontend/` (ADR 0016): Vite + React + TypeScript (strict), B2 design tokens with self-hosted Red Hat fonts, login with plain-language errors, return to the requested URL after a 401, app shell with project switcher, `Ctrl K` hint and account menu, empty state with project creation, typed API client with central error mapping, `<LogText>` for text-only rendering of untrusted log data, lint rules against HTML injection and browser storage, Vitest tests, and a `frontend` CI job.
 - Live tail `GET /api/projects/{slug}/tail` on `cmd/api` (ADR 0015): Server-Sent Events with the read endpoints' filters, in visibility order with late-visible rows and redeliveries handled, resume with `Last-Event-ID` (reset when older than `TAIL_MAX_REPLAY`), heartbeats, `degraded`/`live` on ClickHouse errors, connection limits per user/project/total, auth re-check, per-write deadlines and close on shutdown. Settings `TAIL_*`.
 - ClickHouse migrations 0003/0004: `logs.inserted_at` (fixed epoch for old rows) with a minmax index; the processor sets it per insert attempt.

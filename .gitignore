@@ -27,3 +27,6 @@ dist/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Local dev credentials (scripts/dev.ps1), never commit
+.dev/

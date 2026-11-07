@@ -49,51 +49,38 @@ To stop: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/do
 
 ## Run the dashboard locally
 
-Requirements: Docker with Compose v2, Node 24 (`frontend/.nvmrc`), Go 1.23+ for the load generator. The dashboard (`frontend/`, ADR 0016) runs on Vite's dev server and reaches the API through its `/api` proxy.
+Requirements: Docker Desktop, Go 1.23+ (for the demo data) and Node 24 (`frontend/.nvmrc`). On Windows, one script does everything from PowerShell, with no admin rights and no Git Bash:
 
-1. Configure: copy `.env.example` to `.env`, replace every `change-me` value, and set `COOKIE_SECURE=false` (the dev server is plain http).
-
-```bash
-cp .env.example .env
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 up
 ```
 
-2. Start the stack (infrastructure, ingest, processor, query and the management API on `:8083`):
-
-```bash
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 seed
 ```
 
-3. Create a user, a project you own, and an ingest key. The password is read from stdin, never from a flag. In Git Bash on Windows, prefix the `exec` commands with `MSYS_NO_PATHCONV=1`.
-
-```bash
-printf '%s' 'a long passphrase here' | docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-user --allow-remote --email you@example.com
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 web
 ```
 
-```bash
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-project --allow-remote --name Demo --slug demo
-```
+Then open http://localhost:5173/projects/demo/logs.
 
-```bash
-docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin add-member --allow-remote --project demo --email you@example.com --role owner
-```
+- `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
+- It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.
+- The dev login is printed once and kept in `.dev/login.txt`. `.dev/` is local-only and git-ignored, like `.env`.
+- `seed` sends about 70,000 events: an hour of history, plus an incident in the last 15 minutes in which payment gateway timeouts in `payments` cascade into `checkout` and `api` errors.
+- `web` runs the dashboard dev server, which proxies `/api` to the API on `:8083`.
+- `status` shows the services and where the dev login is.
+- `down` stops everything and deletes the data, then asks before removing `.dev/`.
 
-```bash
-KEY=$(docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app exec -T api /usr/local/bin/admin create-key --allow-remote --project demo --kind ingest --name demo)
-```
+Every command is safe to run again.
 
-4. Send demo data with an incident (keep it running in its own terminal):
-
-```bash
-cd backend && LOADGEN_INGEST_KEY="$KEY" go run ./cmd/loadgen demo --incident --duration 5m
-```
-
-5. Run the dashboard and open http://localhost:5173:
-
-```bash
-cd frontend && npm ci && npm run dev
-```
-
-The dev server proxies `/api` to `http://127.0.0.1:8083` without rewriting the Host header, so the API's same-host Origin check accepts the dashboard's requests without `ALLOWED_ORIGINS`. To stop: `Ctrl+C` in the dev server, then `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app down -v`.
+On macOS or Linux, or from Git Bash, run the same steps by hand:
+1. Copy `.env.example` to `.env`, replace the `change-me` values and set `COOKIE_SECURE=false`.
+2. Start the stack with `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build`.
+3. Create the user, project and key with the admin CLI as in [AGENTS.md](AGENTS.md). Pass the password through stdin, and prefix `docker compose exec` with `MSYS_NO_PATHCONV=1` in Git Bash.
+4. Seed with `cd backend && LOADGEN_INGEST_KEY=<key> go run ./cmd/loadgen seed`.
+5. Start the dashboard with `cd frontend && npm ci && npm run dev`.
 
 ## API examples
 

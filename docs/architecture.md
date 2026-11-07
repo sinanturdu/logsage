@@ -276,9 +276,12 @@ How the stream works:
 `frontend/`, ADR 0016. Routes:
 - `/login`: sign-in. A `next=<path>` parameter returns the user to that path afterwards; only same-app paths are accepted.
 - `/`: opens the first project, or shows the empty state with a create-project form.
-- `/projects/:slug/logs`: the shell plus the explorer, a placeholder until I2b.
+- `/projects/:slug/logs`: the log explorer (I2b, ADR 0017).
+  - URL state: `range` or `from`/`to` (UTC), plus `level`, `service`, `q` and `trace_id`.
+  - Layout: a two-strip SVG timeline with brushing, the facets column, and single-line rows with Load more (de-duplicated, capped at 1,000).
+  - Data: it calls `/histogram` for the context window, and `/facets` and `/logs` for the selected range; changing a filter cancels requests in flight.
 
-The app uses `/api/auth/login`, `/logout` and `/me`, and `GET/POST /api/projects`; I2b adds `/logs`, `/histogram`, `/facets` and `/tail`.
+The app uses `/api/auth/login`, `/logout` and `/me`, `GET/POST /api/projects`, and the explorer endpoints `/logs`, `/histogram` and `/facets`; I2c adds `/tail`.
 
 Error handling:
 - A 401 on any signed-in request clears the cache and goes to `/login?next=...&expired=1`.

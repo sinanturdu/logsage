@@ -27,7 +27,7 @@ describe('session', () => {
     expect(screen.queryByText('Your session ended. Sign in again to continue.')).toBeNull() // never signed in
     await signIn()
     await waitFor(() => expect(where()).toBe('/projects/shop/logs?level=error'))
-    expect(await screen.findByRole('heading', { name: 'Logs for Shop' })).toBeTruthy()
+    expect(await screen.findByLabelText('Search messages')).toBeTruthy() // the explorer
   })
 
   it('on a 401 after sign-in says the session ended and returns afterwards', async () => {
@@ -38,7 +38,7 @@ describe('session', () => {
     }
     mockApi(routes)
     const { client } = renderApp('/projects/shop/logs?q=timeout')
-    expect(await screen.findByRole('heading', { name: 'Logs for Shop' })).toBeTruthy()
+    expect(await screen.findByLabelText('Search messages')).toBeTruthy() // the explorer
 
     routes['GET /api/projects'] = () => json(401, { error: 'unauthorized' }) // revoked elsewhere
     await client.invalidateQueries({ queryKey: projectsKey })

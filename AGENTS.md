@@ -13,6 +13,7 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 ## Commands (update as the project grows)
 - Start dependencies: `docker compose -f infra/docker-compose.yml up -d redis clickhouse` (no `.env` needed)
 - Full stack in Docker: `docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.app.yml --profile app up -d --build` (copy `.env.example` to `.env` first; keys and the ClickHouse password are required)
+- Local dev on Windows (PowerShell 5.1 or pwsh, no Git Bash): `powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 up|seed|web|status|down` (creates `.env` and `.dev/` if missing, both git-ignored; never commit them). Demo data only: `cd backend && LOADGEN_INGEST_KEY=... go run ./cmd/loadgen seed` (about 70k events: an hour plus an incident in the last 15 min)
 - Frontend (Node from `frontend/.nvmrc`): `cd frontend && npm ci`, then `npm run dev` (http://localhost:5173, proxies `/api` to `:8083`; needs `COOKIE_SECURE=false` on the API), `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. Exact versions only, lockfile committed; no browser binaries in tests (jsdom). Render untrusted text with `<LogText>`; no browser storage (lint rules)
 - Backend: `cd backend && go vet ./... && go build ./... && go test ./...`
   - Locally on Windows, run `go test ./...` without `-race` (the race detector crashes with the MinGW toolchain on PATH).

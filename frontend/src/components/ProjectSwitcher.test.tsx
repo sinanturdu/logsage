@@ -72,7 +72,7 @@ describe('project switcher', () => {
     await user.click(screen.getByRole('button', { name: 'Create project' }))
     await waitFor(() => expect(where()).toBe('/projects/shop-prod/logs'))
     expect(calls.find((c) => c.key === 'POST /api/projects')?.init?.body).toBe('{"name":"Shop prod","slug":"shop-prod"}')
-    expect(await screen.findByRole('heading', { name: 'Logs for Shop prod' })).toBeTruthy()
+    expect(await screen.findByLabelText('Search messages')).toBeTruthy() // the explorer
   })
 
   it.each([
