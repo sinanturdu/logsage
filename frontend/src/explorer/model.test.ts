@@ -17,7 +17,7 @@ const NOW = Date.parse('2026-11-07T02:17:00Z')
 
 describe('URL state', () => {
   it('defaults to the last 15 minutes with no filters', () => {
-    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '' })
+    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '', zoom: false })
     expect(serializeState(p('')).toString()).toBe('')
   })
 
@@ -28,10 +28,11 @@ describe('URL state', () => {
       services: ['payments', 'checkout'],
       q: 'gateway timeout',
       traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      zoom: true,
     }
     const qs = serializeState(s).toString()
     expect(qs).toBe(
-      'from=2026-11-07T02%3A11%3A30Z&to=2026-11-07T02%3A17%3A00.250Z&level=warn%2Cerror&service=payments%2Ccheckout&q=gateway+timeout&trace_id=4bf92f3577b34da6a3ce929d0e0e4736',
+      'from=2026-11-07T02%3A11%3A30Z&to=2026-11-07T02%3A17%3A00.250Z&level=warn%2Cerror&service=payments%2Ccheckout&q=gateway+timeout&trace_id=4bf92f3577b34da6a3ce929d0e0e4736&zoom=1',
     )
     expect(p(qs)).toEqual(s)
     expect(serializeState(p('range=6h')).toString()).toBe('range=6h')
@@ -65,6 +66,13 @@ describe('URL state', () => {
     expect(p(`service=${many}`).services).toHaveLength(20)
   })
 
+  it('keeps zoom only with an absolute range', () => {
+    expect(p('range=1h&zoom=1').zoom).toBe(false)
+    expect(serializeState(p('zoom=1')).toString()).toBe('')
+    expect(p('from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z&zoom=1').zoom).toBe(true)
+    expect(p('from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z&zoom=yes').zoom).toBe(false)
+  })
+
   it('absolute wins over relative when both are given', () => {
     expect(p('range=1h&from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z').range.kind).toBe('absolute')
   })
@@ -82,6 +90,7 @@ describe('ranges', () => {
     expect(contextWindow(older, NOW).preset).toBe('6h')
     const ancient = { kind: 'absolute' as const, from: NOW - 30 * 86_400_000, to: NOW - 29 * 86_400_000 }
     expect(contextWindow(ancient, NOW)).toEqual({ from: ancient.from, to: ancient.to, preset: null })
+    expect(contextWindow(sel, NOW, true)).toEqual({ from: sel.from, to: sel.to, preset: null }) // zoomed in
   })
 })
 

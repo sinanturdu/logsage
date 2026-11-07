@@ -55,6 +55,16 @@ export const errorShare = (b: Bucket) => {
   return total === 0 ? 0 : (bucketErrors(b) / total) * 100
 }
 
+/**
+ * Buckets with fewer logs than this have no meaningful error share (one
+ * error in two logs is not "50%"): the strip leaves them out and the summary
+ * ignores them (ADR 0018).
+ */
+export const MIN_SHARE_SAMPLE = 5
+
+/** The error share, or null when the bucket is too small to show one. */
+export const shareOrNull = (b: Bucket): number | null => (bucketTotal(b) < MIN_SHARE_SAMPLE ? null : errorShare(b))
+
 /** Evenly spaced axis ticks between from and to (inclusive). */
 export function axisTicks(from: number, to: number, count = 6): number[] {
   const step = (to - from) / (count - 1)
@@ -114,15 +124,20 @@ export function summarize(buckets: readonly Bucket[], bucketSeconds: number): st
   for (const b of buckets) {
     total += bucketTotal(b)
     if (!peak || bucketTotal(b) > bucketTotal(peak)) peak = b
-    if (bucketTotal(b) > 0 && (!peakShare || errorShare(b) > errorShare(peakShare))) peakShare = b
+    if (shareOrNull(b) !== null && (!peakShare || errorShare(b) > errorShare(peakShare))) peakShare = b
   }
   if (!peak || total === 0) return 'No logs in this time range.'
   const per = bucketLabel(bucketSeconds)
   let s = `${total.toLocaleString('en-US')} logs. Peak volume ${bucketTotal(peak).toLocaleString('en-US')} logs per ${per} at ${clockUtc(peak.t)} UTC.`
+  const anyErrors = buckets.some((b) => bucketErrors(b) > 0)
   if (peakShare && bucketErrors(peakShare) > 0) {
     s += ` Peak error and fatal share ${Math.round(errorShare(peakShare))}% at ${clockUtc(peakShare.t)} UTC.`
-  } else {
+  } else if (!anyErrors) {
     s += ' No errors or fatal logs.'
+  } else if (!peakShare) {
+    s += ' No bucket has enough logs for an error share.'
+  } else {
+    s += ` Errors appear only in buckets with fewer than ${MIN_SHARE_SAMPLE} logs.`
   }
   return s
 }
