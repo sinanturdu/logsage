@@ -328,9 +328,10 @@ export function ExplorerPage() {
               ? ''
               : loadingFirst
                 ? 'Loading logs…'
-                : total !== undefined && !live
+                : // The facets total covers the loaded window, not rows kept from a live tail.
+                  total !== undefined && !live && liveList.fresh.size === 0
                   ? `Showing ${events.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} logs, newest first.`
-                  : `Showing ${events.length.toLocaleString('en-US')} logs, newest first.`}
+                  : `Showing ${events.length.toLocaleString('en-US')} logs, ${live ? 'latest arrivals first' : 'newest first'}.`}
           </p>
           {problem ? (
             <div className="state-panel" role="alert">
@@ -373,6 +374,7 @@ export function ExplorerPage() {
                 onFilterTrace={filterTrace}
                 withDate={win.to - win.from > 86_400_000}
                 fresh={liveList.fresh}
+                order={live ? 'latest arrivals first' : 'newest first'}
               />
               {capped ? (
                 <p className="cap-note">

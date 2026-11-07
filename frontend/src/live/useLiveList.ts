@@ -18,6 +18,16 @@ export function mergeNewest(top: readonly LogEvent[], rest: readonly LogEvent[],
   return out
 }
 
+const ts = (e: LogEvent) => {
+  const t = Date.parse(e.timestamp)
+  return Number.isFinite(t) ? t : 0
+}
+
+/** Sorts in place by event time, newest first; equal times keep their order. */
+export function sortNewest(list: LogEvent[]): LogEvent[] {
+  return list.sort((a, b) => ts(b) - ts(a))
+}
+
 export const countText = (n: number) => `${n.toLocaleString('en-US')} new ${n === 1 ? 'log' : 'logs'}`
 
 type Options = {
@@ -50,7 +60,11 @@ export function useLiveList({ slug, filters, live, busy, base, listKey, onReset 
   }
 
   const paused = live && (busy || buffer.length > 0)
-  const events = useMemo(() => mergeNewest(rows, base), [rows, base])
+  // Live: latest arrivals first (each batch sorted). Off: strict newest first again.
+  const events = useMemo(() => {
+    const merged = mergeNewest(rows, base)
+    return live ? merged : sortNewest([...merged])
+  }, [rows, base, live])
 
   const known = useRef<Set<string>>(new Set())
   const pausedRef = useRef(paused)
@@ -67,7 +81,9 @@ export function useLiveList({ slug, filters, live, busy, base, listKey, onReset 
       known.current.add(e.event_id)
       fresh.push(e)
     }
-    fresh.reverse() // arrival order to newest first
+    // Arrival order is visibility order, not event time: each batch goes on
+    // top sorted by timestamp, newest first.
+    sortNewest(fresh)
     if (fresh.length === 0) return
     arrived.current += fresh.length
     if (pausedRef.current) setBuffer((b) => mergeNewest(fresh, b))

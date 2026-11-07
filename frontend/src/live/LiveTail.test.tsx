@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { json, renderApp } from '../test/util'
 import { event, mockExplorer, type Req } from '../explorer/testing'
-import { DEGRADED_TEXT } from './machine'
+import { DEGRADED_TEXT, LIVE_TEXT } from './machine'
 import { controlledStream } from './testing'
 import { countText, mergeNewest } from './useLiveList'
 import type { LogEvent } from '../explorer/api'
 
 const where = () => screen.getByTestId('location').textContent ?? ''
-const grid = () => screen.getByRole('treegrid', { name: 'Logs, newest first' })
+const grid = () => screen.getByRole('treegrid', { name: /^Logs, / })
 const rows = () => Array.from(grid().querySelectorAll<HTMLElement>('[data-index]'))
 const firstMessage = () => rows()[0]?.querySelector('.msg')?.textContent
 
@@ -32,8 +32,8 @@ const arrive = (i: number, extra: Partial<Record<string, string>> = {}) => event
 
 async function openLive(path = '/projects/shop/logs?live=1') {
   renderApp(path)
-  await screen.findByRole('treegrid', { name: 'Logs, newest first' })
-  await screen.findByText('Live', { selector: '.live-state' })
+  await screen.findByRole('treegrid', { name: /^Logs, / })
+  await screen.findByText(LIVE_TEXT, { selector: '.live-state', exact: false })
   return userEvent.setup()
 }
 
@@ -46,7 +46,7 @@ describe('live toggle', () => {
   it('turns on and off with l and the button, keeps rows, ignores l while typing', async () => {
     const { tails, streams } = setup()
     renderApp('/projects/shop/logs?service=api&q=timeout&from=2026-11-07T02:00:00Z&to=2026-11-07T02:05:00Z')
-    await screen.findByRole('treegrid', { name: 'Logs, newest first' })
+    await screen.findByRole('treegrid', { name: /^Logs, / })
     const user = userEvent.setup()
     await user.click(screen.getByRole('searchbox'))
     await user.keyboard('l')
@@ -62,7 +62,7 @@ describe('live toggle', () => {
     const t = tails()[0] as Req
     expect([...t.params.keys()].sort()).toEqual(['q', 'service'])
     expect(screen.getByRole('button', { name: /Live/ }).getAttribute('aria-pressed')).toBe('true')
-    await screen.findByText('Live', { selector: '.live-state' })
+    await screen.findByText(LIVE_TEXT, { selector: '.live-state', exact: false })
 
     act(() => streams[0]?.log(arrive(1), 'c1'))
     await waitFor(() => expect(firstMessage()).toBe('arrived #1'))
@@ -87,7 +87,7 @@ describe('arrivals', () => {
     expect(rows()).toHaveLength(5)
     expect(rows()[1]?.classList.contains('arrived')).toBe(true)
     expect(rows()[2]?.classList.contains('arrived')).toBe(false)
-    expect(screen.getByText('Showing 5 logs, newest first.')).toBeTruthy()
+    expect(screen.getByText('Showing 5 logs, latest arrivals first.')).toBeTruthy()
   })
 
   it('caps the list at 1,000 rows, dropping the oldest', () => {
@@ -190,7 +190,7 @@ describe('connection states', () => {
     act(() => streams[0]?.status({ state: 'degraded' }))
     expect(await screen.findByText(DEGRADED_TEXT, { selector: '.live-state' })).toBeTruthy()
     act(() => streams[0]?.status({ state: 'live', heartbeat: true }))
-    expect(await screen.findByText('Live', { selector: '.live-state' })).toBeTruthy()
+    expect(await screen.findByText(LIVE_TEXT, { selector: '.live-state', exact: false })).toBeTruthy()
   })
 
   it('counts down after a drop, and r or Retry now reconnects with Last-Event-ID', async () => {
@@ -203,7 +203,7 @@ describe('connection states', () => {
     await user.keyboard('r')
     await waitFor(() => expect(tails()).toHaveLength(2))
     expect(tails()[1]?.headers['Last-Event-ID']).toBe('c7')
-    await screen.findByText('Live', { selector: '.live-state' })
+    await screen.findByText(LIVE_TEXT, { selector: '.live-state', exact: false })
     act(() => streams[1]?.close())
     await user.click(await screen.findByRole('button', { name: 'Retry now' }))
     await waitFor(() => expect(tails()).toHaveLength(3))
@@ -245,7 +245,7 @@ describe('cancellation', () => {
   it('closes the stream when the filters change and when leaving the page', async () => {
     const { tails } = setup()
     const { unmount } = renderApp('/projects/shop/logs?live=1')
-    await screen.findByText('Live', { selector: '.live-state' })
+    await screen.findByText(LIVE_TEXT, { selector: '.live-state', exact: false })
     const user = userEvent.setup()
     await user.click(screen.getByRole('checkbox', { name: /^error/ }))
     await waitFor(() => expect(tails()).toHaveLength(2))
@@ -254,5 +254,44 @@ describe('cancellation', () => {
     unmount()
     expect(tails()[1]?.signal?.aborted).toBe(true)
     expect(tails()).toHaveLength(2)
+  })
+})
+
+describe('ordering while live', () => {
+  it('says Live on the button and what is happening next to it', async () => {
+    setup()
+    await openLive()
+    expect(screen.getByRole('button', { name: /Live/ }).textContent).toContain('Live')
+    expect(document.querySelector('.live-state')?.textContent).toContain('Receiving new logs')
+    expect(document.querySelector('.live-state')?.textContent).not.toMatch(/\bLive\b/)
+  })
+
+  it('sorts each batch newest first, puts it on top, and restores strict order when Live is off', async () => {
+    const { streams } = setup()
+    const user = await openLive()
+    const messages = () => rows().map((r) => r.querySelector('.msg')?.textContent)
+    act(() => {
+      streams[0]?.log(arrive(1), 'c1')
+      streams[0]?.log(arrive(3), 'c2')
+      streams[0]?.log(arrive(2), 'c3')
+    })
+    await waitFor(() => expect(messages().slice(0, 3)).toEqual(['arrived #3', 'arrived #2', 'arrived #1']))
+    // A late-visible log older than the list still arrives on top.
+    act(() => streams[0]?.log(event(5, { message: 'late but old' }), 'c4'))
+    await waitFor(() => expect(messages()[0]).toBe('late but old'))
+    expect(screen.getByText('Showing 7 logs, latest arrivals first.')).toBeTruthy()
+    expect(screen.getByRole('treegrid', { name: 'Logs, latest arrivals first' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /Live/ }))
+    await waitFor(() => expect(screen.getByText('Showing 7 logs, newest first.')).toBeTruthy())
+    expect(screen.getByRole('treegrid', { name: 'Logs, newest first' })).toBeTruthy()
+    expect(messages()).toEqual(['arrived #3', 'arrived #2', 'arrived #1', event(0).message, event(1).message, event(2).message, 'late but old'])
+  })
+
+  it('sorts by event time with stable ties', async () => {
+    const { sortNewest } = await import('./useLiveList')
+    const e = (id: string, t: string) => ({ event_id: id, timestamp: t }) as LogEvent
+    const out = sortNewest([e('a', '2026-11-07T10:00:00Z'), e('b', '2026-11-07T10:00:01Z'), e('c', '2026-11-07T10:00:00Z'), e('d', 'bad')])
+    expect(out.map((x) => x.event_id)).toEqual(['b', 'a', 'c', 'd'])
   })
 })

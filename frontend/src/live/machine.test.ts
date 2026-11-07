@@ -99,7 +99,7 @@ describe('words', () => {
     const r = next(live, fail('network'))
     expect(words(OFF, T)).toBe('')
     expect(words({ kind: 'connecting', attempt: 0 }, T)).toBe('Connecting')
-    expect(words(live, T)).toBe('Live')
+    expect(words(live, T)).toBe('Receiving new logs')
     expect(words({ kind: 'degraded', attempt: 0, openedAt: T }, T)).toBe(DEGRADED_TEXT)
     expect(words(r, T + 1200)).toBe('Live tail disconnected at 16:40:05: the connection to LogSage was lost. Reconnecting in 4 s, or press r to retry now.')
     expect(secondsLeft(r, T + 9000)).toBe(0)
