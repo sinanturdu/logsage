@@ -226,3 +226,24 @@ func TestValueIsKeptWhileFiring(t *testing.T) {
 		t.Fatalf("ok rule wrote %+v", out.States)
 	}
 }
+
+func TestGroupKeyNeverFiresTwice(t *testing.T) {
+	for _, tp := range []Type{NewGroup, Regression} {
+		x := newRun(t, Rule{Type: tp})
+		a := Observation{Key: GroupKey(1), Fire: true, Fingerprint: 1}
+		x.step(a)
+		x.step()  // gone from the window: resolved
+		x.step(a) // seen again inside a later window
+		if len(x.notes) != 2 || x.state(GroupKey(1)) != StateResolved {
+			t.Fatalf("%s: %d notices, state %v", tp, len(x.notes), x.state(GroupKey(1)))
+		}
+	}
+	// A rule-level key fires again after it resolved.
+	x := newRun(t, Rule{})
+	x.step(fire)
+	x.step(clear)
+	x.step(fire)
+	if len(x.notes) != 3 {
+		t.Fatalf("rule key: %d notices", len(x.notes))
+	}
+}

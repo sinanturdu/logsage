@@ -132,7 +132,9 @@ func Step(r Rule, prev map[string]State, obs []Observation, now time.Time) Outco
 		}
 		switch cur.State {
 		case StateOK, StateResolved:
-			if o.Fire {
+			// A group key (a new group, or one regression) fires once: after it
+			// resolved it never fires again.
+			if o.Fire && !(r.IsGroupRule() && cur.State == StateResolved) {
 				if r.For == 0 {
 					fire()
 				} else {
