@@ -560,6 +560,25 @@ func (s *Service) GroupDetail(ctx context.Context, scope Scope, f Filter, fp uin
 	return d, nil
 }
 
+// GroupExists reports whether the project has ever seen the fingerprint.
+func (s *Service) GroupExists(ctx context.Context, scope Scope, fp uint64) (bool, error) {
+	stmt, err := BuildGroupSeen(scope, fp)
+	if err != nil {
+		return false, err
+	}
+	body, err := s.run(ctx, stmt, 1)
+	if err != nil {
+		return false, err
+	}
+	var seen struct {
+		N chUint `json:"n"`
+	}
+	if err := json.Unmarshal(firstLineOf(body), &seen); err != nil {
+		return false, fmt.Errorf("decode group seen: %w", err)
+	}
+	return seen.N > 0, nil
+}
+
 func firstLineOf(body []byte) []byte {
 	if i := strings.IndexByte(string(body), '\n'); i >= 0 {
 		return body[:i]

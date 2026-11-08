@@ -23,6 +23,13 @@ type LogReader interface {
 	Search(ctx context.Context, scope query.Scope, f query.Filter) ([]query.Event, *string, error)
 	Histogram(ctx context.Context, scope query.Scope, f query.Filter, bucket time.Duration) (query.Histogram, error)
 	Facets(ctx context.Context, scope query.Scope, f query.Filter) (query.Facets, error)
+
+	// Error groups (ADR 0022).
+	ParseGroups(rawQuery string) (query.GroupQuery, error)
+	ParseGroupWindow(rawQuery string) (query.Filter, error)
+	Groups(ctx context.Context, scope query.Scope, q query.GroupQuery) (query.GroupList, error)
+	GroupDetail(ctx context.Context, scope query.Scope, f query.Filter, fp uint64) (query.GroupDetail, error)
+	GroupExists(ctx context.Context, scope query.Scope, fp uint64) (bool, error)
 }
 
 // queryGate caps the log reads running at once per user. It is per
@@ -64,7 +71,7 @@ type readFunc func(ctx context.Context, start time.Time) (any, error)
 // non-members and unknown slugs, before any parameter is looked at), then
 // parameter validation (400 with the /v1/logs messages), then the per-user
 // cap (429), then the query scoped to the member's project.
-func (s *Server) readLogs(prepare func(scope query.Scope, rawQuery string) (readFunc, error)) func(http.ResponseWriter, *http.Request, postgres.Session) {
+func (s *Server) readLogs(prepare func(scope query.Scope, r *http.Request) (readFunc, error)) func(http.ResponseWriter, *http.Request, postgres.Session) {
 	return func(w http.ResponseWriter, r *http.Request, sess postgres.Session) {
 		start := s.opts.Now()
 		if s.logs == nil {
@@ -75,7 +82,7 @@ func (s *Server) readLogs(prepare func(scope query.Scope, rawQuery string) (read
 		if !ok {
 			return
 		}
-		read, err := prepare(query.ScopeFor(m.ID), r.URL.RawQuery)
+		read, err := prepare(query.ScopeFor(m.ID), r)
 		if err != nil {
 			writeInvalid(w, err.Error())
 			return
@@ -101,8 +108,8 @@ func (s *Server) readLogs(prepare func(scope query.Scope, rawQuery string) (read
 func (s *Server) since(start time.Time) int64 { return s.opts.Now().Sub(start).Milliseconds() }
 
 // prepareLogs serves GET /api/projects/{slug}/logs: the /v1/logs search.
-func (s *Server) prepareLogs(scope query.Scope, rawQuery string) (readFunc, error) {
-	f, err := s.logs.ParseSearch(rawQuery)
+func (s *Server) prepareLogs(scope query.Scope, r *http.Request) (readFunc, error) {
+	f, err := s.logs.ParseSearch(r.URL.RawQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +123,8 @@ func (s *Server) prepareLogs(scope query.Scope, rawQuery string) (readFunc, erro
 }
 
 // prepareHistogram serves GET /api/projects/{slug}/histogram.
-func (s *Server) prepareHistogram(scope query.Scope, rawQuery string) (readFunc, error) {
-	f, bucket, err := s.logs.ParseHistogram(rawQuery)
+func (s *Server) prepareHistogram(scope query.Scope, r *http.Request) (readFunc, error) {
+	f, bucket, err := s.logs.ParseHistogram(r.URL.RawQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +139,8 @@ func (s *Server) prepareHistogram(scope query.Scope, rawQuery string) (readFunc,
 }
 
 // prepareFacets serves GET /api/projects/{slug}/facets.
-func (s *Server) prepareFacets(scope query.Scope, rawQuery string) (readFunc, error) {
-	f, err := s.logs.ParseFacets(rawQuery)
+func (s *Server) prepareFacets(scope query.Scope, r *http.Request) (readFunc, error) {
+	f, err := s.logs.ParseFacets(r.URL.RawQuery)
 	if err != nil {
 		return nil, err
 	}

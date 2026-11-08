@@ -389,6 +389,8 @@ func eachLine(body []byte, fn func([]byte) error) error {
 func Classify(err error) (int, string) {
 	var ce *clickhouse.Error
 	switch {
+	case errors.Is(err, ErrGroupNotFound):
+		return http.StatusNotFound, "not found"
 	case errors.Is(err, errDeadline), errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, "query timed out; narrow the time range or add filters"
 	case errors.As(err, &ce) && (ce.Code == "159" || ce.Code == "160"):
