@@ -31,7 +31,7 @@ describe('groups list', () => {
           group(B, { status: 'resolved', regressed: true, resolved_at: '2026-11-07T19:00:00.000Z', title: 'charge failed: upstream payments returned 504' }),
         ]),
     })
-    renderApp('/projects/shop/groups')
+    renderApp('/projects/shop/groups?status=all')
     const table = await screen.findByRole('table')
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
       'Status',
@@ -61,7 +61,7 @@ describe('groups list', () => {
     expect(screen.getByText('Showing 2 groups, 1 new in this range.')).toBeTruthy()
     const req = requests.find((r) => r.path === '/api/projects/shop/groups')
     expect(req?.params.get('level')).toBe('error,fatal')
-    expect(req?.params.get('status')).toBe('open')
+    expect(req?.params.has('status')).toBe(false) // status=all
     expect(req?.params.get('sort')).toBe('count')
     expect(req?.params.get('from')).toBe('2026-11-07T20:00:00Z')
   })
@@ -94,7 +94,7 @@ describe('groups list', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Load more' }))
     await waitFor(() => expect(rows()).toHaveLength(3))
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
-    expect(screen.getByText('Showing 3 groups, 0 new in this range.')).toBeTruthy()
+    expect(screen.getByText('Showing 3 open groups, 0 new in this range.')).toBeTruthy()
   })
 
   it('a changed cursor says the list changed and reloads from the start', async () => {
@@ -144,7 +144,7 @@ describe('groups list', () => {
     renderApp('/projects/shop/groups?new=1')
     await screen.findByRole('table')
     expect(rows()).toHaveLength(1)
-    expect(screen.getByText('Showing 1 new group in this range.')).toBeTruthy()
+    expect(screen.getByText('Showing 1 new open group in this range.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
     expect(requests.find((r) => r.path === '/api/projects/shop/groups')?.params.get('sort')).toBe('first_seen')
     expect((screen.getByLabelText('Sort') as HTMLSelectElement).disabled).toBe(true)
@@ -215,12 +215,36 @@ describe('groups palette commands', () => {
   })
 })
 
+describe('status column', () => {
+  it.each(['open', 'ignored', 'resolved'])('is hidden for the single status %s, which the summary and caption name', async (status) => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A, { status: status as never })]) })
+    renderApp(`/projects/shop/groups${status === 'open' ? '' : `?status=${status}`}`)
+    const table = await screen.findByRole('table')
+    expect(within(table).queryByRole('columnheader', { name: 'Status' })).toBeNull()
+    expect(within(table).getAllByRole('columnheader')[0]?.textContent).toBe('Group')
+    expect(screen.getByText(`Showing 1 ${status} group, 0 new in this range.`)).toBeTruthy()
+    expect(table.querySelector('caption')?.textContent).toMatch(new RegExp(`^${status[0]?.toUpperCase()}${status.slice(1)} error groups`))
+  })
+
+  it('is shown for all statuses', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A), group(B, { status: 'ignored' })]) })
+    renderApp('/projects/shop/groups?status=all')
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByRole('columnheader')[0]?.textContent).toBe('Status')
+    expect(rows()[1]?.textContent).toContain('Ignored')
+    expect(screen.getByText('Showing 2 groups, 0 new in this range.')).toBeTruthy()
+  })
+})
+
 describe('list helpers', () => {
   it('summarizes only what is loaded', () => {
     expect(summaryText(0, 0, false)).toBe('Showing 0 groups, 0 new in this range.')
     expect(summaryText(1, 1, false)).toBe('Showing 1 group, 1 new in this range.')
     expect(summaryText(1200, 3, false)).toBe('Showing 1,200 groups, 3 new in this range.')
     expect(summaryText(2, 2, true)).toBe('Showing 2 new groups in this range.')
+    expect(summaryText(2, 1, false, 'open')).toBe('Showing 2 open groups, 1 new in this range.')
+    expect(summaryText(1, 0, false, 'resolved')).toBe('Showing 1 resolved group, 0 new in this range.')
+    expect(summaryText(3, 3, true, 'ignored')).toBe('Showing 3 new ignored groups in this range.')
   })
 
   it('new only keeps the new prefix', () => {

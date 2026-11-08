@@ -34,10 +34,14 @@ export const NOT_GROUPED_NOTE = 'Logs ingested before v0.3 are not grouped.'
 const n = (x: number) => x.toLocaleString('en-US')
 const groupsWord = (x: number) => (x === 1 ? 'group' : 'groups')
 
-/** The summary line, from what is loaded only (the API gives no total). */
-export function summaryText(shown: number, newCount: number, newOnly: boolean): string {
-  if (newOnly) return `Showing ${n(shown)} new ${groupsWord(shown)} in this range.`
-  return `Showing ${n(shown)} ${groupsWord(shown)}, ${n(newCount)} new in this range.`
+/**
+ * The summary line, from what is loaded only (the API gives no total). It
+ * names a single status, because the Status column is hidden then.
+ */
+export function summaryText(shown: number, newCount: number, newOnly: boolean, status: StatusFilter = 'all'): string {
+  const what = `${status === 'all' ? '' : `${status} `}${groupsWord(shown)}`
+  if (newOnly) return `Showing ${n(shown)} new ${what} in this range.`
+  return `Showing ${n(shown)} ${what}, ${n(newCount)} new in this range.`
 }
 
 /**
@@ -144,6 +148,8 @@ export function GroupsPage() {
   const services = (facets.data?.services ?? []).filter((s) => !s.other).map((s) => s.name)
   for (const s of state.services) if (!services.includes(s)) services.push(s)
   const newCount = groups.filter((g) => g.is_new).length
+  // With one status selected every row would say the same: the column is left out.
+  const showStatus = state.status === 'all'
 
   return (
     <div className="groups-page">
@@ -221,7 +227,7 @@ export function GroupsPage() {
 
       <section className="groups-results" aria-label="Error groups" aria-busy={list.isFetching}>
         <p className="status" role="status" aria-live="polite">
-          {problem ? '' : list.isPending ? 'Loading error groups…' : summaryText(groups.length, newCount, state.newOnly)}
+          {problem ? '' : list.isPending ? 'Loading error groups…' : summaryText(groups.length, newCount, state.newOnly, state.status)}
         </p>
         {problem ? (
           <div className="state-panel" role="alert">
@@ -243,10 +249,12 @@ export function GroupsPage() {
           <>
             <div className="table-wrap">
               <table className="groups">
-                <caption className="visually-hidden">Error groups, {state.newOnly ? 'newest first' : SORT_LABEL[state.sort].toLowerCase()}</caption>
+                <caption className="visually-hidden">
+                  {state.status === 'all' ? 'Error groups' : `${STATUS_LABEL[state.status]} error groups`}, {state.newOnly ? 'newest first' : SORT_LABEL[state.sort].toLowerCase()}
+                </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Status</th>
+                    {showStatus && <th scope="col">Status</th>}
                     <th scope="col">Group</th>
                     <th scope="col">Services</th>
                     <th scope="col">Levels</th>
@@ -261,9 +269,11 @@ export function GroupsPage() {
                 <tbody ref={table}>
                   {groups.map((g, i) => (
                     <tr key={g.fingerprint} data-index={i} className={i === selected ? 'selected' : undefined} onClick={() => setSelected(i)}>
-                      <td>
-                        <StatusMark status={g.status} />
-                      </td>
+                      {showStatus && (
+                        <td>
+                          <StatusMark status={g.status} />
+                        </td>
+                      )}
                       <td className="gtitle">
                         <Flags group={g} />
                         <Link to={groupHref(slug, g.fingerprint, state.range)} title={g.title} onFocus={() => setSelected(i)}>
