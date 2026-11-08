@@ -30,6 +30,8 @@ export type Facets = {
 }
 type LogsPage = { events: LogEvent[]; next_cursor: string | null; took_ms: number }
 
+export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
+
 export const PAGE_SIZE = 100
 export const MAX_ROWS = 1000
 

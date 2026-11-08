@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/client'
 import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
-import { MAX_ROWS, mergePages, useFacets, useHistogram, useLogs } from './api'
+import { MAX_ROWS, STORE_DOWN, mergePages, useFacets, useHistogram, useLogs } from './api'
 import { activeFilterCount } from './detail'
 import { FilterChips } from './FilterChips'
 import { FilterPanel, SearchBox } from './FilterPanel'
@@ -28,7 +28,7 @@ import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
 import { bucketTotal, onlyErrorLevels, rangeHeading } from './time'
 
-export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
+export { STORE_DOWN }
 export const NO_RESULTS = 'No logs match these filters. Widen the time range or clear a filter.'
 
 const fmt = (n: number) => n.toLocaleString('en-US')
