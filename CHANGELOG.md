@@ -4,6 +4,10 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-11-08
+
+Patch release: dashboard fixes only. Release notes: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md).
+
 ### Fixed
 - Command palette:
   - It could not be closed once focus had left its panel (for example after a click outside). The owner hit this after opening it with Ctrl K.
