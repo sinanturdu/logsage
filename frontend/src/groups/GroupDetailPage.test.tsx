@@ -57,7 +57,8 @@ describe('group detail', () => {
     expect(screen.getByRole('link', { name: 'All error groups' }).getAttribute('href')).toBe('/projects/shop/groups?range=1h')
     await waitFor(() => expect(requests.some((r) => r.path === '/api/projects/shop/histogram' && r.params.get('fingerprint') === FP)).toBe(true))
     expect(await screen.findByRole('img', { name: /^Timeline/ })).toBeTruthy()
-    expect(screen.getByText(/Error share is not shown/)).toBeTruthy()
+    expect(screen.queryByText(/Error share is not shown/)).toBeNull()
+    expect(screen.queryByText(/lower strip/)).toBeNull()
     expect(regressedText(null)).toBe('Regressed: resolved on an earlier date and seen again after that.')
   })
 

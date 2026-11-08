@@ -252,7 +252,7 @@ function GroupDetailPage({ slug, fingerprint }: { slug: string; fingerprint: str
             buckets={histogram.data.buckets}
             bucketSeconds={histogram.data.bucketSeconds}
             window={ctx}
-            showShare={false}
+            volumeOnly
             selection={range.kind === 'absolute' ? win : null}
             onSelect={(from, to) => setRange({ kind: 'absolute', from, to })}
             scope={`${n(histogram.data.buckets.reduce((x, b) => x + bucketTotal(b), 0))} events of this group in view.`}
