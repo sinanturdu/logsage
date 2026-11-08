@@ -374,3 +374,6 @@ table.groups .gtitle { white-space: normal; min-width: 24rem; max-width: 48rem; 
 .samples .t { color: var(--ink); }
 .samples .svc { color: var(--pencil); }
 .group-line { margin: 0 0 var(--space-2); font-size: var(--text-md); overflow-wrap: anywhere; }
+/* Pages inside the padded main (error groups) reuse the explorer's head
+   without its own side padding; the explorer drops the main's padding instead. */
+.page-head { padding-left: 0; padding-right: 0; }

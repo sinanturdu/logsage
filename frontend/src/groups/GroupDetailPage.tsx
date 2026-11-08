@@ -111,7 +111,7 @@ function GroupDetailPage({ slug, fingerprint }: { slug: string; fingerprint: str
     </p>
   )
   const head = (
-    <div className="explorer-head">
+    <div className="explorer-head page-head">
       <RangeControls
         range={range}
         window={win}

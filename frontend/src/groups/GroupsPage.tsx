@@ -147,7 +147,7 @@ export function GroupsPage() {
 
   return (
     <div className="groups-page">
-      <div className="explorer-head">
+      <div className="explorer-head page-head">
         <RangeControls
           range={state.range}
           window={win}
