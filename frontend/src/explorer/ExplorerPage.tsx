@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/client'
 import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
-import { MAX_ROWS, mergePages, useFacets, useHistogram, useLogs } from './api'
+import { MAX_ROWS, STORE_DOWN, mergePages, useFacets, useHistogram, useLogs } from './api'
 import { activeFilterCount } from './detail'
 import { FilterChips } from './FilterChips'
 import { FilterPanel, SearchBox } from './FilterPanel'
@@ -28,7 +28,7 @@ import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
 import { bucketTotal, onlyErrorLevels, rangeHeading } from './time'
 
-export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
+export { STORE_DOWN }
 export const NO_RESULTS = 'No logs match these filters. Widen the time range or clear a filter.'
 
 const fmt = (n: number) => n.toLocaleString('en-US')
@@ -89,7 +89,7 @@ export function ExplorerPage() {
   const [histNow, setHistNow] = useState(now)
   const win = resolveRange(state.range, now)
   const ctx = contextWindow(state.range, live ? Math.max(histNow, now) : now, state.zoom)
-  const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId }
+  const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId, fingerprint: state.fingerprint }
   const histogram = useHistogram(slug, filters, ctx)
   const facets = useFacets(slug, filters, win)
   const logs = useLogs(slug, filters, win)
@@ -356,7 +356,7 @@ export function ExplorerPage() {
         </aside>
 
         <section className="results" aria-label="Logs" aria-busy={logs.isFetching}>
-          <FilterChips state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
+          <FilterChips slug={slug} state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
           <LiveBar
             live={live}
             state={tail.state}

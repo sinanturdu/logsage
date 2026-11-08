@@ -13,6 +13,8 @@ type Props = {
   tools?: ReactNode
   /** Draw the error-share strip; off while only error and fatal are selected (it would be 100%). */
   showShare?: boolean
+  /** Only the volume strip, with no word about an error share (an error group's page). */
+  volumeOnly?: boolean
 }
 
 const H = 60
@@ -52,7 +54,8 @@ export function segments(values: readonly (number | null)[], max: number): strin
  * buckets, Escape cancels); the range presets and the custom range form are
  * the keyboard alternative, and the summary line states the peaks in words.
  */
-export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools, showShare = true }: Props) {
+export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools, showShare: share = true, volumeOnly = false }: Props) {
+  const showShare = share && !volumeOnly
   const area = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null)
   const volumes = buckets.map(bucketTotal)
@@ -143,7 +146,7 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
             {strip(shares, Math.max(peakShare, 10), 'err')}
           </>
         ) : (
-          <p className="label share-hidden">{SHARE_HIDDEN}</p>
+          !volumeOnly && <p className="label share-hidden">{SHARE_HIDDEN}</p>
         )}
       </div>
       <div className="axis" aria-hidden="true">
@@ -156,16 +159,22 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
       </p>
       <details className="about-chart">
         <summary>About this chart</summary>
+        {volumeOnly ? (
+          <p>The strip counts this group&apos;s logs per {per}.</p>
+        ) : (
+          <>
+            <p>
+              The upper strip counts logs per {per}. The lower strip shows error and fatal logs as a percentage of each {per}&apos;s
+              logs.
+            </p>
+            <p>
+              Buckets with fewer than {MIN_SHARE_SAMPLE} logs are left out of the error share{small ? ' (this view has some)' : ''},
+              and the line breaks there: one error among two logs would otherwise show as a 50% spike.
+            </p>
+          </>
+        )}
         <p>
-          The upper strip counts logs per {per}. The lower strip shows error and fatal logs as a percentage of each {per}&apos;s
-          logs.
-        </p>
-        <p>
-          Buckets with fewer than {MIN_SHARE_SAMPLE} logs are left out of the error share{small ? ' (this view has some)' : ''}, and
-          the line breaks there: one error among two logs would otherwise show as a 50% spike.
-        </p>
-        <p>
-          Drag across either strip to select a time range; the list, the facets and the counts then cover only that range. Press
+          Drag across {showShare ? 'either strip' : 'the strip'} to select a time range; the list, the facets and the counts then cover only that range. Press
           Escape while dragging to cancel. The range buttons and Custom do the same from the keyboard.
         </p>
       </details>

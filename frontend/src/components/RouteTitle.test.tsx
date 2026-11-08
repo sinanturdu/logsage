@@ -14,6 +14,8 @@ describe('document titles', () => {
     ['/projects/demo/keys', 'API keys - demo - LogSage'],
     ['/projects/a%20b/keys', 'API keys - a b - LogSage'],
     ['/projects/%E0%A4%A/logs', 'Logs - %E0%A4%A - LogSage'],
+    ['/projects/demo/groups', 'Error groups - demo - LogSage'],
+    ['/projects/demo/groups/0123456789abcdef', 'Error group - demo - LogSage'],
     ['/nope', 'Page not found - LogSage'],
   ])('%s is %s', (path, title) => {
     expect(titleFor(path)).toBe(title)

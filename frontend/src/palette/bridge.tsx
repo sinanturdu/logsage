@@ -1,12 +1,15 @@
 import { createContext, useContext, useEffect } from 'react'
-import type { Action, ExplorerContext } from './commands'
+import type { Action, ExplorerContext, GroupsContext } from './commands'
 
-/** What the open explorer tells the palette: its state, and how to run its commands. */
-export type ExplorerBridge = { ctx: ExplorerContext; run: (a: Action) => void }
+/**
+ * What the open page tells the palette: its state (the explorer's or the
+ * error groups list's), and how to run its commands.
+ */
+export type ExplorerBridge = { ctx?: ExplorerContext; groups?: GroupsContext; run: (a: Action) => void }
 
 export const BridgeContext = createContext<(b: ExplorerBridge | null) => void>(() => {})
 
-/** Registers the explorer with the palette while the page is mounted. */
+/** Registers the page with the palette while it is mounted. */
 export function useExplorerBridge(bridge: ExplorerBridge) {
   const register = useContext(BridgeContext)
   useEffect(() => {

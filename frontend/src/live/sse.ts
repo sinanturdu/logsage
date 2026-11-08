@@ -71,7 +71,7 @@ export class SseParser {
   }
 }
 
-export type TailFilters = { levels: readonly string[]; services: readonly string[]; q: string; traceId: string }
+export type TailFilters = { levels: readonly string[]; services: readonly string[]; q: string; traceId: string; fingerprint?: string }
 
 /** The tail URL: the explorer's filters, never a time range. */
 export function tailUrl(slug: string, f: TailFilters): string {
@@ -80,6 +80,7 @@ export function tailUrl(slug: string, f: TailFilters): string {
   if (f.services.length > 0) p.set('service', f.services.join(','))
   if (f.q) p.set('q', f.q)
   if (f.traceId) p.set('trace_id', f.traceId)
+  if (f.fingerprint) p.set('fingerprint', f.fingerprint)
   const qs = p.toString()
   return `/api/projects/${encodeURIComponent(slug)}/tail${qs ? `?${qs}` : ''}`
 }

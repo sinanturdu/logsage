@@ -45,7 +45,7 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 
 ## v0.3: Error groups, alerts and incidents
 - [x] **Package J1:** error groups backend: fingerprinting in the processor (normalizer with a golden corpus), `template` column, `group_seen` view, groups list and detail, group status with audit rows, `fingerprint` filter and field (ADR 0022)
-- [ ] **Package J2:** error groups UI
+- [x] **Package J2:** error groups UI: list and group pages, status actions, explorer group filter and row link, palette commands (ADR 0023)
 - [ ] **Package K:** alert rules and notifications
   - Candidate rule: many new groups per hour, a guard against group explosion (for example from unique ids made only of letters, which the normalizer cannot tell from words)
 - [ ] **Package L:** incidents

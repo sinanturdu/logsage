@@ -1,7 +1,7 @@
 import { Dialog } from './Dialog'
 import { SHORTCUTS, type Shortcut } from '../shortcuts'
 
-const GROUPS: Shortcut['where'][] = ['Anywhere', 'Log explorer', 'Live tail']
+const GROUPS: Shortcut['where'][] = ['Anywhere', 'Log explorer', 'Live tail', 'Error groups']
 
 /** Every shortcut, listed from the same definition the handlers use. */
 export function ShortcutsHelp({ onClose }: { onClose: () => void }) {

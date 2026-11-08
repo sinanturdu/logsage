@@ -2,6 +2,7 @@
 // (ADR 0020). A command carries an action as data; the palette runs it.
 
 import type { Level, Preset } from '../explorer/model'
+import { SORTS, STATUS_FILTERS, type Sort, type StatusFilter } from '../groups/model'
 
 export type ExplorerContext = {
   /** The relative range in view; null for an absolute selection. */
@@ -17,11 +18,16 @@ export type ExplorerContext = {
   hasFilters: boolean
 }
 
+/** The error groups list (ADR 0023). */
+export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean }
+
 export type AppContext = {
   slug: string | null
-  section: 'logs' | 'keys' | 'other'
+  section: 'logs' | 'groups' | 'keys' | 'other'
   projects: readonly string[]
   explorer: ExplorerContext | null
+  /** Set on the error groups list. */
+  groups?: GroupsContext | null
 }
 
 export type Action =
@@ -38,6 +44,9 @@ export type Action =
   | { type: 'copy-link' }
   | { type: 'account'; what: 'password' | 'all-devices' | 'sign-out' }
   | { type: 'help' }
+  | { type: 'group-status'; status: StatusFilter }
+  | { type: 'group-sort'; sort: Sort }
+  | { type: 'group-new'; on: boolean }
 
 export type Group = 'Navigation' | 'Time range' | 'Filters' | 'View' | 'Account' | 'Help'
 export type Command = { id: string; label: string; keywords: readonly string[]; group: Group; action: Action }
@@ -51,7 +60,15 @@ const RANGES: { preset: Preset; label: string; keywords: string[] }[] = [
 ]
 
 const ERRORS: Level[] = ['error', 'fatal']
-const path = (slug: string, section: 'logs' | 'keys') => `/projects/${encodeURIComponent(slug)}/${section}`
+const path = (slug: string, section: 'logs' | 'groups' | 'keys') => `/projects/${encodeURIComponent(slug)}/${section}`
+
+const STATUS_COMMAND: Record<StatusFilter, string> = {
+  open: 'Show open groups',
+  ignored: 'Show ignored groups',
+  resolved: 'Show resolved groups',
+  all: 'Show groups of every status',
+}
+const SORT_COMMAND: Record<Sort, string> = { count: 'Sort groups by most events', last_seen: 'Sort groups by last seen', first_seen: 'Sort groups by first seen' }
 
 /** The commands that apply now, in a stable order. */
 export function commandsFor(ctx: AppContext): Command[] {
@@ -60,9 +77,10 @@ export function commandsFor(ctx: AppContext): Command[] {
 
   if (ctx.slug) {
     if (ctx.section !== 'logs') add('Navigation', 'go-logs', 'Go to Logs', { type: 'navigate', to: path(ctx.slug, 'logs') }, ['explorer', 'search', 'home'])
+    if (ctx.section !== 'groups') add('Navigation', 'go-groups', 'Go to Error groups', { type: 'navigate', to: path(ctx.slug, 'groups') }, ['groups', 'errors', 'issues', 'problems'])
     if (ctx.section !== 'keys') add('Navigation', 'go-keys', 'Go to API keys', { type: 'navigate', to: path(ctx.slug, 'keys') }, ['tokens', 'ingest', 'credentials'])
   }
-  const section = ctx.section === 'keys' ? 'keys' : 'logs'
+  const section = ctx.section === 'keys' || ctx.section === 'groups' ? ctx.section : 'logs'
   for (const p of ctx.projects) {
     if (p === ctx.slug) continue
     add('Navigation', `project:${p}`, `Switch project: ${p}`, { type: 'navigate', to: path(p, section) }, ['project', 'change'])
@@ -88,6 +106,16 @@ export function commandsFor(ctx: AppContext): Command[] {
     add('View', 'refresh', 'Refresh', { type: 'refresh' }, ['reload', 'now'])
     if (ex.canZoom) add('View', 'zoom:in', 'Zoom to selection', { type: 'zoom', on: true }, ['timeline', 'chart'])
     if (ex.zoom) add('View', 'zoom:out', 'Zoom out', { type: 'zoom', on: false }, ['timeline', 'chart'])
+  }
+  const gr = ctx.groups
+  if (gr) {
+    for (const s of STATUS_FILTERS) {
+      if (s !== gr.status) add('Filters', `group-status:${s}`, STATUS_COMMAND[s], { type: 'group-status', status: s }, ['status', s])
+    }
+    add('Filters', 'group-new', gr.newOnly ? 'Show groups that are not new too' : 'Show new groups only', { type: 'group-new', on: !gr.newOnly }, ['new', 'first seen', 'range'])
+    if (!gr.newOnly) {
+      for (const s of SORTS) if (s !== gr.sort) add('View', `group-sort:${s}`, SORT_COMMAND[s], { type: 'group-sort', sort: s }, ['sort', 'order'])
+    }
   }
   add('View', 'copy-link', 'Copy link to this view', { type: 'copy-link' }, ['share', 'url', 'clipboard'])
 
@@ -132,6 +160,7 @@ export function defaultCommands(all: readonly Command[], recent: readonly string
     recentShown++
   }
   push(byId.get('go-logs'))
+  push(byId.get('go-groups'))
   push(byId.get('go-keys'))
   push(byId.get('live'))
   push(byId.get('clear'))

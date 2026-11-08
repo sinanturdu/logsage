@@ -16,6 +16,8 @@ export type LogEvent = {
   message: string
   trace_id: string
   attributes: Record<string, string>
+  /** The error group: 16 hex, empty when the log is not grouped (ADR 0022). */
+  fingerprint?: string
 }
 type HistogramResponse = {
   bucket_seconds: number
@@ -30,10 +32,13 @@ export type Facets = {
 }
 type LogsPage = { events: LogEvent[]; next_cursor: string | null; took_ms: number }
 
+export const STORE_DOWN = 'LogSage cannot reach its log store right now. Try again in a moment.'
+
 export const PAGE_SIZE = 100
 export const MAX_ROWS = 1000
 
-type Filters = Pick<ExplorerState, 'levels' | 'services' | 'q' | 'traceId'>
+/** The filters every log read takes; fingerprint narrows to one error group (ADR 0022). */
+export type Filters = Pick<ExplorerState, 'levels' | 'services' | 'q' | 'traceId'> & { fingerprint?: string }
 export type Window = { from: number; to: number }
 
 export function filterParams(f: Filters, w: Window): URLSearchParams {
@@ -42,11 +47,12 @@ export function filterParams(f: Filters, w: Window): URLSearchParams {
   if (f.services.length > 0) p.set('service', f.services.join(','))
   if (f.q) p.set('q', f.q)
   if (f.traceId) p.set('trace_id', f.traceId)
+  if (f.fingerprint) p.set('fingerprint', f.fingerprint)
   return p
 }
 
 const base = (slug: string) => `/api/projects/${encodeURIComponent(slug)}`
-const filterKey = (f: Filters) => [f.levels.join(','), f.services.join(','), f.q, f.traceId]
+const filterKey = (f: Filters) => [f.levels.join(','), f.services.join(','), f.q, f.traceId, f.fingerprint ?? '']
 
 export function useHistogram(slug: string, f: Filters, w: Window) {
   return useQuery({

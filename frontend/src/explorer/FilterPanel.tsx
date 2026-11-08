@@ -18,8 +18,10 @@ export const TRACE_INVALID =
   'This trace id is not valid: it must be 32 hexadecimal characters with no dashes. Paste the full trace_id from a log.'
 
 /** Search box: "/" focuses it (see ExplorerPage); 300 ms debounce, Enter searches now. */
-export const SearchBox = forwardRef<HTMLInputElement, { value: string; onSearch: (q: string, immediate: boolean) => void }>(
-  function SearchBox({ value, onSearch }, ref) {
+type SearchProps = { value: string; onSearch: (q: string, immediate: boolean) => void; label?: string; placeholder?: string }
+
+export const SearchBox = forwardRef<HTMLInputElement, SearchProps>(
+  function SearchBox({ value, onSearch, label = 'Search messages', placeholder = 'Search messages, press /' }, ref) {
     const id = useId()
     const [text, setText] = useState(value)
     const [synced, setSynced] = useState(value)
@@ -40,13 +42,13 @@ export const SearchBox = forwardRef<HTMLInputElement, { value: string; onSearch:
     return (
       <div className="search">
         <label htmlFor={id} className="visually-hidden">
-          Search messages
+          {label}
         </label>
         <input
           ref={ref}
           id={id}
           type="search"
-          placeholder="Search messages, press /"
+          placeholder={placeholder}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
