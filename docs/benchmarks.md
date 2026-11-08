@@ -141,6 +141,48 @@ What changed compared with the older N1 runs (7 of 14 above 50 ms):
 
 This is consistent with the earlier diagnosis but not a controlled experiment. Re-measuring with 30 s runs and a large standing backlog would separate the factors.
 
+## J1 processor cost (2026-11-08)
+
+The cost of fingerprinting (ADR 0022) in the processor, `main` against `feat/error-groups-backend`.
+
+**Setup:**
+- Each branch's processor ran as a local Windows binary (built from a `git worktree` of `main` and from the branch) against the Docker stack of `scripts\dev.ps1 up`, with the Docker processor stopped. Each used its own ClickHouse database, truncated before every run.
+- Load came from the branch's `loadgen ingest --grouped-share S`, which sets the share of `warn`, `error` and `fatal` events: 0.05 for a realistic mix, 0.4 for an incident-like one.
+- **Drain:** a backlog of 200,000 events queued with the processor stopped. The rate is measured from the first processed batch until the backlog is done, so startup is excluded. 3 runs; the median is shown.
+- **End to end:** `--concurrency 16 --duration 10s --wait-drain`, unlimited rate. 2 runs; the mean is shown.
+- The two branches alternated run by run. Everything shared one laptop (12 threads): loadgen, the ingest API and the processor competed for CPU, so the spread between runs is large (main's end-to-end rate ranged from 16.6k to 27.2k events/s across sessions). Compare rows within one session only.
+
+**Session A: fingerprinting without a cache**
+
+| Mix | Drain main | Drain J1 | Change | End to end main | End to end J1 | Change |
+|---|---|---|---|---|---|---|
+| 5% warn+ | 29,181/s | 26,742/s | −8% | 19,174/s | 17,849/s | −7% |
+| 40% warn+ | 34,560/s | 13,787/s | **−60%** | 22,644/s | 9,329/s | **−59%** |
+
+The 40% mix crosses the agreed limit of −40%, so a bounded cache was added (`fingerprint.Cache`, 8192 entries; see ADR 0022).
+
+**Session B: with the cache**
+
+| Mix | Drain main | Drain J1 | Change | End to end main | End to end J1 | Change |
+|---|---|---|---|---|---|---|
+| 5% warn+ | 26,744/s | 27,183/s | +2% | 26,607/s | 21,631/s | −19% |
+| 40% warn+ | 40,232/s | 15,695/s | **−61%** | 24,489/s | 15,120/s | −38% |
+
+**Steady 10,000 events/s** (with the cache; `--rate 10000 --concurrency 16 --duration 15s --wait-drain`, 3 runs each). "End to end" is the accepted events divided by the time until the processor caught up, so it stays a little under 10,000 even when the processor keeps up.
+
+| Branch | Mix | Events/s sent | End to end | p50 | p99 |
+|---|---|---|---|---|---|
+| main | 5% | 10,000 / 9,933 / 10,000 | 9,929 / 9,863 / 9,930 | 3.21 / 3.17 / 2.19 ms | 10.01 / 133.78 / 5.06 ms |
+| J1 | 5% | 9,978 / 9,145 / 10,005 | 9,331 / 8,493 / 9,298 | 2.52 / 2.50 / 2.63 ms | 67.58 / 1,318.85 / 4.88 ms |
+| main | 40% | 10,005 / 10,004 / 10,004 | 9,298 / 9,296 / 9,297 | 2.15 / 2.60 / 2.66 ms | 4.34 / 5.28 / 9.74 ms |
+| J1 | 40% | 10,000 / 9,939 / 10,000 | 9,925 / 9,217 / 9,928 | 2.63 / 3.23 / 3.07 ms | 6.90 / 115.78 / 13.46 ms |
+
+**Reading:**
+- The realistic mix costs little in the processor. The drain rates of the two branches are within the run-to-run spread. The −19% end to end in session B was not seen in session A (−7%).
+- The incident-like mix costs about 60% of the processor's drain rate, even with the cache. Normalizing one message takes about 90 µs (`BenchmarkNormalize`); a cache hit takes about 86 ns. But only about 56% of the generated `warn`+ messages repeat exactly (random ids), and fewer within 8,192 entries. End to end the loss fell from 59% to 38%, inside the limit.
+- 10,000 events/s end to end still holds at both mixes. The ingest p99 spikes (1.3 s once on J1 at 5%, 134 ms once on main) hit both branches and are not tied to the level mix. They match the AOF and disk stalls described below.
+- **Not done:** Linux containers for the processor (CI-like), and a cost split between the regex rules and the fixed-point second pass.
+
 ## Results before the no-loss fix (2026-11-06/07, nearly full disk)
 
 ### 1. Ingest throughput (unlimited rate, batch 100)
