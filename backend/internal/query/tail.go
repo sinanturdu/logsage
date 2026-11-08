@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 )
 
 // Live tail (ADR 0015). Rows are read in visibility order: (inserted_at,
@@ -39,7 +41,7 @@ type TailRow struct {
 // with fast clocks); the time filter needs an upper bound.
 const TailFuture = time.Hour
 
-var tailParams = []string{"level", "service", "q", "trace_id"}
+var tailParams = []string{"level", "service", "q", "trace_id", "fingerprint"}
 
 // ParseTail validates a tail query string: the content filters of the read
 // endpoints, without from and to (a tail starts now).
@@ -63,7 +65,7 @@ func TailWindow(f Filter, now time.Time, lateness time.Duration) Filter {
 	return f
 }
 
-const tailColumns = "SELECT event_id, timestamp, level, service, message, trace_id, attributes, inserted_at\n"
+const tailColumns = "SELECT event_id, timestamp, level, service, message, trace_id, attributes, fingerprint, inserted_at\n"
 
 func keyParams(params map[string]string, prefix string, k TailKey) {
 	params[prefix+"_ts"] = k.InsertedAt.UTC().Format(chTime)
@@ -197,7 +199,8 @@ func (s *Service) tailRows(ctx context.Context, st Statement, limit int) ([]Tail
 		}
 		rows = append(rows, TailRow{
 			Event: Event{EventID: r.EventID, Timestamp: ts.UTC().Format(cursorTimeFmt), Level: r.Level,
-				Service: r.Service, Message: r.Message, TraceID: r.TraceID, Attributes: attrs},
+				Service: r.Service, Message: r.Message, TraceID: r.TraceID, Attributes: attrs,
+				Fingerprint: fingerprint.Hex(uint64(r.Fingerprint))},
 			Key: TailKey{InsertedAt: ins.UTC(), EventID: r.EventID},
 		})
 		return nil

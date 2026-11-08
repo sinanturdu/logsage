@@ -17,8 +17,10 @@ type Filter struct {
 	Services []string  // exact match on any of them, empty: any
 	Text     string    // case-insensitive substring of message, empty: any
 	TraceID  string    // exact match, empty: any
-	Limit    int       // rows per page; Build asks for Limit+1
-	After    *Cursor   // rows strictly older than this position
+	// Fingerprint limits to one error group (ADR 0022); 0: any.
+	Fingerprint uint64
+	Limit       int     // rows per page; Build asks for Limit+1
+	After       *Cursor // rows strictly older than this position
 }
 
 // Statement is SQL with server-side placeholders plus their values. The SQL
@@ -122,6 +124,10 @@ func where(scope Scope, f Filter, s skip) ([]string, map[string]string, error) {
 		conds = append(conds, "trace_id = {trace_id:String}")
 		params["trace_id"] = f.TraceID
 	}
+	if f.Fingerprint != 0 {
+		conds = append(conds, "fingerprint = {fingerprint:UInt64}")
+		params["fingerprint"] = strconv.FormatUint(f.Fingerprint, 10)
+	}
 	return conds, params, nil
 }
 
@@ -164,7 +170,7 @@ func Build(scope Scope, f Filter) (Statement, error) {
 		params["cursor_ts"] = f.After.Timestamp.UTC().Format(chTime)
 		params["cursor_id"] = f.After.EventID
 	}
-	sql := "SELECT event_id, timestamp, level, service, message, trace_id, attributes\n" +
+	sql := "SELECT event_id, timestamp, level, service, message, trace_id, attributes, fingerprint\n" +
 		"FROM logs FINAL\n" +
 		joinWhere(conds) +
 		"ORDER BY timestamp DESC, event_id DESC\n" +
