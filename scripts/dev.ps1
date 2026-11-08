@@ -66,6 +66,23 @@ function Compose {
   if ($LASTEXITCODE -ne 0) { Fail "docker compose $($args -join ' ') failed (exit $LASTEXITCODE)." }
 }
 
+# Runs a compose step that applies the migrations. When it fails because the
+# PostgreSQL volume was created with another password than the one in .env,
+# says so (the volume keeps its first password); deletes nothing.
+function Compose-Migrating {
+  # stderr is shown and kept: "run" removes its container, so its logs are gone.
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  & docker compose @ComposeArgs @args 2>&1 | Tee-Object -Variable out | ForEach-Object { "$_" } | Out-Host
+  $code = $LASTEXITCODE
+  if ($code -ne 0) { $out = @($out) + @(& docker compose @ComposeArgs logs --no-color --tail 50 migrate 2>&1) }
+  $ErrorActionPreference = $old
+  if ($code -eq 0) { return }
+  if (($out | Out-String) -match 'password authentication failed|SQLSTATE 28P01') {
+    Fail 'The dev database volume was created with a different password. Run dev.ps1 down to reset the dev volumes, then dev.ps1 up.'
+  }
+  Fail "docker compose $($args -join ' ') failed (exit $code)."
+}
+
 function Quote-Arg([string]$a) {
   if ($a -match '[\s"]') { return '"' + ($a -replace '"', '\"') + '"' }
   return $a
@@ -212,10 +229,10 @@ function Cmd-Up {
   Ensure-EnvFile
   Ensure-DevDir
   Say 'starting the stack (first run builds the images; this takes a few minutes)...'
-  Compose up -d --build
+  Compose-Migrating up -d --build
   Wait-Healthy
   Say 'running migrations...'
-  Compose run --rm --no-deps migrate
+  Compose-Migrating run --rm --no-deps migrate
   Ensure-DevLogin
   Ensure-Project
   Ensure-IngestKey
