@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 const APP = 'LogSage'
+const PAGE = { logs: 'Logs', keys: 'API keys', groups: 'Error groups' } as const
 
 function decode(s: string): string {
   try {
@@ -15,8 +16,10 @@ function decode(s: string): string {
 export function titleFor(pathname: string): string {
   if (pathname === '/login') return `Sign in - ${APP}`
   if (pathname === '/') return `Projects - ${APP}`
-  const m = /^\/projects\/([^/]+)\/(logs|keys)\/?$/.exec(pathname)
-  if (m) return `${m[2] === 'logs' ? 'Logs' : 'API keys'} - ${decode(m[1] ?? '')} - ${APP}`
+  const m = /^\/projects\/([^/]+)\/(logs|keys|groups)\/?$/.exec(pathname)
+  if (m) return `${PAGE[m[2] as keyof typeof PAGE]} - ${decode(m[1] ?? '')} - ${APP}`
+  const g = /^\/projects\/([^/]+)\/groups\/[^/]+\/?$/.exec(pathname)
+  if (g) return `Error group - ${decode(g[1] ?? '')} - ${APP}`
   return `Page not found - ${APP}`
 }
 

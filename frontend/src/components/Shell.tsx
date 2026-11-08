@@ -13,7 +13,7 @@ import { ShortcutsHelp } from './ShortcutsHelp'
 export const LINK_COPIED = 'Copied the link to this view.'
 export const linkFallback = (url: string) => `Copy is not available here. Select the link and copy it with Ctrl+C: ${url}`
 
-/** Logs and API keys of the current project. */
+/** Logs, error groups and API keys of the current project. */
 function ProjectNav() {
   const m = useMatch('/projects/:slug/*')
   const slug = m?.params.slug
@@ -22,6 +22,7 @@ function ProjectNav() {
   return (
     <nav className="project-nav" aria-label="Project sections">
       <NavLink to={`${base}/logs`}>Logs</NavLink>
+      <NavLink to={`${base}/groups`}>Error groups</NavLink>
       <NavLink to={`${base}/keys`}>API keys</NavLink>
     </nav>
   )
@@ -59,7 +60,7 @@ export function Shell() {
   const { pathname } = useLocation()
   const projects = useProjects()
   const { signOut } = useSignOut()
-  const m = /^\/projects\/([^/]+)\/(logs|keys)/.exec(pathname)
+  const m = /^\/projects\/([^/]+)\/(logs|keys|groups)/.exec(pathname)
   // Any route change closes the palette.
   const [path, setPath] = useState(pathname)
   if (path !== pathname) {
