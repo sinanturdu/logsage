@@ -89,6 +89,42 @@ func protect(code string) string {
 	return "\x01" + string(b) + "\x01"
 }
 
+// tracebackHeader starts a Python traceback, whose first line says nothing
+// about the error; the exception is on its last non-empty line.
+const tracebackHeader = "Traceback (most recent call last)"
+
+// maxTail bounds how much of a long traceback is scanned for its last line.
+const maxTail = 4 << 10
+
+// sourceLine is the line a template is made from: the first line, or for a
+// Python traceback (also a chained one) its last non-empty line, found in
+// the last 4 KiB. A traceback without such a line keeps its first line.
+func sourceLine(s string) string {
+	first := firstLine(s)
+	if !strings.HasPrefix(strings.TrimSpace(first), tracebackHeader) {
+		return first
+	}
+	tail := s
+	if len(tail) > maxTail {
+		tail = tail[len(tail)-maxTail:]
+	}
+	for len(tail) > 0 {
+		i := strings.LastIndexAny(tail, "\r\n")
+		line := strings.TrimSpace(tail[i+1:])
+		if line != "" {
+			if i < 0 && len(s) > maxTail {
+				break // the line starts before the scanned tail: no reliable exception line
+			}
+			return line
+		}
+		if i < 0 {
+			break
+		}
+		tail = tail[:i]
+	}
+	return first
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
 		return s[:i]
@@ -115,13 +151,14 @@ func cut(s string, n int) string {
 // maxPasses bounds the fixed-point loop in Normalize.
 const maxPasses = 4
 
-// Normalize returns the template of the message's first line. Some rules
+// Normalize returns the template of the message's source line (the first
+// line; the exception line of a Python traceback). Some rules
 // depend on context (a status code after "returned", a quoted string) that
 // a later rule can rewrite, so one pass is applied until the result stops
 // changing: that makes Normalize idempotent. Real messages settle after the
 // second pass; the loop is capped at maxPasses.
 func Normalize(message string) string {
-	s := strings.ToValidUTF8(cut(firstLine(message), MaxInput), "�")
+	s := strings.ToValidUTF8(cut(sourceLine(message), MaxInput), "�")
 	for i := 0; i < maxPasses; i++ {
 		next := pass(s)
 		if next == s {

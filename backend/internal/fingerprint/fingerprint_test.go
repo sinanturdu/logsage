@@ -234,3 +234,40 @@ func FuzzNormalize(f *testing.F) {
 		}
 	})
 }
+
+func TestTraceback(t *testing.T) {
+	tb := func(lines ...string) string {
+		return "Traceback (most recent call last):\n  File \"/app/x.py\", line 9, in f\n    g()\n" + strings.Join(lines, "\n")
+	}
+	for _, c := range []struct{ name, in, want string }{
+		{"exception line", tb("KeyError: 'user_id'"), "KeyError: 'user_id'"},
+		{"trailing blank lines", tb("TimeoutError: pool exhausted after 30s", "", "  ", "\t"), "TimeoutError: pool exhausted after <n>s"},
+		{"crlf", strings.ReplaceAll(tb("OSError: [Errno 28] No space left on device"), "\n", "\r\n"), "OSError: [Errno <n>] No space left on device"},
+		{"leading space before the header", "  " + tb("ZeroDivisionError: division by zero"), "ZeroDivisionError: division by zero"},
+		{"only whitespace after the header", "Traceback (most recent call last):\n \n\t\n", "Traceback (most recent call last):"},
+		{"chained", tb("KeyError: 'id'", "", "During handling of the above exception, another exception occurred:", "", "Traceback (most recent call last):", "LookupError: missing 7"), "LookupError: missing <n>"},
+		{"not a traceback keeps the first line", "error: boom\nValueError: other", "error: boom"},
+		{"the header later in the message", "worker crashed\nTraceback (most recent call last):\nKeyError: 'x'", "worker crashed"},
+		{"exception line longer than the scanned tail", tb("ValueError: " + strings.Repeat("a", maxTail+10)), "Traceback (most recent call last):"},
+	} {
+		if got := Normalize(c.in); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+	// Same exception, other line numbers and ids: one template. Other exceptions: different ones.
+	a := Normalize(strings.Replace(tb("KeyError: 'user_id' for user 31337"), "line 9", "line 140", 1))
+	b := Normalize(tb("KeyError: 'user_id' for user 42"))
+	c := Normalize(tb("ValueError: invalid literal for int() with base 10: 'abc'"))
+	if a != b || a == c {
+		t.Errorf("grouping: %q %q %q", a, b, c)
+	}
+	// A 1 MiB traceback only scans its last 4 KiB.
+	huge := tb(strings.Repeat("  File \"/app/w.py\", line 1, in run\n    step()\n", 1<<20/40) + "RecursionError: maximum recursion depth exceeded")
+	start := time.Now()
+	if got := Normalize(huge); got != "RecursionError: maximum recursion depth exceeded" {
+		t.Errorf("huge: %q", got)
+	}
+	if d := time.Since(start); d > 50*time.Millisecond {
+		t.Errorf("huge traceback took %v", d)
+	}
+}

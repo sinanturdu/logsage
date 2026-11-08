@@ -1,5 +1,7 @@
 package fingerprint
 
+import "strings"
+
 // corpus is the golden corpus of ADR 0022: every loadgen template plus
 // realistic first lines from Go, Java, Python, HTTP servers, databases and
 // the OS. Its templates and fingerprints are pinned in testdata/golden.json.
@@ -93,4 +95,13 @@ var corpus = []string{
 	// added for the implementation: a query string on a bare path, and a status after HTTP/1.1
 	`upstream timed out, request: "GET /v1/orders?page=2 HTTP/1.1", upstream: "http://10.0.0.7:8080/v1/orders?page=2"`,
 	"HTTP/1.1 503 Service Unavailable from upstream catalog",
+	// J1.1: Python tracebacks use their last non-empty line (the exception)
+	"Traceback (most recent call last):\n  File \"/app/orders.py\", line 88, in charge\n    resp = client.post(url)\nrequests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='psp.example.com', port=443): Max retries exceeded",
+	"Traceback (most recent call last):\n  File \"/app/orders.py\", line 91, in charge\n    qty = int(raw)\nValueError: invalid literal for int() with base 10: 'abc'",
+	"Traceback (most recent call last):\n  File \"/app/users.py\", line 12, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 31337",
+	"Traceback (most recent call last):\n  File \"/app/users.py\", line 140, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 42",
+	"Traceback (most recent call last):\n  File \"/app/db.py\", line 7, in connect\n    conn = pool.get()\nTimeoutError: pool exhausted after 30s\n\n   \n",
+	"Traceback (most recent call last):\n" + strings.Repeat("  File \"/app/worker.py\", line 42, in run\n    self.step()\n", 120) + "RecursionError: maximum recursion depth exceeded while calling a Python object",
+	"Traceback (most recent call last):\n   \n\t\n",
+	"Traceback (most recent call last):\n  File \"/app/a.py\", line 3, in f\n    g()\nKeyError: 'id'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/app/a.py\", line 5, in f\n    raise LookupError(\"missing 7\")\nLookupError: missing 7",
 }

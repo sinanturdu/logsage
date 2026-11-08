@@ -191,8 +191,8 @@
   },
   {
     "message": "Traceback (most recent call last):\n  File \"app.py\", line 12, in \u003cmodule\u003e",
-    "template": "Traceback (most recent call last):",
-    "fingerprint": "32fd680ab8df3a02"
+    "template": "File \"app.py\", line \u003cn\u003e, in \u003cmodule\u003e",
+    "fingerprint": "81596823e8d2bb63"
   },
   {
     "message": "KeyError: 'user_id'",
@@ -383,5 +383,45 @@
     "message": "HTTP/1.1 503 Service Unavailable from upstream catalog",
     "template": "HTTP/1.1 503 Service Unavailable from upstream catalog",
     "fingerprint": "164a666e1f031742"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/orders.py\", line 88, in charge\n    resp = client.post(url)\nrequests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='psp.example.com', port=443): Max retries exceeded",
+    "template": "requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='psp.example.com', port=\u003cn\u003e): Max retries exceeded",
+    "fingerprint": "f45d8bb58fb0e049"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/orders.py\", line 91, in charge\n    qty = int(raw)\nValueError: invalid literal for int() with base 10: 'abc'",
+    "template": "ValueError: invalid literal for int() with base \u003cn\u003e: 'abc'",
+    "fingerprint": "16bc2c2a2401e43c"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/users.py\", line 12, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 31337",
+    "template": "KeyError: 'user_id' for user \u003cn\u003e",
+    "fingerprint": "bf0633818c482366"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/users.py\", line 140, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 42",
+    "template": "KeyError: 'user_id' for user \u003cn\u003e",
+    "fingerprint": "bf0633818c482366"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/db.py\", line 7, in connect\n    conn = pool.get()\nTimeoutError: pool exhausted after 30s\n\n   \n",
+    "template": "TimeoutError: pool exhausted after \u003cn\u003es",
+    "fingerprint": "c4f588103b72b846"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\nRecursionError: maximum recursion depth exceeded while calling a Python object",
+    "template": "RecursionError: maximum recursion depth exceeded while calling a Python object",
+    "fingerprint": "3cb8c56b54170a47"
+  },
+  {
+    "message": "Traceback (most recent call last):\n   \n\t\n",
+    "template": "Traceback (most recent call last):",
+    "fingerprint": "32fd680ab8df3a02"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/a.py\", line 3, in f\n    g()\nKeyError: 'id'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/app/a.py\", line 5, in f\n    raise LookupError(\"missing 7\")\nLookupError: missing 7",
+    "template": "LookupError: missing \u003cn\u003e",
+    "fingerprint": "cca6c4fd227ab95f"
   }
 ]
