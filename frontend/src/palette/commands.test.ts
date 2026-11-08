@@ -8,6 +8,7 @@ const labels = (c: AppContext) => commandsFor(c).map((x) => x.label)
 describe('commandsFor', () => {
   it('lists explorer commands on the logs page', () => {
     expect(labels(ctx())).toEqual([
+      'Go to Error groups',
       'Go to API keys',
       'Switch project: shop',
       'Last 15 minutes',
@@ -47,6 +48,7 @@ describe('commandsFor', () => {
     const c = commandsFor(ctx({ section: 'keys', explorer: null }))
     expect(c.map((x) => x.label)).toEqual([
       'Go to Logs',
+      'Go to Error groups',
       'Switch project: shop',
       'Copy link to this view',
       'Change password...',
@@ -77,12 +79,12 @@ describe('defaultCommands', () => {
   const labels = (c: AppContext, recent: string[] = []) => defaultCommands(commandsFor(c), recent, c.explorer).map((x) => x.label)
 
   it('on the logs page: the other page, live, the next ranges, projects, shortcuts', () => {
-    expect(labels(ctx())).toEqual(['Go to API keys', 'Turn live tail on', 'Last 1 hour', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
+    expect(labels(ctx())).toEqual(['Go to Error groups', 'Go to API keys', 'Turn live tail on', 'Last 1 hour', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
   })
 
   it('adds Clear filters only with filters, and says Turn live tail off while live', () => {
     const l = labels(ctx({ explorer: { ...EX, hasFilters: true, live: true, preset: '24h' } }))
-    expect(l).toEqual(['Go to API keys', 'Turn live tail off', 'Clear filters', 'Last 7 days', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
+    expect(l).toEqual(['Go to Error groups', 'Go to API keys', 'Turn live tail off', 'Clear filters', 'Last 7 days', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
   })
 
   it('picks ranges for an absolute selection', () => {
@@ -90,7 +92,7 @@ describe('defaultCommands', () => {
   })
 
   it('on the keys page and with one project: no explorer commands, no switch', () => {
-    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Show keyboard shortcuts'])
+    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Go to Error groups', 'Show keyboard shortcuts'])
   })
 
   it('puts up to two recent commands first, at most 8 in all, and always keeps the shortcuts help', () => {
@@ -101,5 +103,35 @@ describe('defaultCommands', () => {
     expect(l).not.toContain('Focus search') // only two recent
     expect(l).toHaveLength(8)
     expect(l.at(-1)).toBe('Show keyboard shortcuts')
+  })
+})
+
+describe('error groups commands', () => {
+  const gctx = (over: Partial<AppContext> = {}): AppContext =>
+    ctx({ section: 'groups', explorer: null, groups: { status: 'open', sort: 'count', newOnly: false }, ...over })
+
+  it('offers the other statuses, new only and the other sorts', () => {
+    const c = commandsFor(gctx())
+    const l = c.map((x) => x.label)
+    expect(l).toEqual(expect.arrayContaining(['Go to Logs', 'Go to API keys', 'Show ignored groups', 'Show resolved groups', 'Show groups of every status', 'Show new groups only', 'Sort groups by last seen', 'Sort groups by first seen']))
+    expect(l).not.toContain('Go to Error groups')
+    expect(l).not.toContain('Show open groups')
+    expect(l).not.toContain('Sort groups by most events')
+    expect(c.find((x) => x.id === 'group-status:resolved')?.action).toEqual({ type: 'group-status', status: 'resolved' })
+    expect(c.find((x) => x.id === 'group-new')?.action).toEqual({ type: 'group-new', on: true })
+    expect(c.find((x) => x.id === 'project:shop')?.action).toEqual({ type: 'navigate', to: '/projects/shop/groups' })
+  })
+
+  it('with new only on, offers to turn it off and hides the sorts (new only sorts by first seen)', () => {
+    const l = labels(gctx({ groups: { status: 'all', sort: 'count', newOnly: true } }))
+    expect(l).toContain('Show groups that are not new too')
+    expect(l).toContain('Show open groups')
+    expect(l.some((x) => x.startsWith('Sort groups'))).toBe(false)
+  })
+
+  it('other pages have no group commands but can go to Error groups', () => {
+    const l = labels(ctx())
+    expect(l).toContain('Go to Error groups')
+    expect(l.some((x) => /groups (of|by)|new groups/.test(x))).toBe(false)
   })
 })

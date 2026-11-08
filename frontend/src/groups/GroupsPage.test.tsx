@@ -182,6 +182,39 @@ describe('groups list', () => {
   })
 })
 
+describe('groups palette commands', () => {
+  it('change the status, sort and new only from the palette', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A)]) })
+    renderApp('/projects/shop/groups')
+    await screen.findByRole('table')
+    const user = userEvent.setup()
+    const run = async (text: string) => {
+      await user.keyboard('{Control>}k{/Control}')
+      const dialog = screen.getByRole('dialog', { name: /command/i })
+      await user.type(within(dialog).getByRole('combobox'), text)
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    }
+    await run('Show resolved groups')
+    await waitFor(() => expect(location()).toBe('/projects/shop/groups?status=resolved'))
+    await run('Sort groups by last seen')
+    await waitFor(() => expect(location()).toBe('/projects/shop/groups?status=resolved&sort=last_seen'))
+    await run('Show new groups only')
+    await waitFor(() => expect(location()).toBe('/projects/shop/groups?status=resolved&sort=last_seen&new=1'))
+  })
+
+  it('Go to Error groups is offered from the explorer', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A)]), 'GET /api/projects/shop/logs': () => json(200, { events: [], next_cursor: null }) })
+    renderApp('/projects/shop/logs')
+    await screen.findByText(/No logs match/)
+    const user = userEvent.setup()
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(within(screen.getByRole('dialog', { name: /command/i })).getByRole('combobox'), 'Go to Error groups')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(location()).toBe('/projects/shop/groups'))
+  })
+})
+
 describe('list helpers', () => {
   it('summarizes only what is loaded', () => {
     expect(summaryText(0, 0, false)).toBe('Showing 0 groups, 0 new in this range.')

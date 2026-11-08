@@ -9,6 +9,7 @@ import { SearchBox } from '../explorer/FilterPanel'
 import { LEVEL_SHAPE, presetLabel, resolveRange, toggleService, type Preset } from '../explorer/model'
 import { RangeControls } from '../explorer/RangeControls'
 import { rangeHeading } from '../explorer/time'
+import { useExplorerBridge } from '../palette/bridge'
 import { shortcutFor } from '../shortcuts'
 import { groupsError, mergeGroups, useGroups, type Group } from './api'
 import {
@@ -109,6 +110,16 @@ export function GroupsPage() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [groups, selected, navigate, slug, state.range])
+
+  // The command palette reads the list's state and runs its commands here.
+  useExplorerBridge({
+    groups: { status: state.status, sort: state.sort, newOnly: state.newOnly },
+    run: (a) => {
+      if (a.type === 'group-status') update({ status: a.status })
+      else if (a.type === 'group-sort') update({ sort: a.sort })
+      else if (a.type === 'group-new') update({ newOnly: a.on })
+    },
+  })
 
   const onSearch = useCallback((q: string, immediate: boolean) => update({ q }, { replace: !immediate }), [update])
   const reload = () => {
