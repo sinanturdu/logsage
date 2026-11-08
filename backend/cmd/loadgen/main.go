@@ -75,6 +75,7 @@ func cmdIngest(ctx context.Context, args []string, getenv func(string) string, o
 	fs.Uint64Var(&o.Seed, "seed", 1, "random seed (sender i uses seed+i)")
 	fs.Int64Var(&o.MaxEvents, "max-events", 0, "stop after this many events (0 = no cap)")
 	fs.DurationVar(&o.Spread, "time-spread", 0, "spread event timestamps uniformly over the last DURATION (0 = now)")
+	fs.Float64Var(&o.GroupedShare, "grouped-share", -1, "share of warn, error and fatal events, 0..1 (default: the usual mix, about 20%)")
 	fs.StringVar(&o.WaitDrain, "wait-drain", "", "processor /stats URL; after sending, wait until processed_total covers what was accepted")
 	fs.DurationVar(&o.DrainTimeout, "drain-timeout", 10*time.Minute, "give up waiting for the processor after this long")
 	fs.BoolVar(&o.RetryOn429, "retry-on-429", false, "retry batches answered 429 with capped exponential backoff and jitter")
@@ -85,6 +86,9 @@ func cmdIngest(ctx context.Context, args []string, getenv func(string) string, o
 	allowRemote := fs.Bool("allow-remote", false, "allow non-localhost targets")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if o.GroupedShare > 1 {
+		return fmt.Errorf("--grouped-share must be at most 1")
 	}
 	for _, u := range []string{o.URL, o.WaitDrain} {
 		if u == "" {

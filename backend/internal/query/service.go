@@ -16,6 +16,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
+
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 )
 
 // Store runs a parameterized read query and reports readiness.
@@ -67,6 +69,8 @@ type Event struct {
 	Message    string            `json:"message"`
 	TraceID    string            `json:"trace_id"`
 	Attributes map[string]string `json:"attributes"`
+	// Fingerprint is the error group (16 hex) or empty when not grouped (ADR 0022).
+	Fingerprint string `json:"fingerprint"`
 }
 
 // Response is the 200 body of a log search.
@@ -80,9 +84,9 @@ type Response struct {
 
 // Parameter sets per endpoint. Unknown or repeated parameters are a 400.
 var (
-	searchParams    = []string{"from", "to", "level", "service", "q", "trace_id", "limit", "cursor"}
-	histogramParams = []string{"from", "to", "level", "service", "q", "trace_id", "bucket"}
-	facetParams     = []string{"from", "to", "level", "service", "q", "trace_id"}
+	searchParams    = []string{"from", "to", "level", "service", "q", "trace_id", "fingerprint", "limit", "cursor"}
+	histogramParams = []string{"from", "to", "level", "service", "q", "trace_id", "fingerprint", "bucket"}
+	facetParams     = []string{"from", "to", "level", "service", "q", "trace_id", "fingerprint"}
 )
 
 // ParseSearch validates a log search query string. Errors are client-safe
@@ -190,6 +194,13 @@ func (s *Service) parseContent(vals url.Values, f *Filter) error {
 			return err
 		}
 		*p.dst = v
+	}
+	if has("fingerprint") {
+		fp, err := fingerprint.ParseHex(vals.Get("fingerprint"))
+		if err != nil {
+			return errors.New("fingerprint: must be 16 hexadecimal characters")
+		}
+		f.Fingerprint = fp
 	}
 	return nil
 }
@@ -322,6 +333,8 @@ type rowJSON struct {
 	Message    string            `json:"message"`
 	TraceID    string            `json:"trace_id"`
 	Attributes map[string]string `json:"attributes"`
+	// Fingerprint is a UInt64, which ClickHouse quotes in JSON output.
+	Fingerprint chUint `json:"fingerprint"`
 }
 
 func decodeRows(body []byte) ([]Event, error) {
@@ -342,6 +355,7 @@ func decodeRows(body []byte) ([]Event, error) {
 		events = append(events, Event{
 			EventID: r.EventID, Timestamp: ts.UTC().Format(cursorTimeFmt), Level: r.Level,
 			Service: r.Service, Message: r.Message, TraceID: r.TraceID, Attributes: attrs,
+			Fingerprint: fingerprint.Hex(uint64(r.Fingerprint)),
 		})
 		return nil
 	})
@@ -375,6 +389,8 @@ func eachLine(body []byte, fn func([]byte) error) error {
 func Classify(err error) (int, string) {
 	var ce *clickhouse.Error
 	switch {
+	case errors.Is(err, ErrGroupNotFound):
+		return http.StatusNotFound, "not found"
 	case errors.Is(err, errDeadline), errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, "query timed out; narrow the time range or add filters"
 	case errors.As(err, &ce) && (ce.Code == "159" || ce.Code == "160"):

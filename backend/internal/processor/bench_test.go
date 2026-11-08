@@ -19,7 +19,7 @@ func BenchmarkParseAndEncodeBatch(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		rows := make([]Row, 0, len(entries))
 		for _, e := range entries {
-			row, reason := parseEntry(e)
+			row, reason := parseEntry(e, nil)
 			if reason != "" {
 				b.Fatal(reason)
 			}

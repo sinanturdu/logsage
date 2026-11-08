@@ -4,6 +4,21 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+- Error groups backend (v0.3 package J1, ADR 0022):
+  - The processor fingerprints `warn`, `error` and `fatal` rows: a normalized template of the first line plus service and error type. A golden corpus test pins every template and fingerprint.
+  - ClickHouse: a `template` column, a `bloom_filter` index on `fingerprint`, and the `group_seen` table with its materialized view for first and last seen.
+  - PostgreSQL: `error_groups` for the group status and note; every change writes an audit row.
+  - `GET /api/projects/{slug}/groups` (counts, sparklines, `is_new`, `regressed`, status filter, sorts, cursor), `GET .../groups/{fingerprint}` and `POST .../groups/{fingerprint}/status` (owner and admin).
+  - An optional `fingerprint` filter on `/logs`, `/histogram`, `/facets`, `/tail` and `/v1/logs`, and a `fingerprint` field on log events.
+  - Python tracebacks group by their exception line (the last non-empty line, found in the last 4 KiB), also when chained.
+  - Exit codes, exit statuses, signals and SQLSTATE codes are kept in templates (`exit code 137` and `exit code 1` are two groups).
+  - The processor caches templates of repeated messages (at most 8,192 entries, about 9 MiB). Cost against v0.2: [docs/benchmarks.md](docs/benchmarks.md#j1-processor-cost-2026-11-08).
+  - `loadgen ingest --grouped-share` sets the share of `warn`, `error` and `fatal` events.
+
+### Notes
+- Rows ingested before this version, and `debug` and `info` rows, are not grouped (`fingerprint = 0`); there is no backfill.
+
 ## [v0.2.1] - 2026-11-08
 
 Patch release: dashboard fixes only. Release notes: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md).
@@ -100,7 +115,7 @@ Second milestone: accounts and dashboard. Release notes: [docs/releases/v0.2.0.m
 - Compose: one-shot `migrate` service; ingest and query depend on it and on PostgreSQL. The image contains `cmd/admin`.
 
 ### Deprecated
-- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (off by default since v0.2.0), mapped to the default project, with a startup warning. Removed in v0.3.
+- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (off by default since v0.2.0), mapped to the default project, with a startup warning. Removed in v0.3 (package M).
 
 - PostgreSQL foundation for v0.2 (ADR 0011): `github.com/jackc/pgx/v5` v5.7.4; hand-written embedded migrations with checksums (line-ending independent) and an advisory lock; `projects` and `api_keys` tables plus the `default` project that v0.1 data belongs to.
 - Per-project API keys `lsk_<ing|qry>_<prefix>_<secret>`: only the prefix and SHA-256 are stored, constant-time verification with one generic rejection error, throttled `last_used_at`.

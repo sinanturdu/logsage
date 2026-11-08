@@ -54,6 +54,11 @@ type Store interface {
 	RevokeProjectKey(ctx context.Context, slug, prefix string) (postgres.KeyInfo, error)
 
 	Audit(ctx context.Context, e postgres.AuditEntry) error
+
+	// Error group status (ADR 0022); ErrNotFound means open.
+	GroupStates(ctx context.Context, projectID string) ([]postgres.GroupState, error)
+	GroupState(ctx context.Context, projectID string, fp uint64) (postgres.GroupState, error)
+	SetGroupStatus(ctx context.Context, projectID string, fp uint64, status, note, userID string, audit postgres.AuditEntry) (postgres.GroupState, error)
 }
 
 // Options configure a Server.
@@ -137,6 +142,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	m.HandleFunc("GET /api/projects/{slug}/histogram", s.authed(s.readLogs(s.prepareHistogram)))
 	m.HandleFunc("GET /api/projects/{slug}/facets", s.authed(s.readLogs(s.prepareFacets)))
 	m.HandleFunc("GET /api/projects/{slug}/tail", s.authed(s.handleTail))
+	m.HandleFunc("GET /api/projects/{slug}/groups", s.authed(s.readLogs(s.prepareGroups)))
+	m.HandleFunc("GET /api/projects/{slug}/groups/{fingerprint}", s.authed(s.readLogs(s.prepareGroupDetail)))
+	m.HandleFunc("POST /api/projects/{slug}/groups/{fingerprint}/status", s.authed(s.handleGroupStatus))
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeError(w, http.StatusNotFound) })
 	mux.Handle("/api/", s.secure(m))
 }

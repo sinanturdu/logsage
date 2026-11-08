@@ -26,6 +26,7 @@ type ingestOptions struct {
 	MaxEvents    int64         // 0: until Duration
 	Spread       time.Duration // spread event timestamps over [now-spread, now)
 	WaitDrain    string        // processor /stats URL, empty: skip
+	GroupedShare float64       // share of warn, error and fatal events; below 0: default weights
 	DrainTimeout time.Duration
 
 	RetryOn429      bool          // retry a batch answered with 429
@@ -152,7 +153,7 @@ func runIngest(ctx context.Context, o ingestOptions) (ingestResult, error) {
 		wg.Add(1)
 		go func(worker int) {
 			defer wg.Done()
-			gen := NewGenerator(o.Seed + uint64(worker))
+			gen := NewGenerator(o.Seed + uint64(worker)).WithGroupedShare(o.GroupedShare)
 			jitter := rand.New(rand.NewPCG(o.Seed, uint64(worker)))
 			var local []time.Duration
 			defer func() {

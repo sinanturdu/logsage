@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 	"github.com/sinanturdu/logsage/backend/internal/ingest"
 	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 )
@@ -102,13 +104,19 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	out, err := ch.Query(ctx, "SELECT project_id, level, service, message, trace_id, attributes['env'], toString(timestamp), fingerprint, length(event_id) > 0 FROM logs FINAL ORDER BY timestamp FORMAT TabSeparated")
+	out, err := ch.Query(ctx, "SELECT project_id, level, service, message, trace_id, attributes['env'], toString(timestamp), fingerprint, template, length(event_id) > 0 FROM logs FINAL ORDER BY timestamp FORMAT TabSeparated")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "default\terror\tcheckout\tpayment gateway timeout\tabc\tit\t2026-11-06 10:15:30.123\t0\t1\n" +
-		"default\tinfo\tcheckout\tretry ok\t\t\t2026-11-06 10:15:31.123\t0\t1\n" +
-		"default\twarn\tsearch\tslow query\t\t\t2026-11-06 10:15:32.123\t0\t1\n"
+	// Error groups (ADR 0022): warn and error rows carry a fingerprint and a template; info does not.
+	want := fmt.Sprintf("default\terror\tcheckout\tpayment gateway timeout\tabc\tit\t2026-11-06 10:15:30.123\t%d\tpayment gateway timeout\t1\n", fingerprint.Of("checkout", "payment gateway timeout", "")) +
+		"default\tinfo\tcheckout\tretry ok\t\t\t2026-11-06 10:15:31.123\t0\t\t1\n" +
+		fmt.Sprintf("default\twarn\tsearch\tslow query\t\t\t2026-11-06 10:15:32.123\t%d\tslow query\t1\n", fingerprint.Of("search", "slow query", ""))
+	// The view keeps first and last seen for the two grouped rows.
+	seen, err := ch.Query(ctx, "SELECT count() FROM group_seen FINAL FORMAT TabSeparated")
+	if err != nil || strings.TrimSpace(string(seen)) != "2" {
+		t.Errorf("group_seen rows = %q (%v), want 2", seen, err)
+	}
 	if string(out) != want {
 		t.Errorf("rows =\n%s\nwant\n%s", out, want)
 	}

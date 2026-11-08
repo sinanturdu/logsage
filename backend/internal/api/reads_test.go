@@ -25,6 +25,10 @@ type readStore struct {
 	sessions map[string]string            // token -> user id
 	roles    map[string]map[string]string // user -> slug -> role
 	ids      map[string]string            // slug -> project id
+
+	mu     sync.Mutex
+	groups map[string]postgres.GroupState // project id + "/" + hex fingerprint -> state
+	audits []postgres.AuditEntry
 }
 
 func (s *readStore) LookupSession(_ context.Context, hash []byte) (postgres.Session, error) {
@@ -54,12 +58,14 @@ type chStore struct {
 	block   chan struct{}
 	started chan struct{}
 	err     error
+	// respond, when set, answers a statement with JSONEachRow lines.
+	respond func(sql string, params map[string]string) []byte
 }
 
 func (c *chStore) QueryWithParams(ctx context.Context, sql string, params, _ map[string]string) ([]byte, error) {
 	c.mu.Lock()
 	c.params = append(c.params, params)
-	started, block, err := c.started, c.block, c.err
+	started, block, err, respond := c.started, c.block, c.err, c.respond
 	c.mu.Unlock()
 	if started != nil {
 		started <- struct{}{}
@@ -70,6 +76,9 @@ func (c *chStore) QueryWithParams(ctx context.Context, sql string, params, _ map
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+	if err == nil && respond != nil {
+		return respond(sql, params), nil
 	}
 	return nil, err
 }
@@ -88,6 +97,7 @@ func (c *chStore) recorded() []map[string]string {
 
 type readFixture struct {
 	srv    *httptest.Server
+	st     *readStore
 	ch     *chStore
 	tokens map[string]string // test name -> session token
 }
@@ -131,7 +141,7 @@ func newReadFixture(t *testing.T, maxConcurrent int) *readFixture {
 	s.Register(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return &readFixture{srv: srv, ch: ch, tokens: tokens}
+	return &readFixture{srv: srv, st: st, ch: ch, tokens: tokens}
 }
 
 func (f *readFixture) get(t *testing.T, path, token string) (int, string, http.Header) {

@@ -113,14 +113,42 @@ func hexID(r *rand.Rand, n int) string {
 // sequence of events (timestamps are supplied by the caller).
 type Generator struct {
 	r *rand.Rand
+	// groupedShare, when in [0,1], is the share of warn, error and fatal
+	// events (their relative weights kept); below 0 the default weights apply.
+	groupedShare float64
 }
 
 // NewGenerator returns a generator seeded with seed.
 func NewGenerator(seed uint64) *Generator {
-	return &Generator{r: rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))}
+	return &Generator{r: rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)), groupedShare: -1}
+}
+
+// WithGroupedShare sets the share of warn, error and fatal events (0..1).
+func (g *Generator) WithGroupedShare(share float64) *Generator {
+	g.groupedShare = share
+	return g
 }
 
 func (g *Generator) level() string {
+	if g.groupedShare >= 0 {
+		grouped := g.r.Float64() < g.groupedShare
+		total := 0
+		for _, lw := range levelWeights {
+			if isGrouped(lw.level) == grouped {
+				total += lw.weight
+			}
+		}
+		n := g.r.IntN(total)
+		for _, lw := range levelWeights {
+			if isGrouped(lw.level) != grouped {
+				continue
+			}
+			if n < lw.weight {
+				return lw.level
+			}
+			n -= lw.weight
+		}
+	}
 	n := g.r.IntN(100)
 	for _, lw := range levelWeights {
 		if n < lw.weight {
@@ -130,6 +158,8 @@ func (g *Generator) level() string {
 	}
 	return "info"
 }
+
+func isGrouped(level string) bool { return level == "warn" || level == "error" || level == "fatal" }
 
 func (g *Generator) attributes() map[string]string {
 	attrs := map[string]string{

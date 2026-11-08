@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 )
 
 func TestParseEntry(t *testing.T) {
@@ -52,12 +54,14 @@ func TestParseEntry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			row, reason := parseEntry(Entry{ID: "1700000000000-1", Values: tt.values})
+			row, reason := parseEntry(Entry{ID: "1700000000000-1", Values: tt.values}, nil)
 			if tt.wantReason == "" {
 				if reason != "" {
 					t.Fatalf("reason = %q, want valid", reason)
 				}
-				if row.EventID != "1700000000000-1" || row.ProjectID != "default" || row.Fingerprint != 0 || row.Attributes == nil {
+				// The fixture is an error line, so it is grouped (ADR 0022).
+				if row.EventID != "1700000000000-1" || row.ProjectID != "default" || row.Attributes == nil ||
+					row.Template != "timeout" || row.Fingerprint != fingerprint.Of("checkout", "timeout", "") {
 					t.Errorf("row = %+v", row)
 				}
 				return
@@ -125,7 +129,7 @@ func TestParseEntryProjectID(t *testing.T) {
 	for _, tt := range tests {
 		v := validEntry("1-0").Values
 		v["project_id"] = tt.project
-		row, reason := parseEntry(Entry{ID: "1-0", Values: v})
+		row, reason := parseEntry(Entry{ID: "1-0", Values: v}, nil)
 		if tt.wantReason == "" {
 			if reason != "" || row.ProjectID != tt.project {
 				t.Errorf("project %v: reason %q, row project %q", tt.project, reason, row.ProjectID)
@@ -135,5 +139,53 @@ func TestParseEntryProjectID(t *testing.T) {
 		if !strings.Contains(reason, tt.wantReason) {
 			t.Errorf("project %v: reason %q, want %q", tt.project, reason, tt.wantReason)
 		}
+	}
+}
+
+func TestParseEntryFingerprint(t *testing.T) {
+	entry := func(level, msg string, attrs map[string]string) Entry {
+		b, _ := json.Marshal(map[string]any{"timestamp": "2026-11-06T10:15:30Z", "level": level, "service": "payments", "message": msg, "attributes": attrs})
+		return Entry{ID: "1-0", Values: map[string]any{"payload": string(b), "project_id": "default", "ingested_at": "2026-11-06T10:15:31.5Z"}}
+	}
+	cases := []struct {
+		level, msg   string
+		attrs        map[string]string
+		wantTemplate string
+		grouped      bool
+	}{
+		{"error", "payment 7c1e0b9a42 declined: gateway timeout after 7086ms", nil, "payment <id> declined: gateway timeout after <n>ms", true},
+		{"warn", "retrying charge for ord_7Q2K9M, attempt 2 of 3", nil, "retrying charge for ord_<id>, attempt <n> of <n>", true},
+		{"fatal", "panic: runtime error: index out of range [5] with length 3\ngoroutine 1 [running]:", nil, "panic: runtime error: index out of range [<n>] with length <n>", true},
+		{"error", "boom", map[string]string{"error.type": "TimeoutError"}, "boom", true},
+		{"info", "user 31337 logged in", nil, "", false},
+		{"debug", "cache miss for key product:55123", nil, "", false},
+	}
+	for _, c := range cases {
+		row, reason := parseEntry(entry(c.level, c.msg, c.attrs), nil)
+		if reason != "" {
+			t.Fatalf("%s: %s", c.msg, reason)
+		}
+		if row.Template != c.wantTemplate {
+			t.Errorf("%q: template %q, want %q", c.msg, row.Template, c.wantTemplate)
+		}
+		if (row.Fingerprint != 0) != c.grouped {
+			t.Errorf("%q: fingerprint %x, grouped %v", c.msg, row.Fingerprint, c.grouped)
+		}
+		if c.grouped && row.Fingerprint != fingerprint.Of("payments", c.wantTemplate, fingerprint.ErrorType(c.attrs)) {
+			t.Errorf("%q: fingerprint does not match fingerprint.Of", c.msg)
+		}
+	}
+	// The JSON row for ClickHouse carries both.
+	row, _ := parseEntry(entry("error", "boom 42", nil), nil)
+	b, err := encodeRows([]Row{row}, time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Fingerprint uint64 `json:"fingerprint"`
+		Template    string `json:"template"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil || got.Template != "boom <n>" || got.Fingerprint != row.Fingerprint {
+		t.Fatalf("encoded = %s (%v)", b, err)
 	}
 }

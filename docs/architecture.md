@@ -100,6 +100,7 @@ X-API-Key: <query key>
 | `service` | Optional, exact match; or a comma-separated list of up to 20 names (any of them, sent as one `Array(String)` parameter). A comma always separates names. |
 | `q` | Optional, case-insensitive substring of `message` (UTF-8, at most `QUERY_MAX_TEXT_LEN` = 256 characters). |
 | `trace_id` | Optional, exact match. |
+| `fingerprint` | Optional, 16 hexadecimal characters: rows of one error group (ADR 0022). Each event also carries a `fingerprint` field, empty when not grouped. |
 | `limit` | Optional, 1..`QUERY_MAX_LIMIT` (1000), default 100. |
 | `cursor` | Optional, `next_cursor` from the previous page of the same query, unchanged. |
 
@@ -133,22 +134,27 @@ CREATE TABLE IF NOT EXISTS logsage.logs (
   level       LowCardinality(String),
   service     LowCardinality(String),
   message     String,
-  fingerprint UInt64,                   -- 0 until fingerprinting lands
+  fingerprint UInt64,                   -- error group (ADR 0022); 0 = not grouped
+  template    String,                   -- normalized first line, '' when not grouped (migration 0005)
   trace_id    String,
   attributes  Map(String, String),
   ingested_at DateTime64(3, 'UTC') DEFAULT now64(3),
   inserted_at DateTime64(3, 'UTC') DEFAULT toDateTime64(0, 3, 'UTC'),  -- set by the processor per insert attempt (ADR 0015)
-  INDEX idx_inserted_at inserted_at TYPE minmax GRANULARITY 1
+  INDEX idx_inserted_at inserted_at TYPE minmax GRANULARITY 1,
+  INDEX idx_fingerprint fingerprint TYPE bloom_filter(0.01) GRANULARITY 4   -- migration 0006
 ) ENGINE = ReplacingMergeTree
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (project_id, service, timestamp, event_id)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY;  -- CLICKHOUSE_TTL_DAYS
 ```
+Error groups (ADR 0022): `group_seen` (AggregatingMergeTree, migration 0007) keeps all-time first and last seen per `(project_id, fingerprint)` as `SimpleAggregateFunction(min|max)`, with a TTL on `last_seen` equal to the log retention. The materialized view `group_seen_mv` (0008) fills it from `logs` for rows with `fingerprint != 0`. Duplicates do not change `min`/`max`; counts always come from `logs FINAL`.
+
 Delivery is at-least-once, so a redelivered entry can be inserted twice. Duplicates share the sorting key and collapse on merge. **Read with `FINAL`** (`SELECT ... FROM logs FINAL`) or dedupe by `event_id` when exact results matter.
 
 ## Processor (v0.1)
 - Consumer group `logsage-processor` on `REDIS_STREAM`; consumer `PROCESSOR_CONSUMER` (default `hostname-pid`). The group is created at `0` with `MKSTREAM`.
 - Loop: own pending entries first, then `XREADGROUP >` (`PROCESSOR_READ_COUNT`, `PROCESSOR_READ_BLOCK`), plus `XAUTOCLAIM` every `PROCESSOR_CLAIM_INTERVAL` for entries idle longer than `PROCESSOR_CLAIM_IDLE` (30s).
+- Fingerprint at parse time, before the flush (ADR 0022): `warn`, `error` and `fatal` rows get `fingerprint` and `template` (see Fingerprinting); other rows keep `0` and `''`.
 - Flush at `PROCESSOR_BATCH_SIZE` (1000) rows or `PROCESSOR_FLUSH_INTERVAL` (1s) as one `INSERT INTO logs FORMAT JSONEachRow` over HTTP (`CLICKHOUSE_URL`, port 8123), then `XACK`.
 - Insert failure: no ack, no drop; retry with exponential backoff and jitter (`PROCESSOR_RETRY_INITIAL`..`PROCESSOR_RETRY_MAX`) and read nothing new meanwhile (backpressure shows up as stream lag).
 - Unusable entries go to `PROCESSOR_DEAD_STREAM` (`logsage:events:dead`, capped at about `PROCESSOR_DEAD_MAXLEN` = 100000) with their original fields plus `original_id`, `reason` and `dead_lettered_at`, then get acked.
@@ -190,7 +196,17 @@ audit_log (id bigint identity PK, at, user_id NULL FK, action text, target text,
 ```
 The default project has no members; assign an owner with `admin add-member --project default --email E --role owner`.
 
-Planned: `alert_rules`, `error_groups`, `incidents`, `incident_events`, `deploy_events`.
+Migration 0003 (ADR 0022):
+
+```sql
+error_groups (project_id uuid FK -> projects ON DELETE CASCADE, fingerprint bigint CHECK (<> 0),  -- uint64 bits
+              status text CHECK (IN ('open','ignored','resolved')), resolved_at NULL,  -- set iff resolved
+              note text (<= 500), updated_by uuid NULL FK -> users, updated_at,
+              PRIMARY KEY (project_id, fingerprint))
+```
+No row means `open`. A status change upserts the row and writes an `audit_log` row (`group.status`) in one transaction.
+
+Planned: `alert_rules`, `incidents`, `incident_events`, `deploy_events`.
 
 ### API key lifecycle (v0.2 package G)
 - **Create:** `admin create-key --project SLUG --kind ingest|query --name N [--expires-in 720h]` generates `lsk_<ing|qry>_<8 base32 chars>_<43 base64url chars>` from `crypto/rand` (40-bit prefix, 256-bit secret), stores only prefix and SHA-256, and prints the key once.
@@ -253,6 +269,19 @@ Session cookie, any member role. Order: membership (`404` for non-members and un
 - Histogram: without `bucket` the smallest size giving at most 240 buckets; an explicit `bucket` may give at most 500. Buckets are aligned to the Unix epoch, cover the bucket holding `from` up to `to`, and empty ones are zero.
 - Facets: level counts apply every filter except `level`, service counts every filter except `service`, `total` every filter. At most 50 services by count, then `{"name":"other","count":n,"other":true}`.
 
+All three, and `tail`, also take the `fingerprint` filter.
+
+### Error groups (v0.3 package J1, ADR 0022)
+Same order, limits, errors and per-user cap as the read endpoints above.
+
+| Endpoint | Parameters | `200` body |
+|---|---|---|
+| `GET groups` | `from`, `to`, `level`, `service`, `q` (on the template), `status` (`open`, `ignored`, `resolved`), `sort` (`count`, `last_seen`, `first_seen`), `limit` (default 50, at most 100), `cursor` (at most 1,000 groups deep, bound to its query) | `{"groups":[{"fingerprint","title","sample","error_type","levels","services","count","first_seen","last_seen","sparkline":[24],"status","resolved_at","is_new","regressed"}],"next_cursor":...,"sparkline_bucket_seconds":N,"took_ms":N}` |
+| `GET groups/{fingerprint}` | `from`, `to` | the group plus `counts` (`[{"service","level","count"}]`), `series` (the `/histogram` bucket rules), the latest 5 `samples`, `note`, `updated_by`; `404` for an unknown group |
+| `POST groups/{fingerprint}/status` | `{"status":"open|ignored|resolved","note":"..."}` (note at most 500 characters); owner and admin, viewers `403` | `{"group":{"fingerprint","status","resolved_at","note","updated_by","updated_at"}}`; `404` for a group the project has not seen |
+
+`count` is the window count from `logs FINAL` and equals `/logs` with the same `fingerprint`. `first_seen` and `last_seen` are all-time (`group_seen`). `is_new`: first seen inside the window. `regressed`: resolved and seen after `resolved_at`. Rows with `fingerprint = 0` never form a group.
+
 ### Live tail (v0.2 package I1b, ADR 0015)
 `GET /api/projects/{slug}/tail?level=&service=&q=&trace_id=`: session cookie, any member role. There is no `from`/`to`; the stream starts now. Request checks are those of the read endpoints: non-members and unknown slugs get `404`, no cookie gets `401`, bad parameters or an invalid `Last-Event-ID` get `400`. Above `TAIL_MAX_CONN_USER` (2), `TAIL_MAX_CONN_PROJECT` (10) or `TAIL_MAX_CONN_TOTAL` (50) open streams the answer is `429` with `Retry-After`.
 
@@ -305,7 +334,11 @@ Error handling:
 Nothing is kept in browser storage. Log text goes through `<LogText>` (text nodes only); `dangerouslySetInnerHTML` and `innerHTML` are lint errors.
 
 ## Fingerprinting
-Normalize the message (strip numbers, UUIDs, hex, timestamps, paths), hash the normalized template plus service plus level. Same template = same error group. Refined later with similarity clustering.
+Package `internal/fingerprint` (ADR 0022, version `"1"`). Only `warn`, `error` and `fatal` are grouped.
+- **Template:** the first line (for a Python traceback, its exception line), cut to 512 bytes, normalized by ordered RE2 rules (HTTP versions, HTTP statuses, exit codes, signals and SQLSTATE codes protected; timestamps, UUIDs, emails, URLs, pod names, IPs, path segments, tokens, hex, units, prefixed ids, mixed ids and numbers become placeholders such as `<n>`, `<id>`, `<uuid>`, `<ts>`), run to a fixed point so it is idempotent; a template is at most 512 bytes. The processor memoizes templates of repeated messages (`fingerprint.Cache`, at most 8,192 entries).
+- **Key:** `<n>`, `<id>` and `<uuid>` collapse to `<*>`; the level is not part of the key.
+- **Fingerprint:** the first 8 bytes of SHA-256 over version, service, key template and error type (`error.type`, else `exception.type`), separated by `0x1F`; `0` is reserved for "not grouped".
+- A golden corpus test pins every template and fingerprint; a deliberate rule change bumps the version. Similarity clustering may refine this later.
 
 ## Agent integration (planned, v1.0)
 LogSage exposes a stable REST API and outgoing webhooks so external agents can query logs, read incidents, and post actions. A Model Context Protocol (MCP) server wrapper is planned so LLM agents can use LogSage as a tool. Design implication: every capability must be available through the API, not only the UI.

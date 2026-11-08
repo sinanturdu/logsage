@@ -10,6 +10,8 @@ import (
 	"math/rand/v2"
 	"sync/atomic"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 )
 
 // Stream is the queue side of the processor: a Redis Stream consumer group
@@ -92,6 +94,8 @@ const ackAttempts = 5
 // acknowledged only after the batch was inserted. Run is single-threaded;
 // Stats may be called concurrently.
 type Processor struct {
+	// fp memoizes message templates (ADR 0022); add runs on one goroutine.
+	fp     *fingerprint.Cache
 	stream Stream
 	store  Store
 	opts   Options
@@ -122,6 +126,7 @@ func New(stream Stream, store Store, opts Options, log *slog.Logger) (*Processor
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Processor{
+		fp:          fingerprint.NewCache(fingerprint.DefaultCacheEntries),
 		stream:      stream,
 		store:       store,
 		opts:        opts,
@@ -279,7 +284,7 @@ func (p *Processor) add(ctx context.Context, b *batch, entries []Entry) {
 		if _, dup := b.seen[e.ID]; dup {
 			continue // claimed again while still in this batch
 		}
-		row, reason := parseEntry(e)
+		row, reason := parseEntry(e, p.fp)
 		if reason != "" {
 			p.deadLetter(ctx, e, reason)
 			continue

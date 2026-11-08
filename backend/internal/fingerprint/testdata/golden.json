@@ -1,0 +1,492 @@
+[
+  {
+    "message": "GET /api/v1/orders/482913 completed in 47ms",
+    "template": "GET /api/v1/orders/\u003cn\u003e completed in \u003cn\u003ems",
+    "fingerprint": "f5ba922730fdc0a8"
+  },
+  {
+    "message": "user 31337 logged in from 10.12.200.7",
+    "template": "user \u003cn\u003e logged in from \u003cip\u003e",
+    "fingerprint": "b85f612c26352b3d"
+  },
+  {
+    "message": "order 3fa9c0d1 created with 3 items, total 128.07 EUR",
+    "template": "order \u003cid\u003e created with \u003cn\u003e items, total \u003cn\u003e EUR",
+    "fingerprint": "b9736c8506453c0b"
+  },
+  {
+    "message": "order beefcafe created with 3 items, total 128.07 EUR",
+    "template": "order \u003cid\u003e created with \u003cn\u003e items, total \u003cn\u003e EUR",
+    "fingerprint": "b9736c8506453c0b"
+  },
+  {
+    "message": "search query returned 1520 results in 41ms",
+    "template": "search query returned \u003cn\u003e results in \u003cn\u003ems",
+    "fingerprint": "3cc152533723a809"
+  },
+  {
+    "message": "email 9b2e44c1a7f0 queued for user 1290",
+    "template": "email \u003cid\u003e queued for user \u003cn\u003e",
+    "fingerprint": "74fbab5dabf0ab96"
+  },
+  {
+    "message": "cache miss for key product:55123",
+    "template": "cache miss for key product:\u003cn\u003e",
+    "fingerprint": "c682b6e8342b585e"
+  },
+  {
+    "message": "loaded config from /etc/app/flags.yaml in 312us",
+    "template": "loaded config from /etc/app/flags.yaml in \u003cn\u003eus",
+    "fingerprint": "6f9ebb438029ac4e"
+  },
+  {
+    "message": "slow query on table orders took 2921ms (threshold 500ms)",
+    "template": "slow query on table orders took \u003cn\u003ems (threshold \u003cn\u003ems)",
+    "fingerprint": "8394964c1654782f"
+  },
+  {
+    "message": "retrying request to payment gateway, attempt 2 of 3",
+    "template": "retrying request to payment gateway, attempt \u003cn\u003e of \u003cn\u003e",
+    "fingerprint": "0627a00f18737fe8"
+  },
+  {
+    "message": "rate limit at 93% for client 8a1f0c",
+    "template": "rate limit at \u003cn\u003e% for client \u003cid\u003e",
+    "fingerprint": "541f56ea67e345c6"
+  },
+  {
+    "message": "rate limit at 93% for client facade",
+    "template": "rate limit at \u003cn\u003e% for client facade",
+    "fingerprint": "4f1f31e99f9ec2ca"
+  },
+  {
+    "message": "payment 7c1e0b9a42 declined: gateway timeout after 7086ms",
+    "template": "payment \u003cid\u003e declined: gateway timeout after \u003cn\u003ems",
+    "fingerprint": "97077cebeaa26a71"
+  },
+  {
+    "message": "failed to write /var/data/exports/5078.json: disk quota exceeded",
+    "template": "failed to write /var/data/exports/\u003cn\u003e.json: disk quota exceeded",
+    "fingerprint": "0160aed7d4591515"
+  },
+  {
+    "message": "connection to db-3.internal:5432 refused",
+    "template": "connection to db-\u003cn\u003e.internal:\u003cn\u003e refused",
+    "fingerprint": "e266b356b445c29a"
+  },
+  {
+    "message": "panic: runtime error: nil pointer dereference in handler CreateOrder",
+    "template": "panic: runtime error: nil pointer dereference in handler CreateOrder",
+    "fingerprint": "907095056df5fdf0"
+  },
+  {
+    "message": "panic: runtime error: nil pointer dereference in handler Refund",
+    "template": "panic: runtime error: nil pointer dereference in handler Refund",
+    "fingerprint": "10d12a35aaa05c24"
+  },
+  {
+    "message": "upstream bank-api returned 503 for transaction 0f3c9a77b2",
+    "template": "upstream bank-api returned 503 for transaction \u003cid\u003e",
+    "fingerprint": "4b830b313013bdc9"
+  },
+  {
+    "message": "circuit breaker open for bank-api, 37 requests rejected",
+    "template": "circuit breaker open for bank-api, \u003cn\u003e requests rejected",
+    "fingerprint": "92247d8785fbc8d5"
+  },
+  {
+    "message": "payment gateway timeout after 5000 ms (psp-eu-2)",
+    "template": "payment gateway timeout after \u003cn\u003e ms (psp-eu-\u003cn\u003e)",
+    "fingerprint": "48473d0543833468"
+  },
+  {
+    "message": "retrying charge for ord_7Q2K9M, attempt 3 of 3",
+    "template": "retrying charge for ord_\u003cid\u003e, attempt \u003cn\u003e of \u003cn\u003e",
+    "fingerprint": "b8003df8e2366366"
+  },
+  {
+    "message": "charge failed: upstream payments returned 504",
+    "template": "charge failed: upstream payments returned 504",
+    "fingerprint": "21c66fc3116cd1f2"
+  },
+  {
+    "message": "POST /v1/checkout 502 in 5151 ms",
+    "template": "POST /v1/checkout 502 in \u003cn\u003e ms",
+    "fingerprint": "fd0566eaccf4410a"
+  },
+  {
+    "message": "panic: runtime error: index out of range [5] with length 3",
+    "template": "panic: runtime error: index out of range [\u003cn\u003e] with length \u003cn\u003e",
+    "fingerprint": "b7e224f57b7c06b0"
+  },
+  {
+    "message": "panic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0x4a2b1c]",
+    "template": "panic: runtime error: invalid memory address or nil pointer dereference",
+    "fingerprint": "876f1091824bda93"
+  },
+  {
+    "message": "http: panic serving 10.0.3.14:53412: runtime error: slice bounds out of range [:12] with capacity 8",
+    "template": "http: panic serving \u003cip\u003e: runtime error: slice bounds out of range [:\u003cn\u003e] with capacity \u003cn\u003e",
+    "fingerprint": "6e4427cce664d663"
+  },
+  {
+    "message": "context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+    "template": "context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+    "fingerprint": "8608276a193b7b57"
+  },
+  {
+    "message": "dial tcp 10.0.4.21:6379: connect: connection refused",
+    "template": "dial tcp \u003cip\u003e: connect: connection refused",
+    "fingerprint": "c8c833b63d228196"
+  },
+  {
+    "message": "read tcp 172.17.0.3:41234-\u003e172.17.0.5:5432: i/o timeout",
+    "template": "read tcp \u003cip\u003e-\u003e\u003cip\u003e: i/o timeout",
+    "fingerprint": "de89ea33b42db5aa"
+  },
+  {
+    "message": "pq: duplicate key value violates unique constraint \"users_email_key\"",
+    "template": "pq: duplicate key value violates unique constraint \"users_email_key\"",
+    "fingerprint": "951192739d3cb05b"
+  },
+  {
+    "message": "json: cannot unmarshal string into Go struct field Order.items.qty of type int",
+    "template": "json: cannot unmarshal string into Go struct field Order.items.qty of type int",
+    "fingerprint": "819ccf770a719dfd"
+  },
+  {
+    "message": "open /tmp/upload-3829121.part: no such file or directory",
+    "template": "open /tmp/\u003cid\u003e.part: no such file or directory",
+    "fingerprint": "315ac4bbc50a260a"
+  },
+  {
+    "message": "java.lang.NullPointerException: Cannot invoke \"String.length()\" because \"\u003clocal1\u003e\" is null",
+    "template": "java.lang.NullPointerException: Cannot invoke \"String.length()\" because \"\u003clocal1\u003e\" is null",
+    "fingerprint": "1006df9dc8335be0"
+  },
+  {
+    "message": "java.lang.IllegalStateException: Connection pool exhausted (max=50, active=50, idle=0)",
+    "template": "java.lang.IllegalStateException: Connection pool exhausted (max=\u003cn\u003e, active=\u003cn\u003e, idle=\u003cn\u003e)",
+    "fingerprint": "24d98a6aa57d4603"
+  },
+  {
+    "message": "org.postgresql.util.PSQLException: ERROR: deadlock detected",
+    "template": "org.postgresql.util.PSQLException: ERROR: deadlock detected",
+    "fingerprint": "dc4c0268014d543f"
+  },
+  {
+    "message": "java.net.SocketTimeoutException: Read timed out after 30000 ms",
+    "template": "java.net.SocketTimeoutException: Read timed out after \u003cn\u003e ms",
+    "fingerprint": "ec2ad779252dd7f4"
+  },
+  {
+    "message": "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space",
+    "template": "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space",
+    "fingerprint": "4371509a2aa87371"
+  },
+  {
+    "message": "Caused by: java.sql.SQLTransientConnectionException: HikariPool-1 - Connection is not available, request timed out after 30005ms.",
+    "template": "Caused by: java.sql.SQLTransientConnectionException: HikariPool-\u003cn\u003e - Connection is not available, request timed out after \u003cn\u003ems.",
+    "fingerprint": "ed7b6b00a0b346aa"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"app.py\", line 12, in \u003cmodule\u003e",
+    "template": "File \"app.py\", line \u003cn\u003e, in \u003cmodule\u003e",
+    "fingerprint": "81596823e8d2bb63"
+  },
+  {
+    "message": "KeyError: 'user_id'",
+    "template": "KeyError: 'user_id'",
+    "fingerprint": "cff617365d0ce34a"
+  },
+  {
+    "message": "ValueError: invalid literal for int() with base 10: 'abc'",
+    "template": "ValueError: invalid literal for int() with base \u003cn\u003e: 'abc'",
+    "fingerprint": "16bc2c2a2401e43c"
+  },
+  {
+    "message": "ValueError: invalid literal for int() with base 10: 'xyz'",
+    "template": "ValueError: invalid literal for int() with base \u003cn\u003e: 'xyz'",
+    "fingerprint": "3a4d9e2f4d1bea86"
+  },
+  {
+    "message": "ConnectionResetError: [Errno 104] Connection reset by peer",
+    "template": "ConnectionResetError: [Errno \u003cn\u003e] Connection reset by peer",
+    "fingerprint": "11d601b01d0351cc"
+  },
+  {
+    "message": "redis.exceptions.TimeoutError: Timeout reading from socket",
+    "template": "redis.exceptions.TimeoutError: Timeout reading from socket",
+    "fingerprint": "d3895ab50772c0f4"
+  },
+  {
+    "message": "psycopg2.OperationalError: could not connect to server: Connection refused",
+    "template": "psycopg2.OperationalError: could not connect to server: Connection refused",
+    "fingerprint": "52e01d92f77c17d4"
+  },
+  {
+    "message": "GET /api/v2/users/8f14e45f-ceea-467a-9575-1f5b3c1e2a9b 404 in 3 ms",
+    "template": "GET /api/v2/users/\u003cuuid\u003e 404 in \u003cn\u003e ms",
+    "fingerprint": "4ee59a8c2b34d60a"
+  },
+  {
+    "message": "POST /api/v1/payments 500 in 120ms",
+    "template": "POST /api/v1/payments 500 in \u003cn\u003ems",
+    "fingerprint": "146cfa9094924687"
+  },
+  {
+    "message": "POST /api/v1/payments 503 in 98ms",
+    "template": "POST /api/v1/payments 503 in \u003cn\u003ems",
+    "fingerprint": "808e7e6ccf179786"
+  },
+  {
+    "message": "10.1.2.3 - - [07/Nov/2026:10:15:30 +0000] \"GET /index.html HTTP/1.1\" 200 512",
+    "template": "\u003cip\u003e - - [\u003cn\u003e/Nov/\u003cn\u003e:\u003ctime\u003e +\u003cn\u003e] \"GET /index.html HTTP/1.1\" \u003cn\u003e \u003cn\u003e",
+    "fingerprint": "61a04b958481b136"
+  },
+  {
+    "message": "upstream timed out (110: Connection timed out) while reading response header from upstream, client: 192.168.1.10, server: api.example.com, request: \"GET /v1/orders?page=2 HTTP/1.1\"",
+    "template": "upstream timed out (\u003cn\u003e: Connection timed out) while reading response header from upstream, client: \u003cip\u003e, server: api.example.com, request: \"GET /v1/orders HTTP/1.1\"",
+    "fingerprint": "c32107298d1ce67e"
+  },
+  {
+    "message": "request to https://api.stripe.com/v1/charges?amount=5000\u0026currency=eur failed with status 429",
+    "template": "request to https://api.stripe.com/v1/charges failed with status 429",
+    "fingerprint": "0121d9d153332396"
+  },
+  {
+    "message": "request to https://api.stripe.com/v1/refunds/re_3NqX2b failed with status 429",
+    "template": "request to https://api.stripe.com/v1/refunds/\u003cid\u003e failed with status 429",
+    "fingerprint": "d0e1e0a17a7e9b9d"
+  },
+  {
+    "message": "ERROR: relation \"orders_2026_11\" does not exist at character 15",
+    "template": "ERROR: relation \"orders_2026_11\" does not exist at character \u003cn\u003e",
+    "fingerprint": "a6c12fc62b4913fc"
+  },
+  {
+    "message": "too many connections for role \"app\"",
+    "template": "too many connections for role \"app\"",
+    "fingerprint": "87ea9551b3612a7a"
+  },
+  {
+    "message": "could not obtain lock on row in relation \"accounts\"",
+    "template": "could not obtain lock on row in relation \"accounts\"",
+    "fingerprint": "b48a2e574f72586b"
+  },
+  {
+    "message": "Lost connection to MySQL server at 'reading initial communication packet', system error: 0",
+    "template": "Lost connection to MySQL server at '\u003cstr\u003e', system error: \u003cn\u003e",
+    "fingerprint": "4b539af2d5dd699a"
+  },
+  {
+    "message": "timeout after 30s waiting for lock /var/lock/job-17.lock",
+    "template": "timeout after \u003cn\u003es waiting for lock /var/lock/\u003cid\u003e.lock",
+    "fingerprint": "a5d4635a8f4a78e7"
+  },
+  {
+    "message": "Out of memory: Killed process 18213 (java) total-vm:8123456kB, anon-rss:4012348kB",
+    "template": "Out of memory: Killed process \u003cn\u003e (java) total-vm:\u003cn\u003ekb, anon-rss:\u003cn\u003ekb",
+    "fingerprint": "43b2852d1a0f8693"
+  },
+  {
+    "message": "OOMKilled: container api-7d9f8b6c4-x2kqp exceeded memory limit 512Mi",
+    "template": "OOMKilled: container api-\u003cid\u003e exceeded memory limit \u003cid\u003e",
+    "fingerprint": "2271f0946c14de79"
+  },
+  {
+    "message": "disk usage at 97% on /dev/sda1",
+    "template": "disk usage at \u003cn\u003e% on /dev/\u003cid\u003e",
+    "fingerprint": "8d7de17e384e38dd"
+  },
+  {
+    "message": "write /data/wal/000000010000000A00000042: no space left on device",
+    "template": "write /data/wal/\u003cid\u003e: no space left on device",
+    "fingerprint": "cf0d44bcf9f00951"
+  },
+  {
+    "message": "invalid token for user alice@example.com: signature mismatch",
+    "template": "invalid token for user \u003cemail\u003e: signature mismatch",
+    "fingerprint": "b89eb3d855fe5ca9"
+  },
+  {
+    "message": "login failed for user bob@example.com from 203.0.113.9: wrong password",
+    "template": "login failed for user \u003cemail\u003e from \u003cip\u003e: wrong password",
+    "fingerprint": "a4fbc359816c2b8b"
+  },
+  {
+    "message": "permission denied: role viewer cannot revoke key lsk_ing_hyqay6m3",
+    "template": "permission denied: role viewer cannot revoke key lsk_ing_\u003cid\u003e",
+    "fingerprint": "5f21ac2c7c53d5f1"
+  },
+  {
+    "message": "validation failed: field \"email\" must be a valid address",
+    "template": "validation failed: field \"email\" must be a valid address",
+    "fingerprint": "eccadf6933563934"
+  },
+  {
+    "message": "validation failed: field \"amount\" must be positive, got -12.50",
+    "template": "validation failed: field \"amount\" must be positive, got -\u003cn\u003e",
+    "fingerprint": "0fa4fbc9932333c5"
+  },
+  {
+    "message": "JWT expired at 2026-11-07T10:15:30Z, now 2026-11-07T10:20:01Z",
+    "template": "JWT expired at \u003cts\u003e, now \u003cts\u003e",
+    "fingerprint": "62f2e07a7338d48e"
+  },
+  {
+    "message": "rate limited: 1200 requests in 60s exceeds quota of 1000 for api key 4f9c2e1a8b7d6c5e",
+    "template": "rate limited: \u003cn\u003e requests in \u003cn\u003es exceeds quota of \u003cn\u003e for api key \u003cid\u003e",
+    "fingerprint": "8737728813ab6168"
+  },
+  {
+    "message": "429 Too Many Requests: retry after 17 seconds",
+    "template": "429 Too Many Requests: retry after \u003cn\u003e seconds",
+    "fingerprint": "5585b0b83c3f8d7b"
+  },
+  {
+    "message": "connection from [2001:db8::8a2e:370:7334]:443 reset",
+    "template": "connection from [\u003cip\u003e]:\u003cn\u003e reset",
+    "fingerprint": "3afdefdcc705f277"
+  },
+  {
+    "message": "cache key session:7f3c2a91 evicted after 3600s",
+    "template": "cache key session:\u003cid\u003e evicted after \u003cn\u003es",
+    "fingerprint": "0d00e56a7492adad"
+  },
+  {
+    "message": "job 7f3c2a91-2b4d-4c1e-9a77-0e5f6d3b2a19 failed after 3 retries",
+    "template": "job \u003cuuid\u003e failed after \u003cn\u003e retries",
+    "fingerprint": "81775826514cb08d"
+  },
+  {
+    "message": "worker-12 crashed with exit code 137",
+    "template": "worker-\u003cn\u003e crashed with exit code 137",
+    "fingerprint": "ee712efee75665bd"
+  },
+  {
+    "message": "\u0000�� binary \u0001 junk",
+    "template": "� binary junk",
+    "fingerprint": "549451d687fbd745"
+  },
+  {
+    "message": "",
+    "template": "",
+    "fingerprint": "25d07aeafd1283e0"
+  },
+  {
+    "message": "upstream timed out, request: \"GET /v1/orders?page=2 HTTP/1.1\", upstream: \"http://10.0.0.7:8080/v1/orders?page=2\"",
+    "template": "upstream timed out, request: \"GET /v1/orders HTTP/1.1\", upstream: \"\u003cstr\u003e\"",
+    "fingerprint": "3ffb2fa99fa68a58"
+  },
+  {
+    "message": "HTTP/1.1 503 Service Unavailable from upstream catalog",
+    "template": "HTTP/1.1 503 Service Unavailable from upstream catalog",
+    "fingerprint": "164a666e1f031742"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/orders.py\", line 88, in charge\n    resp = client.post(url)\nrequests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='psp.example.com', port=443): Max retries exceeded",
+    "template": "requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='psp.example.com', port=\u003cn\u003e): Max retries exceeded",
+    "fingerprint": "f45d8bb58fb0e049"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/orders.py\", line 91, in charge\n    qty = int(raw)\nValueError: invalid literal for int() with base 10: 'abc'",
+    "template": "ValueError: invalid literal for int() with base \u003cn\u003e: 'abc'",
+    "fingerprint": "16bc2c2a2401e43c"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/users.py\", line 12, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 31337",
+    "template": "KeyError: 'user_id' for user \u003cn\u003e",
+    "fingerprint": "bf0633818c482366"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/users.py\", line 140, in load\n    return cache[user_id]\nKeyError: 'user_id' for user 42",
+    "template": "KeyError: 'user_id' for user \u003cn\u003e",
+    "fingerprint": "bf0633818c482366"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/db.py\", line 7, in connect\n    conn = pool.get()\nTimeoutError: pool exhausted after 30s\n\n   \n",
+    "template": "TimeoutError: pool exhausted after \u003cn\u003es",
+    "fingerprint": "c4f588103b72b846"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\n  File \"/app/worker.py\", line 42, in run\n    self.step()\nRecursionError: maximum recursion depth exceeded while calling a Python object",
+    "template": "RecursionError: maximum recursion depth exceeded while calling a Python object",
+    "fingerprint": "3cb8c56b54170a47"
+  },
+  {
+    "message": "Traceback (most recent call last):\n   \n\t\n",
+    "template": "Traceback (most recent call last):",
+    "fingerprint": "32fd680ab8df3a02"
+  },
+  {
+    "message": "Traceback (most recent call last):\n  File \"/app/a.py\", line 3, in f\n    g()\nKeyError: 'id'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/app/a.py\", line 5, in f\n    raise LookupError(\"missing 7\")\nLookupError: missing 7",
+    "template": "LookupError: missing \u003cn\u003e",
+    "fingerprint": "cca6c4fd227ab95f"
+  },
+  {
+    "message": "worker-7 crashed with exit code 1 after 3412 ms",
+    "template": "worker-\u003cn\u003e crashed with exit code 1 after \u003cn\u003e ms",
+    "fingerprint": "9a810c36bbf4c4e8"
+  },
+  {
+    "message": "job 8812 failed: exit status 2",
+    "template": "job \u003cn\u003e failed: exit status 2",
+    "fingerprint": "45e66992d81038af"
+  },
+  {
+    "message": "process 18213 terminated by signal 9 after 30s",
+    "template": "process \u003cn\u003e terminated by signal 9 after \u003cn\u003es",
+    "fingerprint": "4a6f44e540b73852"
+  },
+  {
+    "message": "process 4471 terminated by signal 15 after 12s",
+    "template": "process \u003cn\u003e terminated by signal 15 after \u003cn\u003es",
+    "fingerprint": "12e099cb01d53a8e"
+  },
+  {
+    "message": "child process 991 exited: signal: killed",
+    "template": "child process \u003cn\u003e exited: signal: killed",
+    "fingerprint": "8f8b18f11a15db4c"
+  },
+  {
+    "message": "pq: duplicate key value violates unique constraint \"orders_pkey\" (SQLSTATE 23505)",
+    "template": "pq: duplicate key value violates unique constraint \"orders_pkey\" (SQLSTATE 23505)",
+    "fingerprint": "e61782e98fafc22f"
+  },
+  {
+    "message": "could not serialize access due to concurrent update (SQLSTATE 40001), retry 3 of 5",
+    "template": "could not serialize access due to concurrent update (SQLSTATE 40001), retry \u003cn\u003e of \u003cn\u003e",
+    "fingerprint": "9d7ac1fb7a2f3bd1"
+  },
+  {
+    "message": "ERROR: relation \"payments\" does not exist (SQLSTATE 42P01)",
+    "template": "ERROR: relation \"payments\" does not exist (SQLSTATE 42P01)",
+    "fingerprint": "2b3a37bf28b0c754"
+  },
+  {
+    "message": "txn 5512 aborted: sqlstate=40001 after 812ms",
+    "template": "txn \u003cn\u003e aborted: sqlstate=40001 after \u003cn\u003ems",
+    "fingerprint": "d2a7d0a5170b33e9"
+  },
+  {
+    "message": "upstream call failed status=503 in 2400ms",
+    "template": "upstream call failed status=503 in \u003cn\u003ems",
+    "fingerprint": "54eff28a2af835fb"
+  },
+  {
+    "message": "upstream call failed status: 502 after 3 retries",
+    "template": "upstream call failed status: 502 after \u003cn\u003e retries",
+    "fingerprint": "59552d0930b49dad"
+  },
+  {
+    "message": "handler failed code=500 for request 77812",
+    "template": "handler failed code=500 for request \u003cn\u003e",
+    "fingerprint": "2df3ee8fb31750ff"
+  },
+  {
+    "message": "handler failed code: 500 for request 77813",
+    "template": "handler failed code: 500 for request \u003cn\u003e",
+    "fingerprint": "d20357fcd8c3d6dd"
+  }
+]

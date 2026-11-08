@@ -204,6 +204,9 @@ curl -N -b jar.txt "http://localhost:8083/api/projects/demo/tail?level=error,fat
 # Dashboard reads (ADR 0014): logs, histogram and facets of a project you are a member of
 curl -b jar.txt "http://localhost:8083/api/projects/demo/histogram?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z&service=payments,checkout"
 curl -b jar.txt "http://localhost:8083/api/projects/demo/facets?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z&level=error"
+# Error groups (ADR 0022): groups in a window, one group, and its status (owner or admin)
+curl -b jar.txt "http://localhost:8083/api/projects/demo/groups?from=2026-11-07T00:00:00Z&to=2026-11-08T00:00:00Z&sort=count"
+curl -b jar.txt -H "Content-Type: application/json" -H "Origin: http://localhost:8083"   -d '{"status":"resolved","note":"fixed in 1.4.2"}' http://localhost:8083/api/projects/demo/groups/<fingerprint>/status
 ```
 
 Running the services without Docker, the load generator and all commands are described in [AGENTS.md](AGENTS.md). Configuration is read from environment variables; `.env.example` lists every variable with its default.
