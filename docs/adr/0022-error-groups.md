@@ -1,6 +1,6 @@
 # ADR 0022: Error groups (fingerprints, groups API, group status)
 
-Status: **draft** (v0.3 package J1), waiting for the owner's approval before any code.
+Status: **accepted** (v0.3 package J1, 2026-11-08). Approved with the defaults: only `warn`, `error` and `fatal` are fingerprinted, the `group_seen` view is included, and there is no Python `Traceback` last-line rule (the key relies on `exception.type`).
 
 ## Context
 v0.3 starts with error groups: many log lines with the same cause should be read as one problem, with counts, first and last seen, and a status the team sets.
@@ -9,7 +9,7 @@ v0.3 starts with error groups: many log lines with the same cause should be read
 
 This ADR fixes the fingerprint rule, where groups and their status live, and the API. The groups UI (J2), alerts (K) and incidents (L) build on it.
 
-## Decision (proposed)
+## Decision
 
 ### 1. Fingerprint key
 `fingerprint = first 8 bytes (big-endian) of SHA-256(FingerprintVersion ‖ service ‖ keyTemplate ‖ errorType)`, fields separated by `0x1F`. A result of `0` becomes `1`, because `0` means "not grouped".
@@ -37,14 +37,14 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
 ### 2. Normalization rules
 - **Preparation:** cut to the first line, then to 512 bytes on a rune boundary. Invalid UTF-8 becomes U+FFFD, and control characters become spaces.
 - **Rules,** in this order, all Go `regexp` (RE2, linear time):
-  1. HTTP status codes are protected: a 4xx or 5xx after `returned`, `status`, `code` or `HTTP/x` (but not when a noun follows: "returned 503 results" is a count), at the start of the line before a capitalized reason phrase, and the status in a `METHOD path STATUS` request line.
+  1. HTTP versions (`HTTP/1.1`) and HTTP status codes are protected: a 4xx or 5xx after `returned`, `status`, `code` or `HTTP/x` (but not when a noun follows: "returned 503 results" is a count), at the start of the line before a capitalized reason phrase, and the status in a `METHOD path STATUS` request line.
   2. Quoted strings: one that looks like an identifier (no spaces, at most 64 characters, such as `"users_email_key"`, `'user_id'` or `"String.length()"`) is kept, because it is usually a column, key or method name. Anything else becomes `"<str>"`, such as user input with spaces. A quoted request line is kept so its path gets normalized.
   3. ISO timestamps become `<ts>`, dates `<date>` and clock times `<time>`.
   4. UUIDs become `<uuid>`, and emails `<email>`.
   5. URLs keep the scheme, host and path, and lose the query and fragment.
   6. Kubernetes pod names (`api-7d9f8b6c4-x2kqp`) become `api-<id>`.
   7. IPv4 (with an optional port) and IPv6 become `<ip>`.
-  8. In paths, segments with digits become `<n>` or `<id>` and keep their file extension (`/var/data/exports/<n>.json`). `v1` and `v2` are kept.
+  8. In paths, a `?…` query string is dropped first; then segments with digits become `<n>` or `<id>` and keep their file extension (`/var/data/exports/<n>.json`). `v1` and `v2` are kept.
   9. Base64-like tokens of 24 or more characters with letters and digits become `<token>`.
   10. Hex: `0x…` and runs of 8 or more hex characters become `<id>`, and so do 6–7 character hex runs that mix letters and digits.
   11. Numbers with units become `<n>ms`, `<n> ms`, `<n>us`, `<n>kb`; percentages become `<n>%`.
@@ -54,9 +54,9 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
   15. Whitespace is collapsed and trimmed, and the protected status codes are restored.
 - **Invariants,** each enforced by tests:
   - **Deterministic:** the same input always gives the same output.
-  - **Idempotent:** `normalize(normalize(x)) == normalize(x)`. This held for the whole corpus.
+  - **Idempotent:** `normalize(normalize(x)) == normalize(x)`. The rules run as a fixed-point loop (at most 4 passes) because one pass was not always stable (a status lost its context after the path rule). Checked on the corpus, 3,000 random inputs and a fuzz run of about 290k executions.
   - **Never panics:** on empty, huge, binary or invalid-UTF-8 input.
-  - **Bounded time:** the input is cut to 512 bytes first. The worst case measured was a 60 KB message full of tokens at about 0.37 ms; the typical case is about 42 µs.
+  - **Bounded time:** the input is cut to 512 bytes first. The worst case measured was a 60 KB message full of tokens at about 0.37 ms; the typical case is about 42 µs for one pass and about 83 µs with the fixed-point loop (benchmark on the corpus).
 
 ### 3. Evaluation
 - **Corpus:** 76 messages: every loadgen template, plus Go, Java, Python, HTTP, SQL, timeout, OOM, auth, validation, disk, rate-limit and IPv6 lines, junk and an empty message. The full table is at the end; it becomes the golden test.
@@ -73,7 +73,7 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
 - **Under-merged:**
   - Ids that are all letters (`facade`, `ord_bcfdae`), at 0.02% of the demo.
   - Quoted values that look like identifiers: `ValueError: … 'abc'` and `'xyz'` stay separate, and so do partition tables (`"orders_2026_11"`).
-  - An unquoted query string in a path (`/v1/orders?page=2` becomes `/v1/<id>`). I will strip `?…` before the path rule.
+  - An unquoted query string in a path (`/v1/orders?page=2` became `/v1/<id>`). Fixed: `?…` is dropped before the path rule.
   - All of these are accepted for v1; the golden tests pin the behavior.
 
 ### 4. Storage
@@ -87,7 +87,7 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
   - Measured on 100k rows: the view reads 200 rows (4 ms), against 83k rows (13 ms) for the base table with `FINAL`.
   - At 100k rows the base table would do. The view keeps `is_new` and `regressed` independent of how much log data is retained, so I propose it now, while there is nothing to backfill.
   - It gets a TTL on `last_seen` equal to the log retention.
-- **Fingerprint filter:** a `bloom_filter` skip index on `fingerprint`, to be measured during the implementation.
+- **Fingerprint filter:** a `bloom_filter(0.01)` skip index on `fingerprint` (migration 0006); at the demo sizes its effect is too small to measure.
 - **The other measurements** (100k rows, 24 h window): the groups query with `FINAL` took 18 ms (14 ms for 1 h), and a 24-bucket sparkline for 50 groups took 16 ms.
 - **PostgreSQL `error_groups`** (migration 0003): `project_id`, `fingerprint BIGINT` (the uint64 bits), `status` (`open`, `ignored` or `resolved`), `resolved_at`, `note` (at most 500 characters), `updated_by`, `updated_at`, with the primary key `(project_id, fingerprint)`.
   - A row is created on the first status change; no row means `open`.
@@ -110,7 +110,8 @@ All endpoints use session auth and need the viewer role or higher; non-members g
 - **`POST /api/projects/{slug}/groups/{fingerprint}/status`**
   - Owner and admin only; viewers get a 403.
   - Body: `{"status":"open|ignored|resolved","note":"…"}`.
-  - It writes an `audit_log` row with the action `group.status`, upserts `error_groups`, and sets `resolved_at = now` when the status becomes resolved.
+  - It writes an `audit_log` row with the action `group.status` and upserts `error_groups` in one transaction. `resolved_at` is set to now when the status becomes resolved, kept while it stays resolved, and cleared otherwise.
+  - Only a group the project has seen can get a status (else 404).
 - **Additive changes:**
   - An optional `fingerprint` (16 hex) filter on `/logs`, `/histogram`, `/facets` and `/tail`, and on `/v1/logs`.
   - A `fingerprint` field on log items: a hex string, empty when not grouped.
@@ -123,11 +124,16 @@ All endpoints use session auth and need the viewer role or higher; non-members g
 ### 6. Risks and what this package does not do
 **Risks:**
 - **Rule changes regroup everything:** bumping the version splits old and new rows. This is mitigated by the golden tests and the version constant; a migration path for statuses (old to new fingerprint) is out of scope.
-- **Processor CPU:** about 8 µs per event with warn and above. This is measured in the regression check of this package.
+- **Processor CPU:** about 83 µs per `warn`, `error` or `fatal` event (benchmark); `debug` and `info` rows are not normalized.
 - **Hot groups dominate:** a hot group can dominate the sort by count; `last_seen` and `is_new` help.
 - **Per-instance limits:** the same as the other read endpoints.
 
 **Not in this package:** ML or clustering by similarity, stack trace parsing beyond the first line, merging or splitting groups by hand, group assignment and comments, notifications, the groups UI (J2), and backfilling old rows.
+
+## Consequences
+- Every new `warn`, `error` and `fatal` row carries a fingerprint and a template; older rows and `debug`/`info` rows stay ungrouped (`fingerprint = 0`).
+- Changing a normalization rule fails the golden test; a deliberate change bumps `fingerprint.Version`, which splits old and new groups.
+- The groups UI (J2), alerts (K) and incidents (L) build on these endpoints and the `fingerprint` filter.
 
 ## Appendix: golden corpus (prototype output, 74 non-empty cases plus an empty one)
 

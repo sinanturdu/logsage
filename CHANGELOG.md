@@ -4,6 +4,17 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+- Error groups backend (v0.3 package J1, ADR 0022):
+  - The processor fingerprints `warn`, `error` and `fatal` rows: a normalized template of the first line plus service and error type. A golden corpus test pins every template and fingerprint.
+  - ClickHouse: a `template` column, a `bloom_filter` index on `fingerprint`, and the `group_seen` table with its materialized view for first and last seen.
+  - PostgreSQL: `error_groups` for the group status and note; every change writes an audit row.
+  - `GET /api/projects/{slug}/groups` (counts, sparklines, `is_new`, `regressed`, status filter, sorts, cursor), `GET .../groups/{fingerprint}` and `POST .../groups/{fingerprint}/status` (owner and admin).
+  - An optional `fingerprint` filter on `/logs`, `/histogram`, `/facets`, `/tail` and `/v1/logs`, and a `fingerprint` field on log events.
+
+### Notes
+- Rows ingested before this version, and `debug` and `info` rows, are not grouped (`fingerprint = 0`); there is no backfill.
+
 ## [v0.2.1] - 2026-11-08
 
 Patch release: dashboard fixes only. Release notes: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md).

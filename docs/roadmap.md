@@ -43,18 +43,18 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package I2c-4:** the dashboard served from `cmd/api` (embedded build, SPA fallback, caching), strict security headers and CSP, runtime `/config.json` with `PUBLIC_INGEST_URL`, Docker frontend stage and root `.dockerignore`, legacy static keys off by default, v0.2.0 release notes (ADR 0021)
 - [x] **v0.2.0 released** ([release notes](releases/v0.2.0.md))
 
+## v0.3: Error groups, alerts and incidents
+- [x] **Package J1:** error groups backend: fingerprinting in the processor (normalizer with a golden corpus), `template` column, `group_seen` view, groups list and detail, group status with audit rows, `fingerprint` filter and field (ADR 0022)
+- [ ] **Package J2:** error groups UI
+- [ ] **Package K:** alert rules and notifications
+- [ ] **Package L:** incidents
+
 ## v0.3 candidates
-- [ ] Error groups: fingerprinting and an error groups view
-- [ ] Alerts and incidents
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 - [ ] Per-project quotas (ingest rate, retention, query budget)
 - [ ] Email verification and password reset
 - [ ] Prometheus metrics endpoint
 - [ ] Remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`)
-
-## v0.4: Error groups and alerts
-- [ ] Fingerprinting, error groups UI
-- [ ] Alert rules and notifications
 
 ## v0.5: Anomaly detection
 - [ ] Python service, statistical baseline, evaluation notebook
