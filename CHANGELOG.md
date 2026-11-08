@@ -111,7 +111,7 @@ Second milestone: accounts and dashboard. Release notes: [docs/releases/v0.2.0.m
 - Compose: one-shot `migrate` service; ingest and query depend on it and on PostgreSQL. The image contains `cmd/admin`.
 
 ### Deprecated
-- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (off by default since v0.2.0), mapped to the default project, with a startup warning. Removed in v0.3.
+- Static `INGEST_API_KEY` / `QUERY_API_KEY`: honored only with `ALLOW_LEGACY_STATIC_KEYS=true` (off by default since v0.2.0), mapped to the default project, with a startup warning. Removed in v0.3 (package M).
 
 - PostgreSQL foundation for v0.2 (ADR 0011): `github.com/jackc/pgx/v5` v5.7.4; hand-written embedded migrations with checksums (line-ending independent) and an advisory lock; `projects` and `api_keys` tables plus the `default` project that v0.1 data belongs to.
 - Per-project API keys `lsk_<ing|qry>_<prefix>_<secret>`: only the prefix and SHA-256 are stored, constant-time verification with one generic rejection error, throttled `last_used_at`.

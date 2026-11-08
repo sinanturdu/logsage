@@ -47,7 +47,9 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package J1:** error groups backend: fingerprinting in the processor (normalizer with a golden corpus), `template` column, `group_seen` view, groups list and detail, group status with audit rows, `fingerprint` filter and field (ADR 0022)
 - [ ] **Package J2:** error groups UI
 - [ ] **Package K:** alert rules and notifications
+  - Candidate rule: many new groups per hour, a guard against group explosion (for example from unique ids made only of letters, which the normalizer cannot tell from words)
 - [ ] **Package L:** incidents
+- [ ] **Package M:** remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`, `INGEST_API_KEY`, `QUERY_API_KEY`), as promised in the v0.2.0 release notes
 
 ## v0.4: Anomaly detection and AI root cause
 - [ ] Python service: statistical baseline per service and level, evaluation notebook
@@ -65,4 +67,3 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [ ] Backups and restore
 - [ ] Scale tests
 - [ ] Screenshots, README polish, demo video, one-command setup
-- [ ] Remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`)
