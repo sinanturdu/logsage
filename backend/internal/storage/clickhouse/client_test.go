@@ -267,8 +267,12 @@ func TestMigrateEmbedded(t *testing.T) {
 	if err := c.Migrate(context.Background(), migrations.ClickHouse(), MigrationData{Database: "logsage_x", TTLDays: 7}); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if len(f.reqs) != 4 {
-		t.Fatalf("statements = %d, want 4", len(f.reqs))
+	if len(f.reqs) != 5 {
+		t.Fatalf("statements = %d, want 5", len(f.reqs))
+	}
+	// template (ADR 0022): empty for rows that are not grouped.
+	if tpl := f.reqs[4].body; !strings.Contains(tpl, "ADD COLUMN IF NOT EXISTS template String DEFAULT ''") {
+		t.Errorf("template migration = %q", tpl)
 	}
 	// inserted_at (ADR 0015): old rows get the fixed epoch, never now().
 	if ins := f.reqs[2].body; !strings.Contains(ins, "ADD COLUMN IF NOT EXISTS inserted_at DateTime64(3, 'UTC') DEFAULT toDateTime64(0, 3, 'UTC')") || strings.Contains(ins, "DEFAULT now") {

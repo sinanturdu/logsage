@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/fingerprint"
 )
 
 // legacyDefaultProject is the project_id v0.1 wrote for every entry; it
@@ -30,7 +32,8 @@ type Row struct {
 	Level       string
 	Service     string
 	Message     string
-	Fingerprint uint64
+	Fingerprint uint64 // 0: not grouped (debug, info), see internal/fingerprint
+	Template    string // the normalized first line; empty when not grouped
 	TraceID     string
 	Attributes  map[string]string
 	IngestedAt  time.Time
@@ -95,6 +98,9 @@ func parseEntry(e Entry) (Row, string) {
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
+	// Error groups (ADR 0022): warn, error and fatal rows get a fingerprint
+	// here, once per entry, before the batch is flushed.
+	fp, tpl := fingerprint.Compute(p.Level, p.Service, p.Message, attrs)
 	return Row{
 		ProjectID:   projectID,
 		EventID:     e.ID,
@@ -102,7 +108,8 @@ func parseEntry(e Entry) (Row, string) {
 		Level:       p.Level,
 		Service:     p.Service,
 		Message:     p.Message,
-		Fingerprint: 0, // computed in a later milestone
+		Fingerprint: fp,
+		Template:    tpl,
 		TraceID:     p.TraceID,
 		Attributes:  attrs,
 		IngestedAt:  ingestedAt.UTC(),
@@ -126,6 +133,7 @@ type jsonRow struct {
 	Service     string            `json:"service"`
 	Message     string            `json:"message"`
 	Fingerprint uint64            `json:"fingerprint"`
+	Template    string            `json:"template"`
 	TraceID     string            `json:"trace_id"`
 	Attributes  map[string]string `json:"attributes"`
 	IngestedAt  string            `json:"ingested_at"`
@@ -153,6 +161,7 @@ func encodeRows(rows []Row, insertedAt time.Time) ([]byte, error) {
 			Service:     r.Service,
 			Message:     r.Message,
 			Fingerprint: r.Fingerprint,
+			Template:    r.Template,
 			TraceID:     r.TraceID,
 			Attributes:  attrs,
 			IngestedAt:  r.IngestedAt.UTC().Format(chTime),
