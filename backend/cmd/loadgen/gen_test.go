@@ -112,3 +112,18 @@ func TestIncidentEvents(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupedShare(t *testing.T) {
+	for _, share := range []float64{0, 0.05, 0.4, 1} {
+		g := NewGenerator(3).WithGroupedShare(share)
+		n, grouped := 20000, 0
+		for i := 0; i < n; i++ {
+			if isGrouped(g.Event(time.Now()).Level) {
+				grouped++
+			}
+		}
+		if got := float64(grouped) / float64(n); got < share-0.02 || got > share+0.02 {
+			t.Errorf("share %.2f: got %.3f", share, got)
+		}
+	}
+}
