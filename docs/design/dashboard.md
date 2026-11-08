@@ -284,7 +284,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b to I2c-3)
+## As built (I2b to J2)
 
 What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
@@ -320,6 +320,16 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
 - **A lone attribute group** (I2c-3): when only Request or only Context is present and there is no trace, its attributes flow in columns (`repeat(auto-fill, minmax(18rem, 1fr))`) instead of one narrow zone. One group next to Same trace uses `1fr 1.6fr`; the three-zone layout is unchanged.
 - **Chart text** (I2c-3): the total appears once, in the scope line. The summary starts with the peaks, and the long notes sit behind "About this chart".
 - **New-key dialog** (I2c-3): the kind name appears once with a short description; the test-log example has macOS / Linux and Windows PowerShell tabs; the key is shown in full in a wrapping block rather than a clipped input.
+
+- **Error groups** (J2, ADR 0023):
+  - **Placement:** a third header link, "Error groups", between Logs and API keys. The list reuses the explorer's range controls and search box; levels, status, sort, new only and a "Services" disclosure sit in one wrapping toolbar row instead of a filter column, because a group list has fewer facets than the log list.
+  - **The list is a `table`**, not a treegrid: rows are not expanded in place; a group opens its own page. The selected row has the selection color and the pen bar, like a log row, and `j`/`k` move focus to its link.
+  - **Status marks:** □ Open, – Ignored, ✓ Resolved, always with the word. The shapes differ from the level shapes so the two columns are not confused. "New" and "Regressed" are outlined text badges; their color repeats the word, it is not the meaning.
+  - **Templates** are monospace with the placeholders (`<n>`, `<id>` and so on) in pencil grey, so the fixed words stand out.
+  - **The sparkline** is a 96x20 line in the pen color with a spoken peak, not a bar chart: it shows the shape of the trend in a dense row.
+  - **Narrow screens:** below 900 px the table scrolls sideways inside its frame (as on API keys); no columns are dropped, so nothing is hidden.
+  - **The group page** has a "All error groups" link at the top (the nav already says "Error groups"), the template as the heading, the flags explained in sentences, the facts in one line, Status with its actions, a one-strip volume timeline (no error-share line, since a group's logs are all one kind), a breakdown table and the latest five logs.
+  - **Empty list:** "No error groups in this range. Widen the range or include warn." with one muted note under it: "Logs ingested before v0.3 are not grouped."
 
 ## Frontend plan for I2
 

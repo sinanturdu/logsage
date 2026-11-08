@@ -73,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 up
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 seed
 ```
 
-Then open http://localhost:8083/projects/demo/logs (the api serves the built dashboard). For hot-reload frontend work, also run `scripts\dev.ps1 web` and use http://localhost:5173; it proxies `/api` and `/config.json` to the api. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets. Press `l` (or the Live button) to follow new logs while `go run ./cmd/loadgen demo --rate 2` sends some, and use API keys in the header to create an ingest key; it is shown once.
+Then open http://localhost:8083/projects/demo/logs (the api serves the built dashboard). For hot-reload frontend work, also run `scripts\dev.ps1 web` and use http://localhost:5173; it proxies `/api` and `/config.json` to the api. Click an error row from the incident to see its full message, attributes and the Same trace cascade across `payments`, `checkout` and `api`; brush the timeline and use "Zoom to selection" for finer buckets. Press `l` (or the Live button) to follow new logs while `go run ./cmd/loadgen demo --rate 2` sends some, and use API keys in the header to create an ingest key; it is shown once. Open Error groups in the header: the incident's groups lead the list with the New badge; open one to resolve it, then send more incident logs (`go run ./cmd/loadgen demo --incident`) to see it flagged as Regressed.
 
 Keyboard shortcuts (press `?` in the dashboard for the same list):
 
@@ -88,6 +88,9 @@ Keyboard shortcuts (press `?` in the dashboard for the same list):
 | `t` | log explorer | filter by the selected log's trace |
 | `l` | live tail | turn the live tail on or off |
 | `r` | live tail | reconnect now while it waits to retry |
+| `/` | error groups | focus the search box |
+| `j` / `k` | error groups | select the next / previous group |
+| `Enter` | error groups | open the selected group |
 
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.

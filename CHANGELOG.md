@@ -16,6 +16,15 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - The processor caches templates of repeated messages (at most 8,192 entries, about 9 MiB). Cost against v0.2: [docs/benchmarks.md](docs/benchmarks.md#j1-processor-cost-2026-11-08).
   - `loadgen ingest --grouped-share` sets the share of `warn`, `error` and `fatal` events.
 
+- Error groups UI (v0.3 package J2, ADR 0023):
+  - Error groups in the header nav: a table of groups with status, New and Regressed badges, the template, services, levels, count, a sparkline and last and first seen. Filters for range, levels, status, sort, services, template search and new only live in the URL. Load more, and `j`, `k`, `Enter` and `/`.
+  - A group page: flags explained in words, counts by service and level, a volume strip, the latest logs and Open in Logs. Owners and admins resolve, ignore or reopen with an optional note; viewers see the status read-only.
+  - The explorer takes a `fingerprint` parameter (a removable "group: ..." chip), and an expanded log links to its group.
+  - Palette commands: Go to Error groups, status filters, sort orders and new only.
+
+### Fixed
+- `scripts/dev.ps1 up` says what to do when the dev database volume was created with another password than the one in `.env` (run `dev.ps1 down`, then `dev.ps1 up`), instead of a generic compose error.
+
 ### Notes
 - Rows ingested before this version, and `debug` and `info` rows, are not grouped (`fingerprint = 0`); there is no backfill.
 
