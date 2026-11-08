@@ -54,7 +54,7 @@ func TestParseEntry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			row, reason := parseEntry(Entry{ID: "1700000000000-1", Values: tt.values})
+			row, reason := parseEntry(Entry{ID: "1700000000000-1", Values: tt.values}, nil)
 			if tt.wantReason == "" {
 				if reason != "" {
 					t.Fatalf("reason = %q, want valid", reason)
@@ -129,7 +129,7 @@ func TestParseEntryProjectID(t *testing.T) {
 	for _, tt := range tests {
 		v := validEntry("1-0").Values
 		v["project_id"] = tt.project
-		row, reason := parseEntry(Entry{ID: "1-0", Values: v})
+		row, reason := parseEntry(Entry{ID: "1-0", Values: v}, nil)
 		if tt.wantReason == "" {
 			if reason != "" || row.ProjectID != tt.project {
 				t.Errorf("project %v: reason %q, row project %q", tt.project, reason, row.ProjectID)
@@ -161,7 +161,7 @@ func TestParseEntryFingerprint(t *testing.T) {
 		{"debug", "cache miss for key product:55123", nil, "", false},
 	}
 	for _, c := range cases {
-		row, reason := parseEntry(entry(c.level, c.msg, c.attrs))
+		row, reason := parseEntry(entry(c.level, c.msg, c.attrs), nil)
 		if reason != "" {
 			t.Fatalf("%s: %s", c.msg, reason)
 		}
@@ -176,7 +176,7 @@ func TestParseEntryFingerprint(t *testing.T) {
 		}
 	}
 	// The JSON row for ClickHouse carries both.
-	row, _ := parseEntry(entry("error", "boom 42", nil))
+	row, _ := parseEntry(entry("error", "boom 42", nil), nil)
 	b, err := encodeRows([]Row{row}, time.Unix(0, 0))
 	if err != nil {
 		t.Fatal(err)

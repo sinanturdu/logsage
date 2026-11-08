@@ -53,7 +53,7 @@ type payload struct {
 // parseEntry converts a stream entry into a Row. A non-empty reason means the
 // entry is unusable and must be dead-lettered. Reasons never contain event
 // contents.
-func parseEntry(e Entry) (Row, string) {
+func parseEntry(e Entry, fp *fingerprint.Cache) (Row, string) {
 	if len(e.Values) == 0 {
 		return Row{}, "entry has no fields (deleted or trimmed before processing)"
 	}
@@ -100,7 +100,7 @@ func parseEntry(e Entry) (Row, string) {
 	}
 	// Error groups (ADR 0022): warn, error and fatal rows get a fingerprint
 	// here, once per entry, before the batch is flushed.
-	fp, tpl := fingerprint.Compute(p.Level, p.Service, p.Message, attrs)
+	sum, tpl := fp.Compute(p.Level, p.Service, p.Message, attrs)
 	return Row{
 		ProjectID:   projectID,
 		EventID:     e.ID,
@@ -108,7 +108,7 @@ func parseEntry(e Entry) (Row, string) {
 		Level:       p.Level,
 		Service:     p.Service,
 		Message:     p.Message,
-		Fingerprint: fp,
+		Fingerprint: sum,
 		Template:    tpl,
 		TraceID:     p.TraceID,
 		Attributes:  attrs,

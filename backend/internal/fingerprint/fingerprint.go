@@ -160,7 +160,14 @@ const maxPasses = 4
 // changing: that makes Normalize idempotent. Real messages settle after the
 // second pass; the loop is capped at maxPasses.
 func Normalize(message string) string {
-	s := strings.ToValidUTF8(cut(sourceLine(message), MaxInput), "�")
+	return normalizeLine(inputLine(message))
+}
+
+// inputLine is everything Normalize depends on: the source line, cut.
+func inputLine(message string) string { return cut(sourceLine(message), MaxInput) }
+
+func normalizeLine(line string) string {
+	s := strings.ToValidUTF8(line, "�")
 	for i := 0; i < maxPasses; i++ {
 		next := pass(s)
 		if next == s {
