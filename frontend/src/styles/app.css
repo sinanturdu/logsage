@@ -373,3 +373,4 @@ table.groups .gtitle { white-space: normal; min-width: 24rem; max-width: 48rem; 
 .samples li { padding: 3px 0; border-bottom: 1px solid var(--grid); overflow-wrap: anywhere; }
 .samples .t { color: var(--ink); }
 .samples .svc { color: var(--pencil); }
+.group-line { margin: 0 0 var(--space-2); font-size: var(--text-md); overflow-wrap: anywhere; }

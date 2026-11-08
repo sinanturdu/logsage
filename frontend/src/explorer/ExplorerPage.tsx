@@ -89,7 +89,7 @@ export function ExplorerPage() {
   const [histNow, setHistNow] = useState(now)
   const win = resolveRange(state.range, now)
   const ctx = contextWindow(state.range, live ? Math.max(histNow, now) : now, state.zoom)
-  const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId }
+  const filters = { levels: state.levels, services: state.services, q: state.q, traceId: state.traceId, fingerprint: state.fingerprint }
   const histogram = useHistogram(slug, filters, ctx)
   const facets = useFacets(slug, filters, win)
   const logs = useLogs(slug, filters, win)
@@ -356,7 +356,7 @@ export function ExplorerPage() {
         </aside>
 
         <section className="results" aria-label="Logs" aria-busy={logs.isFetching}>
-          <FilterChips state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
+          <FilterChips slug={slug} state={state} onRemove={(next) => update(next)} onClear={() => update(EMPTY_FILTERS)} />
           <LiveBar
             live={live}
             state={tail.state}

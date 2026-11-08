@@ -1,5 +1,9 @@
 import { useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link, useSearchParams } from 'react-router'
+import { useGroupTitle } from '../groups/api'
+import { groupHref, parseRange } from '../groups/model'
+import { TemplateText } from '../groups/parts'
 import { request } from '../api/client'
 import { LogText } from '../components/LogText'
 import { copyText } from './clipboard'
@@ -124,6 +128,29 @@ function SameTrace({ slug, event, onShow }: { slug: string; event: LogEvent; onS
   )
 }
 
+export const NOT_GROUPED = 'Not grouped (ingested before v0.3)'
+
+/**
+ * The log's error group (ADR 0023): its template and a link, loaded lazily
+ * and cached per fingerprint. A warn, error or fatal log without one was
+ * ingested before grouping; debug and info logs are never grouped.
+ */
+function GroupLine({ slug, event }: { slug: string; event: LogEvent }) {
+  const [params] = useSearchParams()
+  const fp = event.fingerprint && event.fingerprint !== '0000000000000000' ? event.fingerprint : ''
+  const title = useGroupTitle(slug, fp)
+  if (!fp) {
+    return ['warn', 'error', 'fatal'].includes(event.level) ? <p className="group-line muted">{NOT_GROUPED}</p> : null
+  }
+  return (
+    <p className="group-line">
+      Group:{' '}
+      {title.data ? <TemplateText text={title.data} /> : <span className="mono">{title.isError ? fp : `${fp.slice(0, 8)}…`}</span>} -{' '}
+      <Link to={groupHref(slug, fp, parseRange(params))}>View group</Link>
+    </p>
+  )
+}
+
 /** The expanded detail of one log (B2 polish round, ADR 0018). */
 export function RowDetail({ slug, event, onFilterTrace, onShow }: Props) {
   const [note, setNote] = useState('')
@@ -137,6 +164,7 @@ export function RowDetail({ slug, event, onFilterTrace, onShow }: Props) {
       <p className="full">
         <LogText text={event.message} />
       </p>
+      <GroupLine slug={slug} event={event} />
       <div className="idline">
         <dl className="ids">
           <div>

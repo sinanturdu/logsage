@@ -16,6 +16,8 @@ export type LogEvent = {
   message: string
   trace_id: string
   attributes: Record<string, string>
+  /** The error group: 16 hex, empty when the log is not grouped (ADR 0022). */
+  fingerprint?: string
 }
 type HistogramResponse = {
   bucket_seconds: number

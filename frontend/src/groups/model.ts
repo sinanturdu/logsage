@@ -2,18 +2,9 @@
 // everything a user chooses lives in the URL; parsing drops invalid values
 // instead of throwing, and serializing leaves defaults out.
 
-import { DEFAULT_PRESET, MAX_SERVICES, MAX_TEXT, isoUtc, parseState, type TimeRange } from '../explorer/model'
+import { DEFAULT_PRESET, MAX_SERVICES, MAX_TEXT, isoUtc, parseFingerprint, parseState, type TimeRange } from '../explorer/model'
 
-const FINGERPRINT = /^[0-9a-f]{16}$/
-
-/**
- * A group fingerprint from a URL: 16 hexadecimal characters (upper case is
- * accepted and lowered). All zeros means "not grouped", so it is no group.
- */
-export function parseFingerprint(v: string | null | undefined): string | null {
-  const s = (v ?? '').toLowerCase()
-  return FINGERPRINT.test(s) && s !== '0000000000000000' ? s : null
-}
+export { parseFingerprint }
 
 /** Only these levels are grouped (ADR 0022). */
 export const GROUP_LEVELS = ['warn', 'error', 'fatal'] as const

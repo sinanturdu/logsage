@@ -118,3 +118,22 @@ export function groupsError(err: unknown, what: 'list' | 'group' = 'list'): Prob
   }
   return { text: errorMessage(err), retry: true }
 }
+
+/**
+ * A group's template for a label (the explorer chip, the row detail),
+ * fetched lazily and cached per fingerprint. The window is the last minute:
+ * the API takes the title from all-time data when the window has no rows.
+ */
+export function useGroupTitle(slug: string, fingerprint: string) {
+  return useQuery({
+    queryKey: ['group-title', slug, fingerprint],
+    enabled: fingerprint !== '',
+    queryFn: async ({ signal }) => {
+      const to = Date.now()
+      const p = new URLSearchParams({ from: isoUtc(to - 60_000), to: isoUtc(to) })
+      const r = await request<GroupDetail>('GET', `${base(slug)}/groups/${fingerprint}?${p.toString()}`, { signal })
+      return r.title
+    },
+    staleTime: Infinity,
+  })
+}

@@ -31,6 +31,7 @@ export const MAX_WINDOW_MS = 7 * 24 * 3_600_000
 export const MAX_TEXT = 256
 export const MAX_SERVICES = 20
 const TRACE_ID = /^[0-9a-f]{32}$/
+const FINGERPRINT = /^[0-9a-f]{16}$/
 
 export type TimeRange = { kind: 'relative'; preset: Preset } | { kind: 'absolute'; from: number; to: number }
 
@@ -40,13 +41,15 @@ export type ExplorerState = {
   services: string[] // empty: every service
   q: string
   traceId: string
+  /** One error group (ADR 0022, 0023): 16 hex, or empty. */
+  fingerprint: string
   /** Zoomed in: the timeline shows only the absolute selection (ADR 0018). */
   zoom: boolean
   /** Live tail on (ADR 0019); only with a relative range. */
   live: boolean
 }
 
-export const EMPTY_FILTERS = { levels: [] as Level[], services: [] as string[], q: '', traceId: '' }
+export const EMPTY_FILTERS = { levels: [] as Level[], services: [] as string[], q: '', traceId: '', fingerprint: '' }
 
 export function isPreset(v: string | null): v is Preset {
   return v !== null && (PRESETS as readonly string[]).includes(v)
@@ -60,6 +63,15 @@ export function presetLabel(p: Preset): string {
 
 export function validTraceId(v: string): boolean {
   return TRACE_ID.test(v)
+}
+
+/**
+ * A group fingerprint from a URL: 16 hexadecimal characters (upper case is
+ * accepted and lowered). All zeros means "not grouped", so it is no group.
+ */
+export function parseFingerprint(v: string | null | undefined): string | null {
+  const s = (v ?? '').toLowerCase()
+  return FINGERPRINT.test(s) && s !== '0000000000000000' ? s : null
 }
 
 /** Parses an RFC3339 instant; null for anything else. */
@@ -103,6 +115,7 @@ export function parseState(params: URLSearchParams): ExplorerState {
     services,
     q,
     traceId: validTraceId(tRaw) ? tRaw : '',
+    fingerprint: parseFingerprint(params.get('fingerprint')) ?? '',
     zoom: range.kind === 'absolute' && params.get('zoom') === '1',
     live,
   }
@@ -131,6 +144,7 @@ export function serializeState(s: ExplorerState): URLSearchParams {
   if (s.services.length > 0) p.set('service', s.services.join(','))
   if (s.q) p.set('q', s.q)
   if (s.traceId) p.set('trace_id', s.traceId)
+  if (s.fingerprint) p.set('fingerprint', s.fingerprint)
   if (s.zoom && s.range.kind === 'absolute') p.set('zoom', '1')
   if (s.live && s.range.kind === 'relative') p.set('live', '1')
   return p
@@ -158,7 +172,7 @@ export function contextWindow(r: TimeRange, now: number, zoom = false): { from: 
 }
 
 export function hasFilters(s: ExplorerState): boolean {
-  return s.levels.length > 0 || s.services.length > 0 || s.q !== '' || s.traceId !== ''
+  return s.levels.length > 0 || s.services.length > 0 || s.q !== '' || s.traceId !== '' || s.fingerprint !== ''
 }
 
 /**

@@ -17,7 +17,7 @@ const NOW = Date.parse('2026-11-07T02:17:00Z')
 
 describe('URL state', () => {
   it('defaults to the last 15 minutes with no filters', () => {
-    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '', zoom: false, live: false })
+    expect(p('')).toEqual({ range: { kind: 'relative', preset: '15m' }, levels: [], services: [], q: '', traceId: '', fingerprint: '', zoom: false, live: false })
     expect(serializeState(p('')).toString()).toBe('')
   })
 
@@ -28,15 +28,29 @@ describe('URL state', () => {
       services: ['payments', 'checkout'],
       q: 'gateway timeout',
       traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      fingerprint: '0123456789abcdef',
       zoom: true,
       live: false,
     }
     const qs = serializeState(s).toString()
     expect(qs).toBe(
-      'from=2026-11-07T02%3A11%3A30Z&to=2026-11-07T02%3A17%3A00.250Z&level=warn%2Cerror&service=payments%2Ccheckout&q=gateway+timeout&trace_id=4bf92f3577b34da6a3ce929d0e0e4736&zoom=1',
+      'from=2026-11-07T02%3A11%3A30Z&to=2026-11-07T02%3A17%3A00.250Z&level=warn%2Cerror&service=payments%2Ccheckout&q=gateway+timeout&trace_id=4bf92f3577b34da6a3ce929d0e0e4736&fingerprint=0123456789abcdef&zoom=1',
     )
     expect(p(qs)).toEqual(s)
     expect(serializeState(p('range=6h')).toString()).toBe('range=6h')
+  })
+
+  it.each([
+    ['fingerprint=0123456789abcdef', '0123456789abcdef'],
+    ['fingerprint=0123456789ABCDEF', '0123456789abcdef'],
+    ['fingerprint=0123456789abcde', ''],
+    ['fingerprint=0123456789abcdefa', ''],
+    ['fingerprint=xyz', ''],
+    ['fingerprint=0000000000000000', ''],
+    ['fingerprint=%3Cscript%3E', ''],
+  ])('the fingerprint parameter %s is %s', (qs, want) => {
+    expect(p(qs).fingerprint).toBe(want)
+    expect(serializeState(p(qs)).get('fingerprint')).toBe(want || null)
   })
 
   it('serializes minimally', () => {

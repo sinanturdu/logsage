@@ -87,11 +87,13 @@ export function filterChips(s: ExplorerState): Chip[] {
   }
   if (s.q) chips.push({ id: 'q', label: `search ${s.q}`, remove: { q: '' } })
   if (s.traceId) chips.push({ id: 'trace', label: `trace ${s.traceId}`, remove: { traceId: '' } })
+  // The component replaces this label with the group's template once it has loaded.
+  if (s.fingerprint) chips.push({ id: 'fingerprint', label: `group: ${s.fingerprint.slice(0, 8)}`, remove: { fingerprint: '' } })
   return chips
 }
 
 /** Active filters for the "Filters (N)" button: the range does not count. */
 export function activeFilterCount(s: ExplorerState): number {
-  return (s.levels.length > 0 ? 1 : 0) + s.services.length + (s.q ? 1 : 0) + (s.traceId ? 1 : 0)
+  return (s.levels.length > 0 ? 1 : 0) + s.services.length + (s.q ? 1 : 0) + (s.traceId ? 1 : 0) + (s.fingerprint ? 1 : 0)
 }
 
