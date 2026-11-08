@@ -2,7 +2,21 @@
 // match keys through `matches`, and the help dialog lists this array, so
 // the two cannot drift apart.
 
-export type ShortcutId = 'palette' | 'help' | 'search' | 'next' | 'previous' | 'toggle' | 'escape' | 'trace' | 'live' | 'retry'
+export type ShortcutId =
+  | 'palette'
+  | 'help'
+  | 'search'
+  | 'next'
+  | 'previous'
+  | 'toggle'
+  | 'escape'
+  | 'trace'
+  | 'live'
+  | 'retry'
+  | 'groups-search'
+  | 'groups-next'
+  | 'groups-previous'
+  | 'groups-open'
 
 type Keyish = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>
 
@@ -11,7 +25,7 @@ export type Shortcut = {
   /** What the help shows, one entry per key combination. */
   keys: readonly string[]
   description: string
-  where: 'Anywhere' | 'Log explorer' | 'Live tail'
+  where: 'Anywhere' | 'Log explorer' | 'Live tail' | 'Error groups'
   /** Also active while typing in a text field. */
   whileTyping: boolean
   matches: (e: Keyish) => boolean
@@ -58,6 +72,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
     whileTyping: false,
     matches: (e) => plain(e) && e.key === 'r',
   },
+  { id: 'groups-search', keys: ['/'], description: 'Focus the search box', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === '/' },
+  { id: 'groups-next', keys: ['j'], description: 'Select the next group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'j' },
+  { id: 'groups-previous', keys: ['k'], description: 'Select the previous group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'k' },
+  { id: 'groups-open', keys: ['Enter'], description: 'Open the selected group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'Enter' },
 ]
 
 /** Whether the event comes from a place where typed characters are text. */
