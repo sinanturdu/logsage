@@ -98,6 +98,32 @@ describe('small samples in the error share', () => {
   })
 })
 
+describe('error share with only error and fatal logs in view', () => {
+  it('reads the facets', async () => {
+    const { onlyErrorsInView } = await import('./time')
+    expect(onlyErrorsInView({ debug: 0, info: 0, warn: 0, error: 5, fatal: 1 })).toBe(true)
+    expect(onlyErrorsInView({ debug: 0, info: 0, warn: 0, error: 0, fatal: 2 })).toBe(true)
+    expect(onlyErrorsInView({ debug: 0, info: 0, warn: 1, error: 5, fatal: 0 })).toBe(false)
+    expect(onlyErrorsInView({ debug: 0, info: 0, warn: 0, error: 0, fatal: 0 })).toBe(false) // no logs at all
+    expect(onlyErrorsInView(undefined)).toBe(false)
+  })
+
+  it.each([
+    [{ debug: 0, info: 0, warn: 0, error: 31, fatal: 1 }, false],
+    [{ debug: 0, info: 3, warn: 0, error: 31, fatal: 1 }, true],
+  ])('a group filter whose facets are %o: strip shown = %s', async (levels, shown) => {
+    mockExplorer({ facets: () => json(200, { total: 32, levels, services: [], took_ms: 1 }) })
+    renderApp('/projects/shop/logs?fingerprint=0123456789abcdef')
+    const chart = await screen.findByRole('region', { name: 'Timeline' })
+    await waitFor(() => expect(within(chart).queryByText('Error share is not shown while only error and fatal logs are in view.') === null).toBe(shown))
+    expect(chart.querySelectorAll('polyline.err').length > 0).toBe(shown)
+    expect(within(chart).queryByText('Error share is not shown while only error and fatal levels are selected.')).toBeNull()
+    const key = chart.querySelector('.key')?.textContent ?? ''
+    expect(key).toContain(shown ? 'Drag across either strip' : 'Drag across the strip')
+    expect(key.includes('error and fatal share')).toBe(shown)
+  })
+})
+
 describe('error share with only error and fatal selected', () => {
   it('knows when the share would be 100% by definition', async () => {
     const { onlyErrorLevels, summarize } = await import('./time')

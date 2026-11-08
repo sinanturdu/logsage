@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { json, renderApp } from '../test/util'
 import { LIST_CHANGED } from './api'
-import { NO_GROUPS, NOT_GROUPED_NOTE, summaryText, visibleGroups } from './GroupsPage'
+import { NO_GROUPS, NOT_GROUPED_NOTE, combinedNote, summaryText, visibleGroups } from './GroupsPage'
 import { group, mockGroups, NOW, page } from './testing'
 
 const A = 'aaaaaaaaaaaaaaaa'
@@ -31,7 +31,7 @@ describe('groups list', () => {
           group(B, { status: 'resolved', regressed: true, resolved_at: '2026-11-07T19:00:00.000Z', title: 'charge failed: upstream payments returned 504' }),
         ]),
     })
-    renderApp('/projects/shop/groups')
+    renderApp('/projects/shop/groups?status=all')
     const table = await screen.findByRole('table')
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
       'Status',
@@ -61,7 +61,7 @@ describe('groups list', () => {
     expect(screen.getByText('Showing 2 groups, 1 new in this range.')).toBeTruthy()
     const req = requests.find((r) => r.path === '/api/projects/shop/groups')
     expect(req?.params.get('level')).toBe('error,fatal')
-    expect(req?.params.get('status')).toBe('open')
+    expect(req?.params.has('status')).toBe(false) // status=all
     expect(req?.params.get('sort')).toBe('count')
     expect(req?.params.get('from')).toBe('2026-11-07T20:00:00Z')
   })
@@ -94,7 +94,7 @@ describe('groups list', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Load more' }))
     await waitFor(() => expect(rows()).toHaveLength(3))
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
-    expect(screen.getByText('Showing 3 groups, 0 new in this range.')).toBeTruthy()
+    expect(screen.getByText('Showing 3 open groups, 0 new in this range.')).toBeTruthy()
   })
 
   it('a changed cursor says the list changed and reloads from the start', async () => {
@@ -144,7 +144,7 @@ describe('groups list', () => {
     renderApp('/projects/shop/groups?new=1')
     await screen.findByRole('table')
     expect(rows()).toHaveLength(1)
-    expect(screen.getByText('Showing 1 new group in this range.')).toBeTruthy()
+    expect(screen.getByText('Showing 1 new open group in this range.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
     expect(requests.find((r) => r.path === '/api/projects/shop/groups')?.params.get('sort')).toBe('first_seen')
     expect((screen.getByLabelText('Sort') as HTMLSelectElement).disabled).toBe(true)
@@ -215,12 +215,143 @@ describe('groups palette commands', () => {
   })
 })
 
+describe('status column', () => {
+  it.each(['open', 'ignored', 'resolved'])('is hidden for the single status %s, which the summary and caption name', async (status) => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A, { status: status as never })]) })
+    renderApp(`/projects/shop/groups${status === 'open' ? '' : `?status=${status}`}`)
+    const table = await screen.findByRole('table')
+    expect(within(table).queryByRole('columnheader', { name: 'Status' })).toBeNull()
+    expect(within(table).getAllByRole('columnheader')[0]?.textContent).toBe('Group')
+    expect(screen.getByText(`Showing 1 ${status} group, 0 new in this range.`)).toBeTruthy()
+    expect(table.querySelector('caption')?.textContent).toMatch(new RegExp(`^${status[0]?.toUpperCase()}${status.slice(1)} error groups`))
+  })
+
+  it('is shown for all statuses', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A), group(B, { status: 'ignored' })]) })
+    renderApp('/projects/shop/groups?status=all')
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByRole('columnheader')[0]?.textContent).toBe('Status')
+    expect(rows()[1]?.textContent).toContain('Ignored')
+    expect(screen.getByText('Showing 2 groups, 0 new in this range.')).toBeTruthy()
+  })
+})
+
+describe('combine same message', () => {
+  const DISK = 'failed to write /var/data/exports/<n>.json: disk quota exceeded'
+  const D = 'dddddddddddddddd'
+  const disk = (fp: string, service: string, count: number, extra = {}) => group(fp, { title: DISK, services: [service], count, sparkline: [1, count], ...extra })
+
+  it('collapses one template across services into an expandable parent', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([disk(A, 'auth', 54), group(B, { count: 80 }), disk(C, 'inventory', 46, { is_new: true }), disk(D, 'checkout', 39)]) })
+    renderApp('/projects/shop/groups?combine=1')
+    await screen.findByRole('table')
+    expect(screen.getByText(combinedNote(4))).toBeTruthy()
+    expect(combinedNote(1)).toBe('Combined from the 1 group loaded so far.')
+    const [parent, single] = rows()
+    expect(rows()).toHaveLength(2)
+    const button = within(parent as HTMLElement).getByRole('button', { name: `${DISK}, 3 groups` })
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    expect(parent?.textContent).toContain('3 services')
+    expect(within(parent as HTMLElement).getByText('139')).toBeTruthy()
+    expect(within(parent as HTMLElement).getByText('New')).toBeTruthy()
+    expect(within(parent as HTMLElement).queryByRole('link')).toBeNull() // parents link nowhere and have no actions
+    expect(within(single as HTMLElement).getByRole('link').getAttribute('href')).toBe(`/projects/shop/groups/${B}`)
+    const user = userEvent.setup()
+    await user.click(button)
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+    expect(rows()).toHaveLength(5)
+    const children = rows().slice(1, 4)
+    expect(children.map((r) => r.className)).toEqual(['child', 'child', 'child'])
+    expect(children.map((r) => within(r).getByRole('link').getAttribute('href'))).toEqual([A, C, D].map((f) => `/projects/shop/groups/${f}`))
+    expect(children.map((r) => r.children[1]?.textContent)).toEqual(['auth', 'inventory', 'checkout'])
+    await user.keyboard(' ')
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    await user.keyboard('{Enter}')
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('j and k move across parents and expanded children; Enter opens a child', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([disk(A, 'auth', 54), disk(C, 'inventory', 46), group(B, { count: 10 })]) })
+    renderApp('/projects/shop/groups?combine=1')
+    await screen.findByRole('table')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('heading', { level: 1 }))
+    await user.keyboard('j')
+    expect(document.activeElement?.getAttribute('aria-expanded')).toBe('false')
+    await user.keyboard('{Enter}')
+    await user.keyboard('j')
+    expect(rows()[1]?.className).toContain('selected')
+    expect(document.activeElement?.getAttribute('href')).toBe(`/projects/shop/groups/${A}`)
+    await user.keyboard('jj')
+    expect(document.activeElement?.getAttribute('href')).toBe(`/projects/shop/groups/${B}`)
+    await user.keyboard('kk')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(location()).toBe(`/projects/shop/groups/${A}`))
+  })
+
+  it('Load more merges new groups into existing parents without duplicates', async () => {
+    mockGroups({
+      'GET /api/projects/shop/groups': (r) =>
+        r.params.get('cursor') === 'c1' ? page([disk(C, 'inventory', 46), disk(A, 'auth', 54), disk(D, 'checkout', 39)]) : page([disk(A, 'auth', 54), group(B, { count: 80 })], 'c1'),
+    })
+    renderApp('/projects/shop/groups?combine=1')
+    await screen.findByRole('table')
+    expect(rows().map((r) => r.querySelector('a')?.getAttribute('href'))).toEqual([`/projects/shop/groups/${B}`, `/projects/shop/groups/${A}`])
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() => expect(screen.getByText(combinedNote(4))).toBeTruthy())
+    expect(rows()).toHaveLength(2)
+    const parent = rows()[0] as HTMLElement
+    expect(within(parent).getByText('139')).toBeTruthy()
+    await user.click(within(parent).getByRole('button'))
+    expect(rows()).toHaveLength(5)
+    expect(new Set(rows().map((r) => r.querySelector('a')?.getAttribute('href')).filter(Boolean)).size).toBe(4)
+  })
+
+  it('shows Mixed when the children do not share a status', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([disk(A, 'auth', 5), disk(C, 'inventory', 4, { status: 'resolved', regressed: true })]) })
+    renderApp('/projects/shop/groups?combine=1&status=all')
+    await screen.findByRole('table')
+    const parent = rows()[0] as HTMLElement
+    expect(parent.children[0]?.textContent).toBe('◫ Mixed')
+    expect(within(parent).getByText('Regressed')).toBeTruthy()
+  })
+
+  it('the toggle and the palette set and clear combine=1', async () => {
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A)]) })
+    renderApp('/projects/shop/groups')
+    await screen.findByRole('table')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('checkbox', { name: 'Combine same message' }))
+    expect(location()).toBe('/projects/shop/groups?combine=1')
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(within(screen.getByRole('dialog', { name: /command/i })).getByRole('combobox'), 'Show each group separately')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(location()).toBe('/projects/shop/groups'))
+  })
+
+  it('renders a hostile shared template as text', async () => {
+    const xss = '<img src=x onerror="window.pwned=1"><script>window.pwned=1</script>'
+    mockGroups({ 'GET /api/projects/shop/groups': () => page([group(A, { title: xss, services: ['a'] }), group(C, { title: xss, services: ['<b>b</b>'] })]) })
+    renderApp('/projects/shop/groups?combine=1')
+    await screen.findByRole('table')
+    const user = userEvent.setup()
+    await user.click(within(rows()[0] as HTMLElement).getByRole('button'))
+    expect(document.querySelector('table img, table script, table b')).toBeNull()
+    expect(screen.getAllByText(xss).length).toBe(3)
+    expect((window as unknown as { pwned?: number }).pwned).toBeUndefined()
+  })
+})
+
 describe('list helpers', () => {
   it('summarizes only what is loaded', () => {
     expect(summaryText(0, 0, false)).toBe('Showing 0 groups, 0 new in this range.')
     expect(summaryText(1, 1, false)).toBe('Showing 1 group, 1 new in this range.')
     expect(summaryText(1200, 3, false)).toBe('Showing 1,200 groups, 3 new in this range.')
     expect(summaryText(2, 2, true)).toBe('Showing 2 new groups in this range.')
+    expect(summaryText(2, 1, false, 'open')).toBe('Showing 2 open groups, 1 new in this range.')
+    expect(summaryText(1, 0, false, 'resolved')).toBe('Showing 1 resolved group, 0 new in this range.')
+    expect(summaryText(3, 3, true, 'ignored')).toBe('Showing 3 new ignored groups in this range.')
   })
 
   it('new only keeps the new prefix', () => {

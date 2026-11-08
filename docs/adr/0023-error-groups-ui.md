@@ -59,6 +59,14 @@ J1 (ADR 0022) added the groups API: a list with counts, sparklines, `is_new` and
 - **The detail is fetched twice:** the explorer chip and row line use a one-minute window, separate from the detail page's range, so they can call the group endpoint for the same group again. The result is cached per fingerprint for the session.
 - **Tests:** `findBy` and `waitFor` now wait up to 5 s (was 1 s). The condition still decides the result; the chip's two chained requests needed the room under a loaded parallel run.
 
+## Addendum (J2.1): combine same message
+- **What it does:** with `combine=1`, groups whose template is identical are shown as one parent row. A template is often the same in several services (one bad disk, one database), and the list then repeats it once per service.
+- **Where it is computed:** in the browser, over the groups loaded so far (`groups/combine.ts`, pure). The API pages groups by fingerprint, and service is part of the fingerprint (ADR 0022). A server-side "group by template" would need a new query and its own cursor, and that is a backend change this patch does not make.
+- **Consequences:**
+  - A parent's sums cover the loaded groups only, and the page says so: "Combined from the N groups loaded so far." Load more folds new groups into their parents, and the sort is applied to the combined values.
+  - Parents have no status actions: a status belongs to one group, and changing several at once is a bulk action, which is still deferred.
+- **Error-share rule:** the explorer also hides its error-share strip when the facets show only error and fatal logs in view, not only when those levels are selected. Under a group filter the share would be 100% everywhere.
+
 **Deferred:**
 - Bulk status changes, assignment and comments.
 - Merging groups.

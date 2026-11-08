@@ -123,6 +123,20 @@ export const SHARE_HIDDEN = 'Error share is not shown while only error and fatal
 /** Whether a level filter selects only error and fatal: then the share is 100% by definition. */
 export const onlyErrorLevels = (levels: readonly string[]) => levels.length > 0 && levels.every((l) => l === 'error' || l === 'fatal')
 
+/** The line shown instead of the strip when the logs in view are all error and fatal (for example one error group). */
+export const SHARE_HIDDEN_VIEW = 'Error share is not shown while only error and fatal logs are in view.'
+
+/**
+ * Whether the facets show only error and fatal logs in view (debug, info
+ * and warn are zero): the share would again be 100% everywhere. False while
+ * the facets are unknown or there are no logs at all.
+ */
+export function onlyErrorsInView(levels: Partial<Record<string, number>> | undefined): boolean {
+  if (!levels) return false
+  const others = (levels.debug ?? 0) + (levels.info ?? 0) + (levels.warn ?? 0)
+  return others === 0 && (levels.error ?? 0) + (levels.fatal ?? 0) > 0
+}
+
 export function summarize(buckets: readonly Bucket[], bucketSeconds: number, opts: { share?: boolean } = {}): string {
   let peak: Bucket | undefined
   let peakShare: Bucket | undefined

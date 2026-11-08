@@ -26,7 +26,7 @@ import { shortcutFor } from '../shortcuts'
 import { useExplorerBridge } from '../palette/bridge'
 import { RangeControls } from './RangeControls'
 import { Timeline } from './Timeline'
-import { bucketTotal, onlyErrorLevels, rangeHeading } from './time'
+import { SHARE_HIDDEN, SHARE_HIDDEN_VIEW, bucketTotal, onlyErrorLevels, onlyErrorsInView, rangeHeading } from './time'
 
 export { STORE_DOWN }
 export const NO_RESULTS = 'No logs match these filters. Widen the time range or clear a filter.'
@@ -305,7 +305,8 @@ export function ExplorerPage() {
           buckets={histogram.data.buckets}
           bucketSeconds={histogram.data.bucketSeconds}
           window={ctx}
-          showShare={!onlyErrorLevels(state.levels)}
+          showShare={!onlyErrorLevels(state.levels) && !onlyErrorsInView(facets.data?.levels)}
+          shareNote={onlyErrorLevels(state.levels) ? SHARE_HIDDEN : SHARE_HIDDEN_VIEW}
           selection={state.range.kind === 'absolute' && !state.zoom ? win : null}
           // Brushing inside a zoomed view zooms further; Back undoes each step.
           onSelect={(from, to) => update({ range: { kind: 'absolute', from, to }, zoom: state.zoom, live: false })}

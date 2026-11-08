@@ -284,7 +284,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b to J2)
+## As built (I2b to J2.1)
 
 What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
@@ -330,6 +330,12 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
   - **Narrow screens:** below 900 px the table scrolls sideways inside its frame (as on API keys); no columns are dropped, so nothing is hidden.
   - **The group page** has a "All error groups" link at the top (the nav already says "Error groups"), the template as the heading, the flags explained in sentences, the facts in one line, Status with its actions, a one-strip volume timeline (no error-share line, since a group's logs are all one kind), a breakdown table and the latest five logs.
   - **Empty list:** "No error groups in this range. Widen the range or include warn." with one muted note under it: "Logs ingested before v0.3 are not grouped."
+- **Error groups polish** (J2.1):
+  - **Left edge:** the groups pages sit in the padded main, so their range row uses the explorer's head without its own side padding (`page-head`); the range controls, headings, search box and table start on one line, like the explorer's, at every width.
+  - **Status column:** shown only with the "All" status filter; with one status every row would repeat it, so the summary ("Showing 39 open groups, ...") and the table caption name the status instead.
+  - **Group page:** the status appears once, in the Status section; the flags are explained in one plain paragraph.
+  - **Combine same message** (`combine=1`, off by default): one parent row per template shared by several loaded groups, as a disclosure button with the template, "N services", summed counts and sparkline, merged levels, the earliest first seen and latest last seen, the status or "Mixed" (◫), and New or Regressed when any child has it. Expanded, one child row per group (a lighter background, indented link to its page). A muted note says "Combined from the N groups loaded so far." Rows of one group look as before.
+  - **Error-share strip:** besides an error-only level selection, it gives way to "Error share is not shown while only error and fatal logs are in view." when the facets show no debug, info or warn logs, for example under a group filter.
 
 ## Frontend plan for I2
 

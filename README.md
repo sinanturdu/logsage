@@ -90,7 +90,7 @@ Keyboard shortcuts (press `?` in the dashboard for the same list):
 | `r` | live tail | reconnect now while it waits to retry |
 | `/` | error groups | focus the search box |
 | `j` / `k` | error groups | select the next / previous group |
-| `Enter` | error groups | open the selected group |
+| `Enter` | error groups | open the selected group, or expand a combined row |
 
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.

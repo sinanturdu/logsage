@@ -108,7 +108,7 @@ describe('defaultCommands', () => {
 
 describe('error groups commands', () => {
   const gctx = (over: Partial<AppContext> = {}): AppContext =>
-    ctx({ section: 'groups', explorer: null, groups: { status: 'open', sort: 'count', newOnly: false }, ...over })
+    ctx({ section: 'groups', explorer: null, groups: { status: 'open', sort: 'count', newOnly: false, combine: false }, ...over })
 
   it('offers the other statuses, new only and the other sorts', () => {
     const c = commandsFor(gctx())
@@ -123,10 +123,19 @@ describe('error groups commands', () => {
   })
 
   it('with new only on, offers to turn it off and hides the sorts (new only sorts by first seen)', () => {
-    const l = labels(gctx({ groups: { status: 'all', sort: 'count', newOnly: true } }))
+    const l = labels(gctx({ groups: { status: 'all', sort: 'count', newOnly: true, combine: false } }))
     expect(l).toContain('Show groups that are not new too')
     expect(l).toContain('Show open groups')
     expect(l.some((x) => x.startsWith('Sort groups'))).toBe(false)
+  })
+
+  it('turns combining on and off', () => {
+    const on = commandsFor(gctx()).find((x) => x.id === 'group-combine')
+    expect(on?.label).toBe('Combine same message')
+    expect(on?.action).toEqual({ type: 'group-combine', on: true })
+    const off = commandsFor(gctx({ groups: { status: 'open', sort: 'count', newOnly: false, combine: true } })).find((x) => x.id === 'group-combine')
+    expect(off?.label).toBe('Show each group separately')
+    expect(off?.action).toEqual({ type: 'group-combine', on: false })
   })
 
   it('other pages have no group commands but can go to Error groups', () => {

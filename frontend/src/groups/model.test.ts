@@ -19,6 +19,7 @@ const DEFAULT: GroupsState = {
   status: 'open',
   sort: 'count',
   newOnly: false,
+  combine: false,
 }
 
 describe('groups URL state', () => {
@@ -36,10 +37,11 @@ describe('groups URL state', () => {
       status: 'all',
       sort: 'last_seen',
       newOnly: true,
+      combine: true,
     }
     const p = serializeGroupsState(s)
     expect(p.toString()).toBe(
-      'from=2026-11-07T02%3A00%3A00Z&to=2026-11-07T03%3A00%3A00Z&level=warn%2Cerror%2Cfatal&service=payments%2Ccheckout&q=timeout+%3Cn%3E&status=all&sort=last_seen&new=1',
+      'from=2026-11-07T02%3A00%3A00Z&to=2026-11-07T03%3A00%3A00Z&level=warn%2Cerror%2Cfatal&service=payments%2Ccheckout&q=timeout+%3Cn%3E&status=all&sort=last_seen&new=1&combine=1',
     )
     expect(parseGroupsState(p)).toEqual(s)
   })
@@ -52,6 +54,8 @@ describe('groups URL state', () => {
     ['sort=random', { sort: 'count' }],
     ['sort=first_seen', { sort: 'first_seen' }],
     ['new=yes', { newOnly: false }],
+    ['combine=yes', { combine: false }],
+    ['combine=1', { combine: true }],
     ['range=99y', { range: { kind: 'relative', preset: '15m' } }],
     ['range=24h', { range: { kind: 'relative', preset: '24h' } }],
     ['from=2026-11-07T03:00:00Z&to=2026-11-07T02:00:00Z', { range: { kind: 'relative', preset: '15m' } }],

@@ -19,7 +19,7 @@ export type ExplorerContext = {
 }
 
 /** The error groups list (ADR 0023). */
-export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean }
+export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean; combine: boolean }
 
 export type AppContext = {
   slug: string | null
@@ -47,6 +47,7 @@ export type Action =
   | { type: 'group-status'; status: StatusFilter }
   | { type: 'group-sort'; sort: Sort }
   | { type: 'group-new'; on: boolean }
+  | { type: 'group-combine'; on: boolean }
 
 export type Group = 'Navigation' | 'Time range' | 'Filters' | 'View' | 'Account' | 'Help'
 export type Command = { id: string; label: string; keywords: readonly string[]; group: Group; action: Action }
@@ -113,6 +114,7 @@ export function commandsFor(ctx: AppContext): Command[] {
       if (s !== gr.status) add('Filters', `group-status:${s}`, STATUS_COMMAND[s], { type: 'group-status', status: s }, ['status', s])
     }
     add('Filters', 'group-new', gr.newOnly ? 'Show groups that are not new too' : 'Show new groups only', { type: 'group-new', on: !gr.newOnly }, ['new', 'first seen', 'range'])
+    add('View', 'group-combine', gr.combine ? 'Show each group separately' : 'Combine same message', { type: 'group-combine', on: !gr.combine }, ['combine', 'merge', 'same message', 'services'])
     if (!gr.newOnly) {
       for (const s of SORTS) if (s !== gr.sort) add('View', `group-sort:${s}`, SORT_COMMAND[s], { type: 'group-sort', sort: s }, ['sort', 'order'])
     }

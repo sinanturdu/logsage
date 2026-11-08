@@ -15,6 +15,8 @@ type Props = {
   showShare?: boolean
   /** Only the volume strip, with no word about an error share (an error group's page). */
   volumeOnly?: boolean
+  /** The line in place of a hidden share strip. */
+  shareNote?: string
 }
 
 const H = 60
@@ -54,7 +56,7 @@ export function segments(values: readonly (number | null)[], max: number): strin
  * buckets, Escape cancels); the range presets and the custom range form are
  * the keyboard alternative, and the summary line states the peaks in words.
  */
-export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools, showShare: share = true, volumeOnly = false }: Props) {
+export function Timeline({ buckets, bucketSeconds, window: win, selection, onSelect, scope, tools, showShare: share = true, volumeOnly = false, shareNote = SHARE_HIDDEN }: Props) {
   const showShare = share && !volumeOnly
   const area = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null)
@@ -146,7 +148,7 @@ export function Timeline({ buckets, bucketSeconds, window: win, selection, onSel
             {strip(shares, Math.max(peakShare, 10), 'err')}
           </>
         ) : (
-          !volumeOnly && <p className="label share-hidden">{SHARE_HIDDEN}</p>
+          !volumeOnly && <p className="label share-hidden">{shareNote}</p>
         )}
       </div>
       <div className="axis" aria-hidden="true">
