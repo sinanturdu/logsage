@@ -209,6 +209,68 @@ func TestBoundedTime(t *testing.T) {
 	}
 }
 
+// TestSourceLineMatchesUnbounded: reading only the bounded windows gives
+// exactly what reading the whole message gave (the J1.1 definition below).
+func TestSourceLineMatchesUnbounded(t *testing.T) {
+	unbounded := func(s string) string { // sourceLine as of J1.1, scanning the whole first line
+		first := firstLine(s)
+		if !strings.HasPrefix(strings.TrimSpace(first), tracebackHeader) {
+			return first
+		}
+		tail := s
+		if len(tail) > maxTail {
+			tail = tail[len(tail)-maxTail:]
+		}
+		for len(tail) > 0 {
+			i := strings.LastIndexAny(tail, "\r\n")
+			line := strings.TrimSpace(tail[i+1:])
+			if line != "" {
+				if i < 0 && len(s) > maxTail {
+					break
+				}
+				return line
+			}
+			if i < 0 {
+				break
+			}
+			tail = tail[:i]
+		}
+		return first
+	}
+	inputs := append([]string{}, corpus...)
+	for n := MaxInput - 6; n <= headWindow+6; n++ { // a newline or a multibyte rune around the cut
+		inputs = append(inputs, strings.Repeat("a", n)+"\nsecond", strings.Repeat("a", n)+"é日\U0001F600 1", strings.Repeat("a", n)+"\xe6\x97")
+	}
+	for _, ws := range []string{" ", "\t", " ", "\u0085", "\v\f", "　"} {
+		inputs = append(inputs,
+			strings.Repeat(ws, 2000)+tracebackHeader+":\nKeyError: 'x'",
+			ws+tracebackHeader+":\n"+ws+"\n",
+			strings.Repeat(ws, 10)+"\n"+tracebackHeader+":\nKeyError: 'x'",
+			ws+"\r"+tracebackHeader+":\nKeyError: 'x'")
+	}
+	r := rand.New(rand.NewPCG(5, 6))
+	parts := []string{"a", "1", " ", "\n", "\r", "\t", " ", "é", "\xff", tracebackHeader, ":", "KeyError: 'k'"}
+	for i := 0; i < 3000; i++ {
+		var b strings.Builder
+		for n := r.IntN(400); n > 0; n-- {
+			b.WriteString(parts[r.IntN(len(parts))])
+		}
+		inputs = append(inputs, b.String())
+	}
+	for _, in := range inputs {
+		if got, want := cut(sourceLine(in), MaxInput), cut(unbounded(in), MaxInput); got != want {
+			t.Fatalf("bounded %q, unbounded %q for %q", got, want, in[:min(len(in), 80)])
+		}
+	}
+}
+
+func BenchmarkNormalizeHuge(b *testing.B) {
+	huge := strings.Repeat("a1b2c3 /x/12/y 10.0.0.1 \"q w\" 0x1f 5000ms ", 50_000)
+	for i := 0; i < b.N; i++ {
+		Normalize(huge)
+	}
+}
+
 func BenchmarkNormalize(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Normalize(corpus[i%len(corpus)])
