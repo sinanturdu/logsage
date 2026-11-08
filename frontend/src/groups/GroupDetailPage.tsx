@@ -172,14 +172,11 @@ function GroupDetailPage({ slug, fingerprint }: { slug: string; fingerprint: str
         <TemplateText text={g.title} />
       </h1>
       <p className="group-marks">
-        <StatusMark status={g.status} /> <Flags group={g} /> <Levels levels={g.levels} />{' '}
+        <Flags group={g} /> <Levels levels={g.levels} />{' '}
         <LogText className="muted" text={g.services.join(', ')} mono={false} />
       </p>
       {(g.is_new || g.regressed) && (
-        <ul className="flag-text">
-          {g.is_new && <li>{NEW_TEXT}</li>}
-          {g.regressed && <li>{regressedText(g.resolved_at)}</li>}
-        </ul>
+        <p className="flag-text">{[g.is_new && NEW_TEXT, g.regressed && regressedText(g.resolved_at)].filter(Boolean).join(' ')}</p>
       )}
       <dl className="facts">
         <div>
