@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 )
 
@@ -198,14 +197,93 @@ func TestInvariants(t *testing.T) {
 	}
 }
 
-func TestBoundedTime(t *testing.T) {
-	huge := strings.Repeat("a1b2c3 /x/12/y 10.0.0.1 \"q w\" 0x1f 5000ms ", 50_000) // about 2 MB
-	start := time.Now()
-	for i := 0; i < 100; i++ {
-		Normalize(huge)
+// TestBoundedInput: the template of any message is decided by its first
+// headWindow bytes (and, for a traceback, its last maxTail bytes), so the
+// rules always run on at most MaxInput bytes. Checked without a clock: a
+// wall-clock limit failed under -race on CI (24-28 ms against 20 ms).
+// BenchmarkNormalizeHuge reports the time.
+func TestBoundedInput(t *testing.T) {
+	huge := strings.Repeat("a1b2c3 /x/12/y 10.0.0.1 \"q w\" 0x1f 5000ms ", 50_000) // about 2 MB, no newline
+	head := huge[:headWindow]
+	if got, want := Normalize(huge), Normalize(head); got != want {
+		t.Fatalf("a 2 MB message and its first %d bytes differ:\n %q\n %q", headWindow, got, want)
 	}
-	if per := time.Since(start) / 100; per > 20*time.Millisecond {
-		t.Fatalf("worst case %v per message; the cut to %d bytes should bound it", per, MaxInput)
+	if line := inputLine(huge); len(line) > MaxInput {
+		t.Fatalf("the rules would run on %d bytes", len(line))
+	}
+	// Changing everything after the head window changes nothing.
+	if Normalize(head+strings.Repeat("\n9 other\n", 1000)) != Normalize(head+strings.Repeat("x", 1<<16)) {
+		t.Fatal("bytes after the head window changed the template")
+	}
+	// A traceback: only the head (for the header) and the last maxTail bytes count.
+	tbHead := "Traceback (most recent call last):\n"
+	tail := strings.Repeat("  File \"/app/w.py\", line 1, in run\n", maxTail/36) + "RecursionError: depth exceeded"
+	for _, middle := range []string{"", strings.Repeat("  File \"/x.py\", line 2, in f\n", 40_000), strings.Repeat("ValueError: other 1\n", 50_000)} {
+		if got := Normalize(tbHead + middle + tail); got != "RecursionError: depth exceeded" {
+			t.Fatalf("middle of %d bytes: %q", len(middle), got)
+		}
+	}
+}
+
+// TestSourceLineMatchesUnbounded: reading only the bounded windows gives
+// exactly what reading the whole message gave (the J1.1 definition below).
+func TestSourceLineMatchesUnbounded(t *testing.T) {
+	unbounded := func(s string) string { // sourceLine as of J1.1, scanning the whole first line
+		first := firstLine(s)
+		if !strings.HasPrefix(strings.TrimSpace(first), tracebackHeader) {
+			return first
+		}
+		tail := s
+		if len(tail) > maxTail {
+			tail = tail[len(tail)-maxTail:]
+		}
+		for len(tail) > 0 {
+			i := strings.LastIndexAny(tail, "\r\n")
+			line := strings.TrimSpace(tail[i+1:])
+			if line != "" {
+				if i < 0 && len(s) > maxTail {
+					break
+				}
+				return line
+			}
+			if i < 0 {
+				break
+			}
+			tail = tail[:i]
+		}
+		return first
+	}
+	inputs := append([]string{}, corpus...)
+	for n := MaxInput - 6; n <= headWindow+6; n++ { // a newline or a multibyte rune around the cut
+		inputs = append(inputs, strings.Repeat("a", n)+"\nsecond", strings.Repeat("a", n)+"é日\U0001F600 1", strings.Repeat("a", n)+"\xe6\x97")
+	}
+	for _, ws := range []string{" ", "\t", " ", "\u0085", "\v\f", "　"} {
+		inputs = append(inputs,
+			strings.Repeat(ws, 2000)+tracebackHeader+":\nKeyError: 'x'",
+			ws+tracebackHeader+":\n"+ws+"\n",
+			strings.Repeat(ws, 10)+"\n"+tracebackHeader+":\nKeyError: 'x'",
+			ws+"\r"+tracebackHeader+":\nKeyError: 'x'")
+	}
+	r := rand.New(rand.NewPCG(5, 6))
+	parts := []string{"a", "1", " ", "\n", "\r", "\t", " ", "é", "\xff", tracebackHeader, ":", "KeyError: 'k'"}
+	for i := 0; i < 3000; i++ {
+		var b strings.Builder
+		for n := r.IntN(400); n > 0; n-- {
+			b.WriteString(parts[r.IntN(len(parts))])
+		}
+		inputs = append(inputs, b.String())
+	}
+	for _, in := range inputs {
+		if got, want := cut(sourceLine(in), MaxInput), cut(unbounded(in), MaxInput); got != want {
+			t.Fatalf("bounded %q, unbounded %q for %q", got, want, in[:min(len(in), 80)])
+		}
+	}
+}
+
+func BenchmarkNormalizeHuge(b *testing.B) {
+	huge := strings.Repeat("a1b2c3 /x/12/y 10.0.0.1 \"q w\" 0x1f 5000ms ", 50_000)
+	for i := 0; i < b.N; i++ {
+		Normalize(huge)
 	}
 }
 
@@ -261,14 +339,11 @@ func TestTraceback(t *testing.T) {
 	if a != b || a == c {
 		t.Errorf("grouping: %q %q %q", a, b, c)
 	}
-	// A 1 MiB traceback only scans its last 4 KiB.
+	// A 1 MiB traceback: its exception line is found in the last 4 KiB
+	// (TestBoundedInput shows nothing before that window counts).
 	huge := tb(strings.Repeat("  File \"/app/w.py\", line 1, in run\n    step()\n", 1<<20/40) + "RecursionError: maximum recursion depth exceeded")
-	start := time.Now()
 	if got := Normalize(huge); got != "RecursionError: maximum recursion depth exceeded" {
 		t.Errorf("huge: %q", got)
-	}
-	if d := time.Since(start); d > 50*time.Millisecond {
-		t.Errorf("huge traceback took %v", d)
 	}
 }
 

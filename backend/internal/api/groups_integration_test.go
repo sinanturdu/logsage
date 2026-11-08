@@ -14,12 +14,17 @@ import (
 // TestIntegrationGroupStatusAndRegression runs the group endpoints against
 // PostgreSQL and ClickHouse: the status persists with an audit row, and a
 // resolved group seen again after resolved_at is flagged as regressed.
-// Timestamps are relative to the real clock, because resolved_at is the
-// database's now().
+// resolved_at is PostgreSQL's now(), so every timestamp is taken from the
+// database clock (not the test host's) and the regressing row is placed
+// after the resolved_at the API returned: no sleeping, no clock skew.
 func TestIntegrationGroupStatusAndRegression(t *testing.T) {
 	e := newReadEnv(t)
 	ctx := context.Background()
-	start := time.Now().UTC().Truncate(time.Second)
+	var start time.Time
+	if err := e.h.pool.QueryRow(ctx, "SELECT now()").Scan(&start); err != nil {
+		t.Fatal(err)
+	}
+	start = start.UTC().Truncate(time.Second)
 	insert := func(project, id string, at time.Time, msg string) {
 		t.Helper()
 		fp, tpl := fingerprint.Compute("error", "payments", msg, nil)
@@ -59,6 +64,18 @@ func TestIntegrationGroupStatusAndRegression(t *testing.T) {
 	// Resolve, as the owner. Bob (not a member of alpha) gets 404 for both.
 	r := e.h.do("POST", "/api/projects/alpha/groups/"+fp+"/status", `{"status":"resolved","note":"fixed in 1.4.2"}`, e.alice, nil)
 	e.h.wantStatus(r, 200, "resolve")
+	var resolved struct {
+		Group struct {
+			ResolvedAt *string `json:"resolved_at"`
+		} `json:"group"`
+	}
+	if err := json.Unmarshal([]byte(r.body), &resolved); err != nil || resolved.Group.ResolvedAt == nil {
+		t.Fatalf("resolve body: %v", err)
+	}
+	resolvedAt, err := time.Parse(time.RFC3339Nano, *resolved.Group.ResolvedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.h.wantStatus(e.h.do("POST", "/api/projects/alpha/groups/"+fp+"/status", `{"status":"open"}`, e.bob, nil), 404, "bob")
 	e.h.wantStatus(e.h.do("GET", "/api/projects/alpha/groups?"+window, "", e.bob, nil), 404, "bob list")
 
@@ -75,21 +92,25 @@ func TestIntegrationGroupStatusAndRegression(t *testing.T) {
 		t.Errorf("beta: %v", body["groups"])
 	}
 
-	// Seen again after resolved_at: regressed, still resolved.
-	time.Sleep(1100 * time.Millisecond)
-	insert(e.alphaID, "g-new", time.Now().UTC().Add(time.Second), "payment b00000ff declined: gateway timeout after 9000ms")
+	// Seen again after resolved_at: regressed, still resolved. One row at
+	// exactly resolved_at does not count ("after"), one a second later does.
+	insert(e.alphaID, "g-same", resolvedAt, "payment b00000fe declined: gateway timeout after 9000ms")
+	if g = groupOf(e.alice); g["regressed"] != false || g["count"].(float64) != 4 {
+		t.Fatalf("a row at resolved_at: %v", g)
+	}
+	insert(e.alphaID, "g-new", resolvedAt.Add(time.Second), "payment b00000ff declined: gateway timeout after 9000ms")
 	g = groupOf(e.alice)
-	if g["status"] != "resolved" || g["regressed"] != true || g["count"].(float64) != 4 {
+	if g["status"] != "resolved" || g["regressed"] != true || g["count"].(float64) != 5 {
 		t.Fatalf("after a new row: %v", g)
 	}
 	detail := e.get(t, e.alice, "/api/projects/alpha/groups/"+fp+"?"+window, 200)
-	if detail["note"] != "fixed in 1.4.2" || detail["regressed"] != true || detail["updated_by"] != "alice@example.com" || len(detail["samples"].([]any)) != 4 {
+	if detail["note"] != "fixed in 1.4.2" || detail["regressed"] != true || detail["updated_by"] != "alice@example.com" || len(detail["samples"].([]any)) != 5 {
 		t.Fatalf("detail: %v", detail)
 	}
 	// Counts in the list equal /logs for the same fingerprint filter.
 	logs := e.get(t, e.alice, "/api/projects/alpha/logs?"+window+"&fingerprint="+fp, 200)
-	if n := len(logs["events"].([]any)); n != 4 {
-		t.Fatalf("/logs with the fingerprint filter: %d events, want 4", n)
+	if n := len(logs["events"].([]any)); n != 5 {
+		t.Fatalf("/logs with the fingerprint filter: %d events, want 5", n)
 	}
 	for _, ev := range logs["events"].([]any) {
 		if ev.(map[string]any)["fingerprint"] != fp {

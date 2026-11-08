@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -101,9 +102,13 @@ const maxTail = 4 << 10
 // sourceLine is the line a template is made from: the first line, or for a
 // Python traceback (also a chained one) its last non-empty line, found in
 // the last 4 KiB. A traceback without such a line keeps its first line.
+//
+// It reads a bounded part of s: the first headWindow bytes, the leading
+// whitespace of the first line, and for a traceback the last maxTail bytes.
+// The result, once cut to MaxInput, equals that of reading all of s.
 func sourceLine(s string) string {
-	first := firstLine(s)
-	if !strings.HasPrefix(strings.TrimSpace(first), tracebackHeader) {
+	first := firstLine(s[:min(len(s), headWindow)])
+	if !startsWithTraceback(s) {
 		return first
 	}
 	tail := s
@@ -125,6 +130,27 @@ func sourceLine(s string) string {
 		tail = tail[:i]
 	}
 	return first
+}
+
+// headWindow is how much of a message's start sourceLine reads: a longer
+// first line is cut to MaxInput anyway, and the utf8.UTFMax extra bytes let
+// cut drop a rune split at MaxInput exactly as it would on the whole line.
+const headWindow = MaxInput + utf8.UTFMax
+
+// startsWithTraceback reports whether the first line, without its leading
+// whitespace, starts with the traceback header: the same test as
+// strings.HasPrefix(strings.TrimSpace(firstLine(s)), tracebackHeader),
+// without scanning the whole first line.
+func startsWithTraceback(s string) bool {
+	i := 0
+	for i < len(s) {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == '\r' || r == '\n' || !unicode.IsSpace(r) {
+			break
+		}
+		i += size
+	}
+	return strings.HasPrefix(s[i:], tracebackHeader)
 }
 
 func firstLine(s string) string {
