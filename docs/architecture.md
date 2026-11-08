@@ -335,7 +335,7 @@ Nothing is kept in browser storage. Log text goes through `<LogText>` (text node
 
 ## Fingerprinting
 Package `internal/fingerprint` (ADR 0022, version `"1"`). Only `warn`, `error` and `fatal` are grouped.
-- **Template:** the first line, cut to 512 bytes, normalized by ordered RE2 rules (HTTP versions and statuses protected; timestamps, UUIDs, emails, URLs, pod names, IPs, path segments, tokens, hex, units, prefixed ids, mixed ids and numbers become placeholders such as `<n>`, `<id>`, `<uuid>`, `<ts>`), run to a fixed point so it is idempotent.
+- **Template:** the first line (for a Python traceback, its exception line), cut to 512 bytes, normalized by ordered RE2 rules (HTTP versions, HTTP statuses, exit codes, signals and SQLSTATE codes protected; timestamps, UUIDs, emails, URLs, pod names, IPs, path segments, tokens, hex, units, prefixed ids, mixed ids and numbers become placeholders such as `<n>`, `<id>`, `<uuid>`, `<ts>`), run to a fixed point so it is idempotent; a template is at most 512 bytes. The processor memoizes templates of repeated messages (`fingerprint.Cache`, at most 8,192 entries).
 - **Key:** `<n>`, `<id>` and `<uuid>` collapse to `<*>`; the level is not part of the key.
 - **Fingerprint:** the first 8 bytes of SHA-256 over version, service, key template and error type (`error.type`, else `exception.type`), separated by `0x1F`; `0` is reserved for "not grouped".
 - A golden corpus test pins every template and fingerprint; a deliberate rule change bumps the version. Similarity clustering may refine this later.

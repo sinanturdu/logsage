@@ -19,7 +19,8 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
   - Without the collapse, the demo data split into 460 templates instead of 37.
   - The readable `template` keeps the distinct placeholders.
 - **`errorType`:** the value of the attribute `error.type`, or else `exception.type`, trimmed and cut to 128 bytes. Empty when absent.
-- **`FingerprintVersion`:** a constant (`"1"`). Changing any rule means bumping it, and the golden tests fail until the expected fingerprints are updated on purpose.
+- **`FingerprintVersion`:** a constant (`"1"`). The golden tests fail until the expected fingerprints are updated on purpose.
+  - **Version policy:** J1.1 changed rules (section 7) and kept `"1"`, because J1 has not been released: no stored fingerprint exists outside development. After the first release that contains fingerprints, **any** rule change that alters a template or fingerprint must bump the version.
 - **Level is not in the key.** An escalation of the same message from warn to error stays one group, and the group lists the levels it has seen.
 
 **Which rows get a fingerprint (owner's choice):**
@@ -35,9 +36,9 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
 - **64 bits:** a collision is negligible at our scale (about 1 in 10^10 for 10^5 groups per project). SHA-256 is in the standard library, and FNV would do too. Truncated SHA-256 is chosen for a good spread with no dependency.
 
 ### 2. Normalization rules
-- **Preparation:** cut to the first line, then to 512 bytes on a rune boundary. Invalid UTF-8 becomes U+FFFD, and control characters become spaces.
+- **Preparation:** take the source line (the first line, or the exception line of a Python traceback; section 7), then cut it to 512 bytes on a rune boundary. The cut is repeated after every pass, so a template is never longer than 512 bytes. Invalid UTF-8 becomes U+FFFD, and control characters become spaces.
 - **Rules,** in this order, all Go `regexp` (RE2, linear time):
-  1. HTTP versions (`HTTP/1.1`) and HTTP status codes are protected: a 4xx or 5xx after `returned`, `status`, `code` or `HTTP/x` (but not when a noun follows: "returned 503 results" is a count), at the start of the line before a capitalized reason phrase, and the status in a `METHOD path STATUS` request line.
+  1. HTTP versions (`HTTP/1.1`), exit codes, signals and SQLSTATE codes (section 7), and HTTP status codes are protected: a 4xx or 5xx after `returned`, `status`, `code` or `HTTP/x` (but not when a noun follows: "returned 503 results" is a count), at the start of the line before a capitalized reason phrase, and the status in a `METHOD path STATUS` request line.
   2. Quoted strings: one that looks like an identifier (no spaces, at most 64 characters, such as `"users_email_key"`, `'user_id'` or `"String.length()"`) is kept, because it is usually a column, key or method name. Anything else becomes `"<str>"`, such as user input with spaces. A quoted request line is kept so its path gets normalized.
   3. ISO timestamps become `<ts>`, dates `<date>` and clock times `<time>`.
   4. UUIDs become `<uuid>`, and emails `<email>`.
@@ -67,9 +68,9 @@ This ADR fixes the fingerprint rule, where groups and their status live, and the
   - **Groups:** 127 groups (service × template); 112 without the singletons. 39 groups contain error or fatal rows.
   - **The incident** forms 4 large groups: payments timeout, checkout 504, api 502 and payments retry.
 - **Over-merged:**
-  - Python `Traceback (most recent call last):`: every traceback in a service becomes one group. Fix: rely on `exception.type` (part of the key), or, if you allow it, take the last line when the first line is exactly this header.
+  - Python `Traceback (most recent call last):`: every traceback in a service became one group. Fixed in J1.1: the exception line is used (section 7).
   - Access logs with 2xx statuses: the status becomes `<n>`, so 200 and 304 merge.
-  - `exit code 137` and `exit code 1` merge.
+  - `exit code 137` and `exit code 1` merged. Fixed in J1.1 (section 7).
 - **Under-merged:**
   - Ids that are all letters (`facade`, `ord_bcfdae`), at 0.02% of the demo.
   - Quoted values that look like identifiers: `ValueError: … 'abc'` and `'xyz'` stay separate, and so do partition tables (`"orders_2026_11"`).
@@ -124,11 +125,31 @@ All endpoints use session auth and need the viewer role or higher; non-members g
 ### 6. Risks and what this package does not do
 **Risks:**
 - **Rule changes regroup everything:** bumping the version splits old and new rows. This is mitigated by the golden tests and the version constant; a migration path for statuses (old to new fingerprint) is out of scope.
-- **Processor CPU:** about 83 µs per `warn`, `error` or `fatal` event (benchmark); `debug` and `info` rows are not normalized.
+- **Processor CPU:** about 90 µs per normalized message (benchmark); `debug` and `info` rows are not normalized. Measured against `main` (`docs/benchmarks.md`, "J1 processor cost"): little cost at a realistic 5% `warn`+ mix, about 60% of the drain rate at a 40% mix even with the cache, and 10,000 events/s end to end still met.
 - **Hot groups dominate:** a hot group can dominate the sort by count; `last_seen` and `is_new` help.
 - **Per-instance limits:** the same as the other read endpoints.
 
 **Not in this package:** ML or clustering by similarity, stack trace parsing beyond the first line, merging or splitting groups by hand, group assignment and comments, notifications, the groups UI (J2), and backfilling old rows.
+
+### 7. J1.1 amendments (before release)
+- **Python tracebacks:**
+  - When the first line, trimmed, starts with `Traceback (most recent call last)`, the source line is the last non-empty line of the message: the exception line. Chained tracebacks (`During handling of the above exception, another exception occurred:`) end with the final exception, so they use it too.
+  - Only the last 4 KiB is scanned. When that holds no complete non-empty line (only whitespace after the header, or an exception line longer than 4 KiB), the first line is kept.
+  - Every other message keeps its first line.
+  - A cut-off traceback without an exception line uses its last frame line (golden case 39).
+- **Protected codes:**
+  - `exit code N`, `exit status N` and `signal N` keep N.
+  - `SQLSTATE 23505` and `sqlstate=40001` keep their 5-character code (digits and capital letters, such as `42P01`).
+  - `signal: killed` stays as it is.
+  - Tests pin `status=503`, `status: 503`, `code=500` and `code: 500`.
+  - The numbers around these codes still normalize.
+- **Template length:** templates never exceed 512 bytes. Before this, U+FFFD replacements and placeholders could make a template longer, and normalizing it again cut it. FuzzNormalize found this; `TestTemplateCap` pins it.
+- **Memoization:** `fingerprint.Cache` maps the exact source line (after the 512-byte cut) to its template.
+  - It holds at most 8,192 entries in two generations; when the current map is full it becomes the old one, and a hit in the old one moves the entry back.
+  - It is safe for concurrent use. Memory is at most about 9 MiB (key and template of at most 512 bytes each).
+  - It never changes a result: a test compares hits, misses and evictions with the uncached `Normalize`.
+  - It was added because the 40% mix lost more than the agreed 40%. With it, end to end lost 38%, but the drain rate still lost about 60%. Messages with random ids rarely repeat exactly, so the cache helps only with repeats.
+- **Golden corpus:** 98 cases (77 before): 8 traceback cases and 13 code cases. Two templates changed on purpose: case 39 (traceback) and case 73 (`exit code 137`).
 
 ## Consequences
 - Every new `warn`, `error` and `fatal` row carries a fingerprint and a template; older rows and `debug`/`info` rows stay ungrouped (`fingerprint = 0`).
@@ -136,6 +157,8 @@ All endpoints use session auth and need the viewer role or higher; non-members g
 - The groups UI (J2), alerts (K) and incidents (L) build on these endpoints and the `fingerprint` filter.
 
 ## Appendix: golden corpus (prototype output, 74 non-empty cases plus an empty one)
+
+This table is the design-time prototype output. The pinned results, including the J1.1 cases, are in `backend/internal/fingerprint/testdata/golden.json`; cases 39 and 73 differ from this table since J1.1.
 
 | Message (first line) | Template |
 |---|---|

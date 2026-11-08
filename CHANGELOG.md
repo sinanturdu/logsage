@@ -11,6 +11,10 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - PostgreSQL: `error_groups` for the group status and note; every change writes an audit row.
   - `GET /api/projects/{slug}/groups` (counts, sparklines, `is_new`, `regressed`, status filter, sorts, cursor), `GET .../groups/{fingerprint}` and `POST .../groups/{fingerprint}/status` (owner and admin).
   - An optional `fingerprint` filter on `/logs`, `/histogram`, `/facets`, `/tail` and `/v1/logs`, and a `fingerprint` field on log events.
+  - Python tracebacks group by their exception line (the last non-empty line, found in the last 4 KiB), also when chained.
+  - Exit codes, exit statuses, signals and SQLSTATE codes are kept in templates (`exit code 137` and `exit code 1` are two groups).
+  - The processor caches templates of repeated messages (at most 8,192 entries, about 9 MiB). Cost against v0.2: [docs/benchmarks.md](docs/benchmarks.md#j1-processor-cost-2026-11-08).
+  - `loadgen ingest --grouped-share` sets the share of `warn`, `error` and `fatal` events.
 
 ### Notes
 - Rows ingested before this version, and `debug` and `info` rows, are not grouped (`fingerprint = 0`); there is no backfill.
