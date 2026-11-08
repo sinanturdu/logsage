@@ -166,10 +166,14 @@ func Normalize(message string) string {
 // inputLine is everything Normalize depends on: the source line, cut.
 func inputLine(message string) string { return cut(sourceLine(message), MaxInput) }
 
+// normalizeLine runs pass to a fixed point. The cut to MaxInput is part of
+// every step: U+FFFD for invalid bytes and placeholders can make a line
+// longer, and a template longer than MaxInput would be cut again (and so
+// change) when normalized a second time.
 func normalizeLine(line string) string {
-	s := strings.ToValidUTF8(line, "�")
+	s := cut(strings.ToValidUTF8(line, "�"), MaxInput)
 	for i := 0; i < maxPasses; i++ {
-		next := pass(s)
+		next := cut(pass(s), MaxInput)
 		if next == s {
 			break
 		}

@@ -15,10 +15,10 @@ const DefaultCacheEntries = 8192
 // Eviction is by generation: entries go into the current map; when it holds
 // half of maxEntries it becomes the old map and the previous old map is
 // dropped. A hit in the old map moves the entry back. At most maxEntries
-// entries are held. Memory cap: each entry holds a key of at most MaxInput
-// (512) bytes and a template of at most about 3x that, plus map overhead,
-// so about 2.2 KiB per entry in the worst case: about 18 MiB for 8192
-// entries (typical log lines need a tenth of that).
+// entries are held. Memory cap: each entry holds a key and a template of at
+// most MaxInput (512) bytes each, plus map overhead, so about 1.1 KiB per
+// entry in the worst case: about 9 MiB for 8192 entries (typical log lines
+// need a tenth of that).
 //
 // A Cache is safe for concurrent use. A nil *Cache computes without caching.
 type Cache struct {

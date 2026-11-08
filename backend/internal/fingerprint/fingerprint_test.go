@@ -300,3 +300,15 @@ func TestMeaningfulCodes(t *testing.T) {
 		t.Errorf("signal: killed -> %q", got)
 	}
 }
+
+// TestTemplateCap: invalid bytes become U+FFFD (3 bytes) and placeholders
+// are longer than what they replace, yet a template stays within MaxInput,
+// so normalizing it again changes nothing (found by FuzzNormalize).
+func TestTemplateCap(t *testing.T) {
+	for _, in := range []string{strings.Repeat("\x97 ", 300), strings.Repeat("1 ", 300), "xx: " + strings.Repeat("a\xe8", 250) + " 7"} {
+		out := Normalize(in)
+		if len(out) > MaxInput || Normalize(out) != out || !utf8.ValidString(out) {
+			t.Errorf("len %d, idempotent %v for %q", len(out), Normalize(out) == out, in[:20])
+		}
+	}
+}
