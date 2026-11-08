@@ -104,4 +104,18 @@ var corpus = []string{
 	"Traceback (most recent call last):\n" + strings.Repeat("  File \"/app/worker.py\", line 42, in run\n    self.step()\n", 120) + "RecursionError: maximum recursion depth exceeded while calling a Python object",
 	"Traceback (most recent call last):\n   \n\t\n",
 	"Traceback (most recent call last):\n  File \"/app/a.py\", line 3, in f\n    g()\nKeyError: 'id'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/app/a.py\", line 5, in f\n    raise LookupError(\"missing 7\")\nLookupError: missing 7",
+	// J1.1: exit codes, signals and SQLSTATE codes are kept; numbers around them still normalize
+	"worker-7 crashed with exit code 1 after 3412 ms",
+	"job 8812 failed: exit status 2",
+	"process 18213 terminated by signal 9 after 30s",
+	"process 4471 terminated by signal 15 after 12s",
+	"child process 991 exited: signal: killed",
+	`pq: duplicate key value violates unique constraint "orders_pkey" (SQLSTATE 23505)`,
+	"could not serialize access due to concurrent update (SQLSTATE 40001), retry 3 of 5",
+	"ERROR: relation \"payments\" does not exist (SQLSTATE 42P01)",
+	"txn 5512 aborted: sqlstate=40001 after 812ms",
+	"upstream call failed status=503 in 2400ms",
+	"upstream call failed status: 502 after 3 retries",
+	"handler failed code=500 for request 77812",
+	"handler failed code: 500 for request 77813",
 }

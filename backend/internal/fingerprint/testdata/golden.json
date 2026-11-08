@@ -361,8 +361,8 @@
   },
   {
     "message": "worker-12 crashed with exit code 137",
-    "template": "worker-\u003cn\u003e crashed with exit code \u003cn\u003e",
-    "fingerprint": "3201218754c3f868"
+    "template": "worker-\u003cn\u003e crashed with exit code 137",
+    "fingerprint": "ee712efee75665bd"
   },
   {
     "message": "\u0000�� binary \u0001 junk",
@@ -423,5 +423,70 @@
     "message": "Traceback (most recent call last):\n  File \"/app/a.py\", line 3, in f\n    g()\nKeyError: 'id'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/app/a.py\", line 5, in f\n    raise LookupError(\"missing 7\")\nLookupError: missing 7",
     "template": "LookupError: missing \u003cn\u003e",
     "fingerprint": "cca6c4fd227ab95f"
+  },
+  {
+    "message": "worker-7 crashed with exit code 1 after 3412 ms",
+    "template": "worker-\u003cn\u003e crashed with exit code 1 after \u003cn\u003e ms",
+    "fingerprint": "9a810c36bbf4c4e8"
+  },
+  {
+    "message": "job 8812 failed: exit status 2",
+    "template": "job \u003cn\u003e failed: exit status 2",
+    "fingerprint": "45e66992d81038af"
+  },
+  {
+    "message": "process 18213 terminated by signal 9 after 30s",
+    "template": "process \u003cn\u003e terminated by signal 9 after \u003cn\u003es",
+    "fingerprint": "4a6f44e540b73852"
+  },
+  {
+    "message": "process 4471 terminated by signal 15 after 12s",
+    "template": "process \u003cn\u003e terminated by signal 15 after \u003cn\u003es",
+    "fingerprint": "12e099cb01d53a8e"
+  },
+  {
+    "message": "child process 991 exited: signal: killed",
+    "template": "child process \u003cn\u003e exited: signal: killed",
+    "fingerprint": "8f8b18f11a15db4c"
+  },
+  {
+    "message": "pq: duplicate key value violates unique constraint \"orders_pkey\" (SQLSTATE 23505)",
+    "template": "pq: duplicate key value violates unique constraint \"orders_pkey\" (SQLSTATE 23505)",
+    "fingerprint": "e61782e98fafc22f"
+  },
+  {
+    "message": "could not serialize access due to concurrent update (SQLSTATE 40001), retry 3 of 5",
+    "template": "could not serialize access due to concurrent update (SQLSTATE 40001), retry \u003cn\u003e of \u003cn\u003e",
+    "fingerprint": "9d7ac1fb7a2f3bd1"
+  },
+  {
+    "message": "ERROR: relation \"payments\" does not exist (SQLSTATE 42P01)",
+    "template": "ERROR: relation \"payments\" does not exist (SQLSTATE 42P01)",
+    "fingerprint": "2b3a37bf28b0c754"
+  },
+  {
+    "message": "txn 5512 aborted: sqlstate=40001 after 812ms",
+    "template": "txn \u003cn\u003e aborted: sqlstate=40001 after \u003cn\u003ems",
+    "fingerprint": "d2a7d0a5170b33e9"
+  },
+  {
+    "message": "upstream call failed status=503 in 2400ms",
+    "template": "upstream call failed status=503 in \u003cn\u003ems",
+    "fingerprint": "54eff28a2af835fb"
+  },
+  {
+    "message": "upstream call failed status: 502 after 3 retries",
+    "template": "upstream call failed status: 502 after \u003cn\u003e retries",
+    "fingerprint": "59552d0930b49dad"
+  },
+  {
+    "message": "handler failed code=500 for request 77812",
+    "template": "handler failed code=500 for request \u003cn\u003e",
+    "fingerprint": "2df3ee8fb31750ff"
+  },
+  {
+    "message": "handler failed code: 500 for request 77813",
+    "template": "handler failed code: 500 for request \u003cn\u003e",
+    "fingerprint": "d20357fcd8c3d6dd"
   }
 ]

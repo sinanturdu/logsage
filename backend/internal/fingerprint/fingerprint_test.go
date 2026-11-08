@@ -271,3 +271,32 @@ func TestTraceback(t *testing.T) {
 		t.Errorf("huge traceback took %v", d)
 	}
 }
+
+func TestMeaningfulCodes(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"worker-12 crashed with exit code 137", "worker-3 crashed with exit code 1"},
+		{"job 1 failed: exit status 1", "job 2 failed: exit status 2"},
+		{"terminated by signal 9", "terminated by signal 15"},
+		{"insert failed (SQLSTATE 23505)", "insert failed (SQLSTATE 40001)"},
+		{"txn aborted: sqlstate=40001", "txn aborted: sqlstate=40P01"},
+		{"call failed status=503", "call failed status=502"},
+		{"call failed status: 503", "call failed status: 504"},
+		{"handler failed code=500", "handler failed code=502"},
+		{"handler failed code: 500", "handler failed code: 503"},
+	} {
+		a, b := Normalize(pair[0]), Normalize(pair[1])
+		if KeyForm(a) == KeyForm(b) {
+			t.Errorf("%q and %q share the key %q", pair[0], pair[1], KeyForm(a))
+		}
+		if Normalize(a) != a || Normalize(b) != b {
+			t.Errorf("not idempotent: %q %q", a, b)
+		}
+	}
+	// The same code with other numbers around it is one group.
+	if a, b := Normalize("pid 18213 killed by signal 9 after 30s"), Normalize("pid 7 killed by signal 9 after 2s"); a != b {
+		t.Errorf("%q != %q", a, b)
+	}
+	if got := Normalize("child exited: signal: killed"); got != "child exited: signal: killed" {
+		t.Errorf("signal: killed -> %q", got)
+	}
+}

@@ -60,7 +60,9 @@ var (
 	reDigitLet    = regexp.MustCompile(`\d[A-Za-z]`)
 	reNumber      = regexp.MustCompile(`\b\d+(?:[.,]\d+)*\b`)
 	reSpace       = regexp.MustCompile(`\s+`)
-	reSentinel    = regexp.MustCompile("\x01([a-j.]{1,5})\x01")
+	reSentinel    = regexp.MustCompile("\x01([a-jA-Z.]{1,5})\x01")
+	reCodeWord    = regexp.MustCompile(`(?i)\b(exit\s+(?:code|status)|signal)(\s*[:=]?\s*)(\d{1,3})\b`)
+	reSQLState    = regexp.MustCompile(`\b((?i:sqlstate))(\s*[:=]?\s*)([0-9A-Z]{5})\b`)
 	reHTTPVer     = regexp.MustCompile(`\b(HTTP|http)/(\d(?:\.\d)?)\b`)
 	reKeyForm     = regexp.MustCompile(`<(?:n|id|uuid)>`)
 
@@ -184,6 +186,16 @@ func pass(s string) string {
 		return protect(p[1]) + p[2]
 	})
 	s = protectStatus(s)
+	// Exit codes, signals and SQLSTATE codes name the failure, like a status:
+	// "exit code 137", "exit status 1", "signal 9", "SQLSTATE 23505", "sqlstate=40001".
+	s = reCodeWord.ReplaceAllStringFunc(s, func(m string) string {
+		p := reCodeWord.FindStringSubmatch(m)
+		return p[1] + p[2] + protect(p[3])
+	})
+	s = reSQLState.ReplaceAllStringFunc(s, func(m string) string {
+		p := reSQLState.FindStringSubmatch(m)
+		return p[1] + p[2] + protect(p[3])
+	})
 	s = reReqLine.ReplaceAllStringFunc(s, func(m string) string {
 		p := reReqLine.FindStringSubmatch(m)
 		return p[1] + protect(p[2])
@@ -266,7 +278,7 @@ func pass(s string) string {
 	s = reSentinel.ReplaceAllStringFunc(s, func(m string) string {
 		b := []byte(m[1 : len(m)-1])
 		for i := range b {
-			if b[i] != '.' {
+			if b[i] >= 'a' && b[i] <= 'j' { // '.' and SQLSTATE letters stay
 				b[i] = '0' + (b[i] - 'a')
 			}
 		}
