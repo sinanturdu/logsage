@@ -79,3 +79,17 @@ The header has shown a `Ctrl K` hint since I2a, and the explorer has grown keybo
 - A new shortcut must be added to `shortcuts.ts`, or neither the handlers nor the help will know about it.
 - Recent commands are forgotten on reload by design.
 - No new dependencies, no backend change. The ingest address in the examples is still fixed (`http://localhost:8080`); I2c-4 makes it configurable.
+
+## Lessons (fix after v0.2.0)
+- **The bug:** the palette could not be closed once focus had left its panel. Escape was handled only by a key handler on the panel element, Ctrl K only opened, and the backdrop did nothing.
+  - A click outside moved focus to `<body>`, and from there nothing but running a command closed it.
+  - The owner hit it after opening with Ctrl K in Chrome.
+- **Why tests missed it:** the jsdom tests passed because Testing Library's `user.keyboard` sends keys to the element that has focus, which was always the palette input. No test clicked outside, lost focus, or dispatched keys on `<body>` the way a browser does.
+- **The fix:**
+  - The shell listens for Escape and Ctrl K / Cmd K in the capture phase on the document while the palette is open, and Ctrl K toggles.
+  - The backdrop closes on a click, and there is a Close button.
+  - A route change closes the palette.
+  - Focus returns to the element that had it before.
+- **The rule from now on:**
+  - Keyboard behaviour of overlays is also checked in a real browser, by opening every way it can be opened and closing every way it can be closed, including after clicking elsewhere.
+  - Tests dispatch raw `keydown`/`keyup` sequences on `<body>` and on the focused element, not only through `user.keyboard`.

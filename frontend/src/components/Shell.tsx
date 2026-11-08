@@ -4,7 +4,7 @@ import { useProjects } from '../api/projects'
 import { copyText } from '../explorer/clipboard'
 import { BridgeContext, type ExplorerBridge } from '../palette/bridge'
 import { CommandPalette } from '../palette/CommandPalette'
-import { commandsFor, type Command } from '../palette/commands'
+import { commandsFor, defaultCommands, type Command } from '../palette/commands'
 import { shortcutFor } from '../shortcuts'
 import { AccountDialogs, AccountMenu, useSignOut, type AccountDialog } from './AccountMenu'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -48,25 +48,54 @@ export function Shell() {
   }, [notice])
   const openPalette = useCallback(() => {
     setExplorerCtx(bridge.current?.ctx ?? null)
-    setPalette(true)
+    setPalette(true) // one boolean: opening again never stacks a second palette
   }, [])
+  const closePalette = useCallback(() => setPalette(false), [])
+  const paletteOpen = useRef(false)
+  useEffect(() => {
+    paletteOpen.current = palette
+  }, [palette])
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const projects = useProjects()
   const { signOut } = useSignOut()
   const m = /^\/projects\/([^/]+)\/(logs|keys)/.exec(pathname)
+  // Any route change closes the palette.
+  const [path, setPath] = useState(pathname)
+  if (path !== pathname) {
+    setPath(pathname)
+    if (palette) setPalette(false)
+  }
 
+  // Capture phase on the document, so the keys work wherever focus is (also on
+  // <body> after a click outside the panel, or in a field) and before any handler
+  // on the way can stop them. Ctrl K / Cmd K toggles the palette.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const id = shortcutFor(e, ['palette', 'help'])
       if (!id) return
       e.preventDefault() // the browser's own Ctrl K (search) must not run
-      if (id === 'palette') openPalette()
-      else setHelp(true)
+      if (id === 'help') setHelp(true)
+      else if (paletteOpen.current) {
+        e.stopPropagation()
+        setPalette(false)
+      } else openPalette()
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
   }, [openPalette])
+  // While the palette is open, Escape closes it from anywhere in the page.
+  useEffect(() => {
+    if (!palette) return
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation() // nothing underneath (the explorer's Escape) reacts as well
+      setPalette(false)
+    }
+    document.addEventListener('keydown', onEscape, true)
+    return () => document.removeEventListener('keydown', onEscape, true)
+  }, [palette])
 
   const run = (c: Command) => {
     setRecent((r) => [c.id, ...r.filter((x) => x !== c.id)].slice(0, 5))
@@ -129,7 +158,7 @@ export function Shell() {
       <p className="shell-notice" role="status" aria-live="polite">
         {notice}
       </p>
-      {palette && <CommandPalette commands={commands} recent={recent} onRun={run} onClose={() => setPalette(false)} />}
+      {palette && <CommandPalette commands={commands} defaults={defaultCommands(commands, recent, m?.[2] === 'logs' ? explorerCtx : null)} onRun={run} onClose={closePalette} />}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
       <AccountDialogs dialog={account} onClose={() => setAccount(null)} />
     </BridgeContext.Provider>

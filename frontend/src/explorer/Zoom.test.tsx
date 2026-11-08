@@ -97,3 +97,36 @@ describe('small samples in the error share', () => {
     expect(within(chart).getByRole('img').getAttribute('aria-label')).not.toContain('67%')
   })
 })
+
+describe('error share with only error and fatal selected', () => {
+  it('knows when the share would be 100% by definition', async () => {
+    const { onlyErrorLevels, summarize } = await import('./time')
+    expect(onlyErrorLevels(['error', 'fatal'])).toBe(true)
+    expect(onlyErrorLevels(['error'])).toBe(true)
+    expect(onlyErrorLevels(['fatal'])).toBe(true)
+    expect(onlyErrorLevels([])).toBe(false) // all levels
+    expect(onlyErrorLevels(['warn', 'error'])).toBe(false)
+    const buckets = [{ t: Date.UTC(2026, 10, 7, 2, 16, 30), debug: 0, info: 0, warn: 0, error: 30, fatal: 1 }]
+    expect(summarize(buckets, 10, { share: false })).toBe('Peak volume 31 logs per 10 s at 02:16:30 UTC.')
+    expect(summarize(buckets, 10)).toContain('Peak error and fatal share 100%')
+  })
+
+  it.each([
+    ['level=error%2Cfatal', false],
+    ['level=error', false],
+    ['level=fatal', false],
+    ['level=warn%2Cerror', true],
+    ['', true],
+  ])('%s: strip shown = %s', async (query, shown) => {
+    mockExplorer()
+    renderApp(`/projects/shop/logs${query ? `?${query}` : ''}`)
+    const chart = await screen.findByRole('region', { name: 'Timeline' })
+    await waitFor(() => expect(chart.querySelectorAll('polyline.vol').length).toBeGreaterThan(0))
+    const hidden = within(chart).queryByText('Error share is not shown while only error and fatal levels are selected.')
+    expect(chart.querySelectorAll('polyline.err').length > 0).toBe(shown)
+    expect(hidden === null).toBe(shown)
+    const key = chart.querySelector('.key')?.textContent ?? ''
+    expect(key.includes('error and fatal share') || key.includes('No errors') || key.includes('enough logs')).toBe(shown)
+    expect(key).toContain(shown ? 'Drag across either strip' : 'Drag across the strip')
+  })
+})

@@ -117,7 +117,13 @@ export function brushRange(a: number, b: number, bucketMs: number, w: BrushWindo
  * error share and when. Ties go to the earliest bucket, so the text is
  * deterministic for the same data.
  */
-export function summarize(buckets: readonly Bucket[], bucketSeconds: number): string {
+/** The line shown instead of the error-share strip when only error and fatal are selected. */
+export const SHARE_HIDDEN = 'Error share is not shown while only error and fatal levels are selected.'
+
+/** Whether a level filter selects only error and fatal: then the share is 100% by definition. */
+export const onlyErrorLevels = (levels: readonly string[]) => levels.length > 0 && levels.every((l) => l === 'error' || l === 'fatal')
+
+export function summarize(buckets: readonly Bucket[], bucketSeconds: number, opts: { share?: boolean } = {}): string {
   let peak: Bucket | undefined
   let peakShare: Bucket | undefined
   let total = 0
@@ -130,6 +136,7 @@ export function summarize(buckets: readonly Bucket[], bucketSeconds: number): st
   const per = bucketLabel(bucketSeconds)
   // The total is in the scope line above the chart; the summary starts with the peaks.
   let s = `Peak volume ${bucketTotal(peak).toLocaleString('en-US')} logs per ${per} at ${clockUtc(peak.t)} UTC.`
+  if (opts.share === false) return s // no share sentence where the strip is not drawn
   const anyErrors = buckets.some((b) => bucketErrors(b) > 0)
   if (peakShare && bucketErrors(peakShare) > 0) {
     s += ` Peak error and fatal share ${Math.round(errorShare(peakShare))}% at ${clockUtc(peakShare.t)} UTC.`

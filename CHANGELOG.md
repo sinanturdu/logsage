@@ -4,6 +4,15 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Fixed
+- Command palette:
+  - It could not be closed once focus had left its panel (for example after a click outside). The owner hit this after opening it with Ctrl K.
+  - Escape now closes it from anywhere, and Ctrl K / Cmd K toggles it. A backdrop click or tap, a visible Close button and any route change close it too.
+  - Focus returns to where it was, and opening twice never stacks two palettes.
+  - A footer explains the keys.
+- The palette's empty list offers up to 8 commands for the context instead of only navigation.
+- The error-share strip is replaced by one line while only error and fatal levels are selected (it would be 100% everywhere), and the summary matches.
+
 ## [v0.2.0] - 2026-11-07
 
 Second milestone: accounts and dashboard. Release notes: [docs/releases/v0.2.0.md](docs/releases/v0.2.0.md).
