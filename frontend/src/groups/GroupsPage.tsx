@@ -12,12 +12,14 @@ import { rangeHeading } from '../explorer/time'
 import { useExplorerBridge } from '../palette/bridge'
 import { shortcutFor } from '../shortcuts'
 import { groupsError, mergeGroups, useGroups, type Group } from './api'
+import { combineGroups, type Combined } from './combine'
 import {
   GROUP_LEVELS,
   SORTS,
   SORT_LABEL,
   STATUS_FILTERS,
   STATUS_LABEL,
+  apiSort,
   groupHref,
   parseGroupsState,
   serializeGroupsState,
@@ -56,6 +58,29 @@ export function visibleGroups(all: readonly Group[], newOnly: boolean): { groups
 
 const INTERACTIVE = 'a, button, input, select, textarea, summary, [role="button"]'
 
+/** A row as shown: a group, a combined parent, or a parent's child (one service). */
+export type ShownRow =
+  | { kind: 'group' | 'child'; key: string; group: Group }
+  | { kind: 'parent'; key: string; groups: Group[]; combined: Combined; open: boolean }
+
+/** The visible rows: groups as they are, or combined parents with their open children. */
+export function shownRows(groups: readonly Group[], combine: boolean, sort: Sort, open: ReadonlySet<string>): ShownRow[] {
+  if (!combine) return groups.map((g) => ({ kind: 'group', key: g.fingerprint, group: g }))
+  const out: ShownRow[] = []
+  for (const r of combineGroups(groups, sort)) {
+    if (r.kind === 'group') {
+      out.push({ kind: 'group', key: r.group.fingerprint, group: r.group })
+      continue
+    }
+    const isOpen = open.has(r.key)
+    out.push({ kind: 'parent', key: `parent:${r.key}`, groups: r.groups, combined: r.combined, open: isOpen })
+    if (isOpen) for (const g of r.groups) out.push({ kind: 'child', key: g.fingerprint, group: g })
+  }
+  return out
+}
+
+export const combinedNote = (loaded: number) => `Combined from the ${n(loaded)} ${groupsWord(loaded)} loaded so far.`
+
 export function GroupsPage() {
   const { slug = '' } = useParams()
   const projects = useProjects()
@@ -69,6 +94,16 @@ export function GroupsPage() {
   const search = useRef<HTMLInputElement>(null)
   const table = useRef<HTMLTableSectionElement>(null)
   const [selected, setSelected] = useState<number | null>(null)
+  // Combined parents that are expanded, by template.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleOpen = useCallback((title: string) => {
+    setOpen((cur) => {
+      const next = new Set(cur)
+      if (next.has(title)) next.delete(title)
+      else next.add(title)
+      return next
+    })
+  }, [])
 
   const update = useCallback(
     (next: Partial<GroupsState>, opts: { replace?: boolean } = {}) => {
@@ -83,6 +118,7 @@ export function GroupsPage() {
   const all = useMemo(() => mergeGroups(list.data?.pages), [list.data])
   const { groups, ended } = visibleGroups(all, state.newOnly)
   const bucketSeconds = list.data?.pages[0]?.sparkline_bucket_seconds ?? 0
+  const rows = useMemo(() => shownRows(groups, state.combine, apiSort(state), open), [groups, state, open])
 
   // A new result set starts without a selection.
   const [selKey, setSelKey] = useState('')
@@ -90,10 +126,11 @@ export function GroupsPage() {
   if (key !== selKey) {
     setSelKey(key)
     setSelected(null)
+    setOpen(new Set())
   }
   useEffect(() => {
     if (selected === null) return
-    table.current?.querySelector<HTMLElement>(`tr[data-index="${selected}"] a`)?.focus()
+    table.current?.querySelector<HTMLElement>(`tr[data-index="${selected}"] :is(a, button)`)?.focus()
   }, [selected])
 
   useEffect(() => {
@@ -102,24 +139,26 @@ export function GroupsPage() {
       if (id === 'groups-search') {
         e.preventDefault()
         search.current?.focus()
-      } else if (id === 'groups-next') setSelected((s) => (groups.length === 0 ? null : s === null ? 0 : Math.min(s + 1, groups.length - 1)))
-      else if (id === 'groups-previous') setSelected((s) => (groups.length === 0 ? null : s === null ? 0 : Math.max(s - 1, 0)))
+      } else if (id === 'groups-next') setSelected((s) => (rows.length === 0 ? null : s === null ? 0 : Math.min(s + 1, rows.length - 1)))
+      else if (id === 'groups-previous') setSelected((s) => (rows.length === 0 ? null : s === null ? 0 : Math.max(s - 1, 0)))
       else if (id === 'groups-open' && selected !== null) {
         // A focused link or button handles Enter itself.
         if (e.target instanceof Element && e.target.closest(INTERACTIVE)) return
-        const g = groups[selected]
-        if (g) void navigate(groupHref(slug, g.fingerprint, state.range))
+        const r = rows[selected]
+        if (r?.kind === 'parent') toggleOpen(r.combined.title)
+        else if (r) void navigate(groupHref(slug, r.group.fingerprint, state.range))
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [groups, selected, navigate, slug, state.range])
+  }, [rows, selected, navigate, slug, state.range, toggleOpen])
 
   // The command palette reads the list's state and runs its commands here.
   useExplorerBridge({
-    groups: { status: state.status, sort: state.sort, newOnly: state.newOnly },
+    groups: { status: state.status, sort: state.sort, newOnly: state.newOnly, combine: state.combine },
     run: (a) => {
       if (a.type === 'group-status') update({ status: a.status })
+      else if (a.type === 'group-combine') update({ combine: a.on })
       else if (a.type === 'group-sort') update({ sort: a.sort })
       else if (a.type === 'group-new') update({ newOnly: a.on })
     },
@@ -207,6 +246,10 @@ export function GroupsPage() {
           <input type="checkbox" checked={state.newOnly} onChange={(e) => update({ newOnly: e.target.checked })} />
           New in this range only
         </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={state.combine} onChange={(e) => update({ combine: e.target.checked })} />
+          Combine same message
+        </label>
         <details className="service-filter">
           <summary>Services{state.services.length > 0 ? ` (${state.services.length} selected)` : ''}</summary>
           {services.length === 0 ? (
@@ -229,6 +272,7 @@ export function GroupsPage() {
         <p className="status" role="status" aria-live="polite">
           {problem ? '' : list.isPending ? 'Loading error groups…' : summaryText(groups.length, newCount, state.newOnly, state.status)}
         </p>
+        {state.combine && !problem && !list.isPending && groups.length > 0 && <p className="muted combined-note">{combinedNote(groups.length)}</p>}
         {problem ? (
           <div className="state-panel" role="alert">
             <p>{problem.text}</p>
@@ -267,36 +311,20 @@ export function GroupsPage() {
                   </tr>
                 </thead>
                 <tbody ref={table}>
-                  {groups.map((g, i) => (
-                    <tr key={g.fingerprint} data-index={i} className={i === selected ? 'selected' : undefined} onClick={() => setSelected(i)}>
-                      {showStatus && (
-                        <td>
-                          <StatusMark status={g.status} />
-                        </td>
-                      )}
-                      <td className="gtitle">
-                        <Flags group={g} />
-                        <Link to={groupHref(slug, g.fingerprint, state.range)} title={g.title} onFocus={() => setSelected(i)}>
-                          <TemplateText text={g.title} />
-                        </Link>
-                      </td>
-                      <td>
-                        <LogText text={g.services.join(', ')} mono={false} />
-                      </td>
-                      <td>
-                        <Levels levels={g.levels} />
-                      </td>
-                      <td className="num">{n(g.count)}</td>
-                      <td>
-                        <Sparkline values={g.sparkline} from={win.from} bucketSeconds={bucketSeconds} />
-                      </td>
-                      <td>
-                        <When iso={g.last_seen} now={now} />
-                      </td>
-                      <td>
-                        <When iso={g.first_seen} now={now} />
-                      </td>
-                    </tr>
+                  {rows.map((r, i) => (
+                    <GroupRow
+                      key={r.key}
+                      row={r}
+                      index={i}
+                      selected={i === selected}
+                      onSelect={() => setSelected(i)}
+                      onToggle={toggleOpen}
+                      showStatus={showStatus}
+                      href={(fp) => groupHref(slug, fp, state.range)}
+                      from={win.from}
+                      bucketSeconds={bucketSeconds}
+                      now={now}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -320,6 +348,81 @@ export function GroupsPage() {
         )}
       </section>
     </div>
+  )
+}
+
+type RowProps = {
+  row: ShownRow
+  index: number
+  selected: boolean
+  onSelect: () => void
+  onToggle: (title: string) => void
+  showStatus: boolean
+  href: (fingerprint: string) => string
+  from: number
+  bucketSeconds: number
+  now: number
+}
+
+/** One table row: a group (or a parent's child), or a combined parent with a disclosure button. */
+function GroupRow({ row, index, selected, onSelect, onToggle, showStatus, href, from, bucketSeconds, now }: RowProps) {
+  const cls = [selected ? 'selected' : '', row.kind === 'child' ? 'child' : '', row.kind === 'parent' ? 'parent' : ''].filter(Boolean).join(' ') || undefined
+  const v: Group | Combined = row.kind === 'parent' ? row.combined : row.group
+  return (
+    <tr data-index={index} className={cls} onClick={onSelect}>
+      {showStatus && (
+        <td>
+          {v.status === 'mixed' ? (
+            <span className="gstatus gstatus-mixed">
+              <span className="shape" aria-hidden="true">
+                ◫
+              </span>{' '}
+              Mixed
+            </span>
+          ) : (
+            <StatusMark status={v.status} />
+          )}
+        </td>
+      )}
+      <td className="gtitle">
+        <Flags group={v} />
+        {row.kind === 'parent' ? (
+          <button type="button" className="disclosure" aria-expanded={row.open} onClick={() => onToggle(row.combined.title)} onFocus={onSelect} title={row.combined.title}>
+            <span className="tw" aria-hidden="true">
+              {row.open ? '▾' : '▸'}
+            </span>
+            <TemplateText text={row.combined.title} />
+            <span className="visually-hidden">, {row.groups.length} groups</span>
+          </button>
+        ) : (
+          <Link to={href(row.group.fingerprint)} title={row.group.title} onFocus={onSelect}>
+            <TemplateText text={row.group.title} />
+          </Link>
+        )}
+      </td>
+      <td>
+        {row.kind === 'parent' ? (
+          <span title={row.combined.services.join(', ')}>
+            {row.combined.services.length} services<span className="visually-hidden">: {row.combined.services.join(', ')}</span>
+          </span>
+        ) : (
+          <LogText text={row.group.services.join(', ')} mono={false} />
+        )}
+      </td>
+      <td>
+        <Levels levels={v.levels} />
+      </td>
+      <td className="num">{n(v.count)}</td>
+      <td>
+        <Sparkline values={v.sparkline} from={from} bucketSeconds={bucketSeconds} />
+      </td>
+      <td>
+        <When iso={v.last_seen} now={now} />
+      </td>
+      <td>
+        <When iso={v.first_seen} now={now} />
+      </td>
+    </tr>
   )
 }
 

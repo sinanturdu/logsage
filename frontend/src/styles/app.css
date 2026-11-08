@@ -377,3 +377,11 @@ table.groups .gtitle { white-space: normal; min-width: 24rem; max-width: 48rem; 
 /* Pages inside the padded main (error groups) reuse the explorer's head
    without its own side padding; the explorer drops the main's padding instead. */
 .page-head { padding-left: 0; padding-right: 0; }
+.combined-note { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+.gtitle .disclosure { display: inline; background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.gtitle .disclosure:hover .template { text-decoration: underline; }
+.disclosure .tw { display: inline-block; width: 1.1em; color: var(--pencil); }
+table.groups tr.child .gtitle a { display: inline-block; padding-left: 1.6em; }
+table.groups tr.child td { background: var(--white); }
+table.groups tr.child.selected td { background: var(--select); }
+.gstatus-mixed { color: var(--ink); }

@@ -75,7 +75,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'groups-search', keys: ['/'], description: 'Focus the search box', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === '/' },
   { id: 'groups-next', keys: ['j'], description: 'Select the next group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'j' },
   { id: 'groups-previous', keys: ['k'], description: 'Select the previous group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'k' },
-  { id: 'groups-open', keys: ['Enter'], description: 'Open the selected group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'Enter' },
+  { id: 'groups-open', keys: ['Enter'], description: 'Open the selected group, or expand a combined row', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'Enter' },
 ]
 
 /** Whether the event comes from a place where typed characters are text. */

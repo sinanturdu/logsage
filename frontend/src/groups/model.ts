@@ -31,6 +31,8 @@ export type GroupsState = {
   sort: Sort
   /** Only groups first seen in the range ("Show new groups only"). */
   newOnly: boolean
+  /** "Combine same message": one row per template across services, in the browser. */
+  combine: boolean
 }
 
 function list(v: string | null): string[] {
@@ -79,6 +81,7 @@ export function parseGroupsState(params: URLSearchParams): GroupsState {
     status: oneOf(STATUS_FILTERS, params.get('status'), 'open'),
     sort: oneOf(SORTS, params.get('sort'), 'count'),
     newOnly: params.get('new') === '1',
+    combine: params.get('combine') === '1',
   }
 }
 
@@ -93,6 +96,7 @@ export function serializeGroupsState(s: GroupsState): URLSearchParams {
   if (s.status !== 'open') p.set('status', s.status)
   if (s.sort !== 'count') p.set('sort', s.sort)
   if (s.newOnly) p.set('new', '1')
+  if (s.combine) p.set('combine', '1')
   return p
 }
 
