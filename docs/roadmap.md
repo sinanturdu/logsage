@@ -49,18 +49,20 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [ ] **Package K:** alert rules and notifications
 - [ ] **Package L:** incidents
 
-## v0.3 candidates
+## v0.4: Anomaly detection and AI root cause
+- [ ] Python service: statistical baseline per service and level, evaluation notebook
+- [ ] Deploy events and AI root-cause suggestions on incidents
+
+## v0.5: MCP server and agent integration
+- [ ] MCP server over the public API, so LLM agents can query logs, groups and incidents
+- [ ] Public API docs and outgoing webhooks
+
+## v1.0: Production hardening
 - [ ] Dedicated read-only ClickHouse user for `cmd/api` and `cmd/query`
 - [ ] Per-project quotas (ingest rate, retention, query budget)
 - [ ] Email verification and password reset
 - [ ] Prometheus metrics endpoint
+- [ ] Backups and restore
+- [ ] Scale tests
+- [ ] Screenshots, README polish, demo video, one-command setup
 - [ ] Remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`)
-
-## v0.5: Anomaly detection
-- [ ] Python service, statistical baseline, evaluation notebook
-
-## v0.6: Incidents and root cause
-- [ ] Incident lifecycle, deploy events, AI root-cause suggestions
-
-## v1.0: Release
-- [ ] Public API docs, webhooks, MCP server, one-command setup, demo video, README polish
