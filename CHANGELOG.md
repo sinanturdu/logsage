@@ -21,8 +21,14 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - A group page: flags explained in words, counts by service and level, a volume strip, the latest logs and Open in Logs. Owners and admins resolve, ignore or reopen with an optional note; viewers see the status read-only.
   - The explorer takes a `fingerprint` parameter (a removable "group: ..." chip), and an expanded log links to its group.
   - Palette commands: Go to Error groups, status filters, sort orders and new only.
+  - "Combine same message" (J2.1): a toggle, URL parameter `combine=1` and palette command that show one expandable row per template shared by several services, computed from the groups loaded so far.
 
 ### Fixed
+- Error groups (J2.1):
+  - The range row on the groups pages started about 24 px right of the content; it now lines up as in the explorer.
+  - The Status column is shown only with the "All" status filter; the summary names the selected status.
+  - The group page shows its status once and explains the flags in one paragraph.
+  - The explorer hides the error-share strip when only error and fatal logs are in view (for example under a group filter), not only when those levels are selected.
 - `scripts/dev.ps1 up` says what to do when the dev database volume was created with another password than the one in `.env` (run `dev.ps1 down`, then `dev.ps1 up`), instead of a generic compose error.
 
 ### Notes
