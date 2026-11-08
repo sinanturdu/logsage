@@ -86,7 +86,7 @@ func BuildNewGroups(scope Scope, w AlertWindow, minEvents uint64) (Statement, er
 	conds = append(conds, "fingerprint != 0", "fingerprint IN ("+firstSeenIn+")")
 	params["min_events"] = strconv.FormatUint(max(minEvents, 1), 10)
 	params["limit"] = strconv.Itoa(MaxAlertGroups)
-	sql := "SELECT fingerprint, count() AS n, argMax(template, timestamp) AS title, max(timestamp) AS last\nFROM logs FINAL\n" + joinWhere(conds) +
+	sql := "SELECT fingerprint, count() AS n, argMax(template, timestamp) AS title, argMax(message, timestamp) AS sample, max(timestamp) AS last\nFROM logs FINAL\n" + joinWhere(conds) +
 		"GROUP BY fingerprint\nHAVING n >= {min_events:UInt64}\nORDER BY n DESC, fingerprint\nLIMIT {limit:UInt32}\nFORMAT JSONEachRow"
 	return Statement{SQL: sql, Params: params}, nil
 }
@@ -104,7 +104,7 @@ func BuildGroupActivity(scope Scope, w AlertWindow, fps []uint64) (Statement, er
 	}
 	conds = append(conds, "fingerprint IN {fps:Array(UInt64)}")
 	params["fps"] = uintArray(fps)
-	sql := "SELECT fingerprint, count() AS n, argMax(template, timestamp) AS title, max(timestamp) AS last\nFROM logs FINAL\n" + joinWhere(conds) +
+	sql := "SELECT fingerprint, count() AS n, argMax(template, timestamp) AS title, argMax(message, timestamp) AS sample, max(timestamp) AS last\nFROM logs FINAL\n" + joinWhere(conds) +
 		"GROUP BY fingerprint\nORDER BY fingerprint\nFORMAT JSONEachRow"
 	return Statement{SQL: sql, Params: params}, nil
 }
@@ -114,6 +114,7 @@ type AlertGroup struct {
 	Fingerprint uint64
 	Count       uint64
 	Title       string
+	Sample      string // the latest raw message; sent only to channels that opted in
 	Last        time.Time
 }
 
@@ -193,6 +194,7 @@ func (s *Service) alertGroups(ctx context.Context, stmt Statement) ([]AlertGroup
 			Fingerprint chUint `json:"fingerprint"`
 			N           chUint `json:"n"`
 			Title       string `json:"title"`
+			Sample      string `json:"sample"`
 			Last        string `json:"last"`
 		}
 		if err := json.Unmarshal(line, &r); err != nil {
@@ -202,7 +204,7 @@ func (s *Service) alertGroups(ctx context.Context, stmt Statement) ([]AlertGroup
 		if err != nil {
 			return err
 		}
-		out = append(out, AlertGroup{Fingerprint: uint64(r.Fingerprint), Count: uint64(r.N), Title: r.Title, Last: last})
+		out = append(out, AlertGroup{Fingerprint: uint64(r.Fingerprint), Count: uint64(r.N), Title: r.Title, Sample: r.Sample, Last: last})
 		return nil
 	})
 	if err != nil {
