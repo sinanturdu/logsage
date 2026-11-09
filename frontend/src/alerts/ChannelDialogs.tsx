@@ -1,3 +1,4 @@
+import { Choice } from '../components/Choice'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Dialog } from '../components/Dialog'
@@ -160,15 +161,7 @@ export function ChannelFormDialog({ slug, channel, onClose }: { slug: string; ch
           <fieldset className="choices">
             <legend>Type</legend>
             {KINDS.map((k) => (
-              <label key={k.kind} className="choice">
-                <input type="radio" name={`${id}-kind`} value={k.kind} checked={kind === k.kind} aria-describedby={`${id}-kind-${k.kind}`} onChange={() => setKind(k.kind)} />
-                <span>
-                  <b>{k.label}</b>{' '}
-                  <span className="choice-desc" id={`${id}-kind-${k.kind}`}>
-                    {k.description}
-                  </span>
-                </span>
-              </label>
+              <Choice key={k.kind} name={`${id}-kind`} value={k.kind} checked={kind === k.kind} label={k.label} description={k.description} onChange={() => setKind(k.kind)} />
             ))}
           </fieldset>
         )}

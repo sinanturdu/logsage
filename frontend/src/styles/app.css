@@ -249,7 +249,7 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 .dialog input[aria-invalid='true'] { border: 2px solid var(--danger); }
 .dialog fieldset { border: 0; margin: 0; padding: 0; }
 .dialog legend { font-weight: 500; padding: 0; }
-.dialog .choice { display: flex; gap: var(--space-2); align-items: baseline; font-weight: 400; margin-top: var(--space-2); }
+.dialog .choice { display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 400; margin-top: var(--space-2); }
 .dialog .check { display: flex; gap: var(--space-2); align-items: center; font-weight: 400; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
 .button-danger { background: var(--danger); border-color: var(--danger); color: var(--white); }
@@ -277,6 +277,11 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 .secret { align-items: flex-start; }
 .key-block { flex: 1; min-width: 0; font: var(--text-md) var(--font-mono); overflow-wrap: anywhere; word-break: break-all; user-select: all; background: var(--white); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 8px; cursor: text; }
 .choice-desc { color: var(--pencil); }
+/* A radio option: the name on one line, the muted description below it. */
+.choice-text { display: flex; flex-direction: column; min-width: 0; }
+.dialog .choice input { margin-top: 3px; }
+.choice-name { font-weight: 500; color: var(--ink); }
+.choice-text .choice-desc { font-size: var(--text-sm); }
 .examples [role='tablist'] { display: flex; gap: 2px; border-bottom: 1px solid var(--line-strong); }
 .examples [role='tab'] { background: none; border: 1px solid transparent; border-bottom: 0; padding: 4px 10px; font: inherit; font-size: var(--text-sm); color: var(--pencil); cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; }
 .examples [role='tab'][aria-selected='true'] { color: var(--ink); border-color: var(--line-strong); background: var(--white); margin-bottom: -1px; }

@@ -1,3 +1,4 @@
+import { Choice } from '../components/Choice'
 import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
@@ -165,23 +166,16 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         <fieldset className="choices" aria-describedby={err('type') ? `${fid('type')}-error` : undefined}>
           <legend>Type</legend>
           {RULE_TYPES.map((t) => (
-            <label key={t} className="choice">
-              <input
-                type="radio"
-                name={`${id}-type`}
-                id={t === form.type ? fid('type') : undefined}
-                value={t}
-                checked={form.type === t}
-                aria-describedby={`${id}-type-${t}`}
-                onChange={() => set('type', t)}
-              />
-              <span>
-                <b>{TYPE_LABEL[t]}</b>{' '}
-                <span className="choice-desc" id={`${id}-type-${t}`}>
-                  {TYPE_HINT[t]}
-                </span>
-              </span>
-            </label>
+            <Choice
+              key={t}
+              name={`${id}-type`}
+              id={t === form.type ? fid('type') : undefined}
+              value={t}
+              checked={form.type === t}
+              label={TYPE_LABEL[t]}
+              description={TYPE_HINT[t]}
+              onChange={() => set('type', t)}
+            />
           ))}
           {err('type') && (
             <p className="field-error" id={`${fid('type')}-error`}>
