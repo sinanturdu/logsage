@@ -157,6 +157,8 @@ export type RuleForm = {
   repeat: DurationValue
   enabled: boolean
   channels: string[]
+  /** Kept from the API on edit (the form has no field for it; the default is 10%). */
+  hysteresis?: number | undefined
 }
 
 export const emptyRuleForm = (type: RuleType = 'error_rate'): RuleForm => ({
@@ -222,6 +224,7 @@ export function formFromRule(r: {
     repeat: repeat > 0 ? toDurationValue(repeat) : base.repeat,
     enabled: r.enabled,
     channels: [...r.channels],
+    hysteresis: p.hysteresis_percent,
   }
 }
 
@@ -318,6 +321,7 @@ export function ruleBody(f: RuleForm): RuleBody {
   if (fields.includes('maxGroups')) params.max_groups = Number(f.maxGroups.trim())
   if (fields.includes('services') && f.services.length > 0) params.services = [...f.services]
   if (fields.includes('levels') && f.levels.length > 0) params.levels = [...f.levels]
+  if (f.hysteresis !== undefined) params.hysteresis_percent = f.hysteresis
   const s = (v: DurationValue) => goDuration(durationSeconds(v) ?? 0)
   return {
     name: f.name.trim(),

@@ -117,6 +117,7 @@ describe('the rule form', () => {
     expect(f).toMatchObject({ threshold: '12.5', minLogs: '80', services: ['a'], window: { amount: '5', unit: 'm' }, for: { amount: '2', unit: 'm' }, repeatOn: true, repeat: { amount: '1', unit: 'h' } })
     expect(ruleBody(f).params).toEqual({ threshold_percent: 12.5, min_logs: 80, services: ['a'] })
     expect(formFromRule(rule('r2', { repeat: '0s' })).repeatOn).toBe(false)
+    expect(ruleBody(formFromRule(rule('r3', { params: { threshold_percent: 5, min_logs: 50, hysteresis_percent: 25 } }))).params.hysteresis_percent).toBe(25)
   })
 
   it('maps server field messages to fields', () => {
