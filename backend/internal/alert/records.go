@@ -63,11 +63,23 @@ type StateRecord struct {
 	Template    string     `json:"template"`
 }
 
+// Summary is a rule's current state for the dashboard: firing when any key
+// fires, else pending when any is pending, else the latest transition's
+// target state (ok when there is none). LastChangeAt is that transition.
+type Summary struct {
+	State        string
+	Firing       int
+	Pending      int
+	LastChangeAt *time.Time
+}
+
 // NotificationRecord is one delivery in the outbox history.
 type NotificationRecord struct {
 	ID             int64      `json:"id"`
 	ChannelID      *string    `json:"channel_id"`
 	ChannelName    string     `json:"channel_name"`
+	RuleID         string     `json:"rule_id"`   // empty for tests and deleted rules
+	RuleName       string     `json:"rule_name"` // empty for tests
 	EventID        *int64     `json:"event_id"`
 	Event          string     `json:"event"`
 	Status         string     `json:"status"`

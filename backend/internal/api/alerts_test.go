@@ -185,7 +185,7 @@ func (f *fakeAlerts) AlertStates(context.Context, string) ([]alert.StateRecord, 
 func (f *fakeAlerts) AlertEvents(context.Context, string, string, int64, int) ([]alert.EventRecord, error) {
 	return []alert.EventRecord{}, nil
 }
-func (f *fakeAlerts) Notifications(context.Context, string, string, string, int64, int) ([]alert.NotificationRecord, error) {
+func (f *fakeAlerts) Notifications(context.Context, string, string, string, string, int64, int) ([]alert.NotificationRecord, error) {
 	return []alert.NotificationRecord{}, nil
 }
 
@@ -405,6 +405,9 @@ func TestRuleLifecycleAndAudit(t *testing.T) {
 	}
 	_ = json.Unmarshal([]byte(body), &created)
 	id := created.Rule.ID
+	if created.Rule.State != "ok" || created.Rule.LastChangeAt != nil || !strings.Contains(body, `"last_change_at":null`) {
+		t.Fatalf("new rule summary: %s", body)
+	}
 	if status, _, _ := f.send(t, "PUT", base+"/rules/"+id, "tok-viewer", `{}`); status != 403 {
 		t.Fatalf("viewer update: %d", status)
 	}
@@ -465,7 +468,7 @@ func TestTestSendIsLimited(t *testing.T) {
 func TestHistoryValidation(t *testing.T) {
 	opts, _ := enabledAlerts(t)
 	f := alertFixture(t, opts)
-	for _, q := range []string{"/events?limit=0", "/events?limit=101", "/events?before=-1", "/events?before=x", "/notifications?status=lost", "/events?rule=" + strings.Repeat("x", 65)} {
+	for _, q := range []string{"/events?limit=0", "/events?limit=101", "/events?before=-1", "/events?before=x", "/notifications?status=lost", "/events?rule=" + strings.Repeat("x", 65), "/notifications?rule=" + strings.Repeat("x", 65)} {
 		if status, _, _ := f.get(t, base+q, "tok-viewer"); status != 400 {
 			t.Errorf("%s: %d", q, status)
 		}

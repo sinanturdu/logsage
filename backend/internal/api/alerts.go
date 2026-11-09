@@ -40,7 +40,7 @@ type AlertStore interface {
 	DeleteRule(ctx context.Context, projectID, id string, close postgres.Closer, a postgres.AuditEntry) error
 	AlertStates(ctx context.Context, projectID string) ([]alert.StateRecord, error)
 	AlertEvents(ctx context.Context, projectID, ruleID string, before int64, limit int) ([]alert.EventRecord, error)
-	Notifications(ctx context.Context, projectID, channelID, status string, before int64, limit int) ([]alert.NotificationRecord, error)
+	Notifications(ctx context.Context, projectID, channelID, ruleID, status string, before int64, limit int) ([]alert.NotificationRecord, error)
 }
 
 // URLChecker validates webhook URLs (outbound.Client in production).
@@ -127,6 +127,12 @@ type ruleJSON struct {
 	Channels   []string     `json:"channels"`
 	Version    int          `json:"version"`
 	NextEvalAt time.Time    `json:"next_eval_at"`
+	// Current state summary (ADR 0024 section 8): ok, pending, firing or
+	// resolved; the dashboard shows disabled rules from enabled.
+	State        string     `json:"state"`
+	Firing       int        `json:"firing"`
+	Pending      int        `json:"pending"`
+	LastChangeAt *time.Time `json:"last_change_at"`
 }
 
 func toRuleJSON(r alert.Rule) ruleJSON {
@@ -134,9 +140,17 @@ func toRuleJSON(r alert.Rule) ruleJSON {
 	if ch == nil {
 		ch = []string{}
 	}
-	return ruleJSON{ID: r.ID, Name: r.Name, Note: r.Note, Type: r.Type, Params: r.Params, Interval: r.Interval.String(), Window: r.Window.String(),
+	out := ruleJSON{ID: r.ID, Name: r.Name, Note: r.Note, Type: r.Type, Params: r.Params, Interval: r.Interval.String(), Window: r.Window.String(),
 		For: r.For.String(), ClearFor: r.ClearFor.String(), Repeat: r.Repeat.String(), Enabled: r.Enabled, Channels: ch, Version: r.Version,
-		NextEvalAt: r.NextEvalAt.UTC()}
+		NextEvalAt: r.NextEvalAt.UTC(), State: r.Summary.State, Firing: r.Summary.Firing, Pending: r.Summary.Pending}
+	if out.State == "" {
+		out.State = string(alert.StateOK)
+	}
+	if r.Summary.LastChangeAt != nil {
+		t := r.Summary.LastChangeAt.UTC()
+		out.LastChangeAt = &t
+	}
+	return out
 }
 
 type ruleInput struct {
@@ -641,7 +655,7 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 	q := r.URL.Query()
-	status, channel := q.Get("status"), q.Get("channel")
+	status, channel, rule := q.Get("status"), q.Get("channel"), q.Get("rule")
 	if status != "" && !slices.Contains(outboxStatuses, status) {
 		writeInvalid(w, "status: must be pending, sending, sent, failed or cancelled")
 		return
@@ -650,7 +664,11 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request, ses
 		writeInvalid(w, "channel: not a channel id")
 		return
 	}
-	ns, err := s.opts.Alerts.Store.Notifications(r.Context(), m.ID, channel, status, before, limit)
+	if len(rule) > 64 {
+		writeInvalid(w, "rule: not a rule id")
+		return
+	}
+	ns, err := s.opts.Alerts.Store.Notifications(r.Context(), m.ID, channel, rule, status, before, limit)
 	if err != nil {
 		s.alertStoreError(w, "notifications", err)
 		return

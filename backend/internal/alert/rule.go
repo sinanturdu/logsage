@@ -77,6 +77,8 @@ type Rule struct {
 	// window): states of an older version are reset.
 	Version    int
 	NextEvalAt time.Time
+	// Summary is filled by the rule reads for the dashboard only.
+	Summary Summary
 }
 
 // Hysteresis returns the band in percent (default 10).

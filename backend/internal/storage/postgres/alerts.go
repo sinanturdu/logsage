@@ -367,7 +367,58 @@ func (s *Store) ListRules(ctx context.Context, projectID string) ([]alert.Rule, 
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if err := s.summarize(ctx, projectID, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// summarize fills each rule's Summary from its states and latest event.
+func (s *Store) summarize(ctx context.Context, projectID string, rules []alert.Rule) error {
+	if len(rules) == 0 {
+		return nil
+	}
+	ids := make([]string, len(rules))
+	for i, r := range rules {
+		ids[i] = r.ID
+	}
+	rows, err := s.pool.Query(ctx, `SELECT r.id::text,
+			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'firing'),
+			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'pending'),
+			coalesce(le.to_state, 'ok'), le.at
+		FROM alert_rules r
+		LEFT JOIN LATERAL (SELECT e.to_state, e.at FROM alert_events e WHERE e.rule_id = r.id ORDER BY e.at DESC, e.id DESC LIMIT 1) le ON true
+		WHERE r.project_id = $1 AND r.id::text = ANY($2)`, projectID, ids)
+	if err != nil {
+		return fmt.Errorf("postgres: rule summaries: %w", err)
+	}
+	defer rows.Close()
+	sums := map[string]alert.Summary{}
+	for rows.Next() {
+		var id string
+		var sum alert.Summary
+		if err := rows.Scan(&id, &sum.Firing, &sum.Pending, &sum.State, &sum.LastChangeAt); err != nil {
+			return fmt.Errorf("postgres: scan rule summary: %w", err)
+		}
+		switch {
+		case sum.Firing > 0:
+			sum.State = string(alert.StateFiring)
+		case sum.Pending > 0:
+			sum.State = string(alert.StatePending)
+		}
+		sums[id] = sum
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range rules {
+		rules[i].Summary = sums[rules[i].ID]
+	}
+	return nil
 }
 
 // Rule returns one rule of a project, or ErrNotFound.
@@ -375,10 +426,17 @@ func (s *Store) Rule(ctx context.Context, projectID, id string) (alert.Rule, err
 	ctx, cancel := s.ctx(ctx)
 	defer cancel()
 	r, err := ruleByID(ctx, s.pool, projectID, id)
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return alert.Rule{}, fmt.Errorf("postgres: rule: %w", err)
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			err = fmt.Errorf("postgres: rule: %w", err)
+		}
+		return alert.Rule{}, err
 	}
-	return r, err
+	one := []alert.Rule{r}
+	if err := s.summarize(ctx, projectID, one); err != nil {
+		return alert.Rule{}, err
+	}
+	return one[0], nil
 }
 
 // Closer builds the final notifications of a rule that is disabled or
@@ -922,16 +980,19 @@ func (s *Store) AlertStates(ctx context.Context, projectID string) ([]alert.Stat
 }
 
 // Notifications returns a project's deliveries, newest first.
-func (s *Store) Notifications(ctx context.Context, projectID, channelID, status string, before int64, limit int) ([]alert.NotificationRecord, error) {
+func (s *Store) Notifications(ctx context.Context, projectID, channelID, ruleID, status string, before int64, limit int) ([]alert.NotificationRecord, error) {
 	ctx, cancel := s.ctx(ctx)
 	defer cancel()
 	if before <= 0 {
 		before = 1<<63 - 1
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, channel_id::text, channel_name, event_id, event_type, status, attempts, response_status, last_error, test,
-			idempotency_key, created_at, next_attempt_at, sent_at
-		FROM alert_notifications WHERE project_id = $1 AND id < $2 AND ($3 = '' OR channel_id::text = $3) AND ($4 = '' OR status = $4)
-		ORDER BY id DESC LIMIT $5`, projectID, before, channelID, status, min(max(limit, 1), MaxHistory))
+	rows, err := s.pool.Query(ctx, `SELECT n.id, n.channel_id::text, n.channel_name, coalesce(e.rule_id::text, ''), coalesce(e.rule_name, ''),
+			n.event_id, n.event_type, n.status, n.attempts, n.response_status, n.last_error, n.test,
+			n.idempotency_key, n.created_at, n.next_attempt_at, n.sent_at
+		FROM alert_notifications n LEFT JOIN alert_events e ON e.id = n.event_id
+		WHERE n.project_id = $1 AND n.id < $2 AND ($3 = '' OR n.channel_id::text = $3) AND ($4 = '' OR n.status = $4)
+			AND ($6 = '' OR e.rule_id::text = $6)
+		ORDER BY n.id DESC LIMIT $5`, projectID, before, channelID, status, min(max(limit, 1), MaxHistory), ruleID)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: notifications: %w", err)
 	}
@@ -939,7 +1000,7 @@ func (s *Store) Notifications(ctx context.Context, projectID, channelID, status 
 	out := []alert.NotificationRecord{}
 	for rows.Next() {
 		var n alert.NotificationRecord
-		if err := rows.Scan(&n.ID, &n.ChannelID, &n.ChannelName, &n.EventID, &n.Event, &n.Status, &n.Attempts, &n.ResponseStatus, &n.LastError, &n.Test,
+		if err := rows.Scan(&n.ID, &n.ChannelID, &n.ChannelName, &n.RuleID, &n.RuleName, &n.EventID, &n.Event, &n.Status, &n.Attempts, &n.ResponseStatus, &n.LastError, &n.Test,
 			&n.IdempotencyKey, &n.CreatedAt, &n.NextAttemptAt, &n.SentAt); err != nil {
 			return nil, err
 		}
