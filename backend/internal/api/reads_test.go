@@ -104,7 +104,7 @@ type readFixture struct {
 
 const fromTo = "from=2026-11-07T02:00:00Z&to=2026-11-07T02:15:00Z"
 
-func newReadFixture(t *testing.T, maxConcurrent int) *readFixture {
+func newReadFixture(t *testing.T, maxConcurrent int, more ...func(*Options)) *readFixture {
 	t.Helper()
 	st := &readStore{
 		sessions: map[string]string{},
@@ -131,9 +131,11 @@ func newReadFixture(t *testing.T, maxConcurrent int) *readFixture {
 		t.Fatal(err)
 	}
 	hasher, _ := password.NewHasher(password.Params{MemoryKiB: password.MinMemoryKiB, Iterations: 1, Parallelism: 1, SaltLen: 16, KeyLen: 32}, 1)
-	s, err := New(st, hasher, NewLimiter(5, time.Second, time.Minute, 100), Options{
-		IdleTTL: time.Hour, AbsoluteTTL: time.Hour, Logs: svc, MaxConcurrentQueries: maxConcurrent,
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	opts := Options{IdleTTL: time.Hour, AbsoluteTTL: time.Hour, Logs: svc, MaxConcurrentQueries: maxConcurrent}
+	for _, f := range more {
+		f(&opts)
+	}
+	s, err := New(st, hasher, NewLimiter(5, time.Second, time.Minute, 100), opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

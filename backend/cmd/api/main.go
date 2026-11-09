@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sinanturdu/logsage/backend/internal/alert/outbound"
+	"github.com/sinanturdu/logsage/backend/internal/alert/secret"
 	"github.com/sinanturdu/logsage/backend/internal/api"
 	"github.com/sinanturdu/logsage/backend/internal/config"
 	"github.com/sinanturdu/logsage/backend/internal/health"
@@ -59,6 +61,31 @@ func tailOptions(t config.TailConfig) api.TailOptions {
 		WriteTimeout: t.WriteTimeout, RetryMax: t.RetryMax, MaxConnUser: t.MaxConnUser,
 		MaxConnProject: t.MaxConnProject, MaxConnTotal: t.MaxConnTotal, MaxSeen: t.MaxSeen,
 	}
+}
+
+// alertOptions turns the alert endpoints on when ALERTS_ENABLED=true. A
+// missing or malformed key does not stop the API: the alert endpoints then
+// answer 503 with the reason (ADR 0024).
+func alertOptions(getenv func(string) string, store *postgres.Store, log *slog.Logger) (*api.AlertsOptions, error) {
+	ac, err := config.LoadAlerts(getenv)
+	if err != nil {
+		return nil, err
+	}
+	if !ac.Enabled {
+		return nil, nil
+	}
+	if ac.KeyErr != nil {
+		log.Error("alerts are enabled but cannot work", "err", ac.KeyErr)
+		return &api.AlertsOptions{KeyErr: ac.KeyErr}, nil
+	}
+	sealer, err := secret.NewSealer(ac.SecretKey)
+	if err != nil {
+		return nil, err
+	}
+	return &api.AlertsOptions{
+		Store: store, Sealer: sealer, DashboardURL: ac.DashboardURL,
+		URLs: outbound.New(outbound.Options{AllowInsecureLocal: ac.AllowInsecureLocal, AllowedPorts: ac.AllowedPorts}),
+	}, nil
 }
 
 // run serves until ctx is canceled, then shuts down within
@@ -127,6 +154,11 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 		return err
 	}
 
+	alerts, err := alertOptions(getenv, store, log)
+	if err != nil {
+		return err
+	}
+
 	limiter := api.NewLimiter(a.LoginMaxFailures, a.LoginDelayBase, a.LoginDelayMax, a.LoginLimiterSize)
 	srv, err := api.New(store, hasher, limiter, api.Options{
 		IdleTTL:              a.SessionIdleTTL,
@@ -138,6 +170,7 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 		MaxConcurrentQueries: a.MaxConcurrentQueries,
 		Tail:                 logs,
 		TailOptions:          tailOptions(cfg.Tail),
+		Alerts:               alerts,
 	}, log)
 	if err != nil {
 		return err
