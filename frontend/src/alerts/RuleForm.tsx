@@ -1,5 +1,5 @@
 import { Choice } from '../components/Choice'
-import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
@@ -27,6 +27,8 @@ import {
 } from './model'
 
 const DAY = 86_400_000
+/** The preview is announced this long after the last change. */
+export const PREVIEW_ANNOUNCE_MS = 1000
 
 type FieldProps = { id: string; label: string; error: string | undefined; hint?: ReactNode; children: ReactNode }
 
@@ -118,6 +120,15 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
     setForm((f) => ({ ...f, [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] }))
   const channelNames = useMemo(() => channels.filter((c) => form.channels.includes(c.id)).map((c) => c.name), [channels, form.channels])
   const preview = previewSentences(form, channelNames)
+  // Below 700 px the preview folds behind "Show preview" (CSS); above, it is always shown.
+  const [showPreview, setShowPreview] = useState(false)
+  // Screen readers hear the preview once typing pauses, not on every keystroke.
+  const [announced, setAnnounced] = useState('')
+  const sentence = `${preview.fires} ${preview.resolves}`
+  useEffect(() => {
+    const t = setTimeout(() => setAnnounced(sentence), PREVIEW_ANNOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [sentence])
   const fid = (f: FieldName) => `${id}-${f}`
 
   async function submit(e: FormEvent) {
@@ -151,7 +162,8 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
   const err = (f: FieldName) => errors[f]
   return (
     <Dialog title={rule ? 'Edit alert rule' : 'Create an alert rule'} onClose={onClose} initialFocus={nameInput} className="rule-dialog">
-      <form onSubmit={(e) => void submit(e)} noValidate>
+      <form className="dialog-form" onSubmit={(e) => void submit(e)} noValidate>
+        <div className="dialog-body">
         <Field id={fid('name')} label="Name" error={err('name')}>
           <input
             ref={nameInput}
@@ -343,21 +355,28 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
           />
         </Field>
 
-        {/* Not a live region: it changes on every keystroke. */}
-        <div className="preview" role="group" aria-label="Preview" data-testid="rule-preview">
-          <p>
-            <LogText text={preview.fires} mono={false} />
-          </p>
-          <p>
-            <LogText text={preview.resolves} mono={false} />
-          </p>
-        </div>
-
         {formError && (
           <p className="form-error" role="alert">
             {formError}
           </p>
         )}
+        </div>
+        <div className="dialog-footer">
+          <button type="button" className="button button-quiet preview-toggle" aria-expanded={showPreview} aria-controls={`${id}-preview`} onClick={() => setShowPreview((v) => !v)}>
+            {showPreview ? 'Hide preview' : 'Show preview'}
+          </button>
+          {/* Visible and updated on every keystroke; screen readers get the debounced copy below. */}
+          <div className={`preview${showPreview ? ' open' : ''}`} id={`${id}-preview`} role="group" aria-label="Preview" data-testid="rule-preview">
+            <p>
+              <LogText text={preview.fires} mono={false} />
+            </p>
+            <p>
+              <LogText text={preview.resolves} mono={false} />
+            </p>
+          </div>
+          <p className="visually-hidden" role="status" aria-live="polite" data-testid="preview-announcement">
+            {announced}
+          </p>
         <div className="dialog-actions">
           <button type="button" className="button button-quiet" onClick={onClose}>
             Cancel
@@ -365,6 +384,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
           <button type="submit" className="button button-primary" disabled={busy}>
             {busy ? 'Saving…' : rule ? 'Save rule' : 'Create rule'}
           </button>
+        </div>
         </div>
       </form>
     </Dialog>

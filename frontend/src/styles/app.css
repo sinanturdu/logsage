@@ -435,7 +435,19 @@ table.alerts tr.failed td { background: var(--white); }
 .timeline { margin: 0; padding-left: var(--space-5); font-size: var(--text-md); }
 .timeline li { margin-bottom: var(--space-1); overflow-wrap: anywhere; }
 .named-list { margin: 0 0 var(--space-3); padding-left: var(--space-5); overflow-wrap: anywhere; }
-.dialog.rule-dialog { width: min(760px, 100%); overflow-x: hidden; overflow-y: auto; }
+.dialog.rule-dialog { width: min(760px, 100%); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* Header, scrolling body, sticky footer: the preview and the buttons stay in view. */
+.rule-dialog > h2 { margin: 0; padding: var(--space-4) var(--space-5) var(--space-2); }
+.rule-dialog .dialog-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.rule-dialog .dialog-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 0 var(--space-5) var(--space-4); }
+.rule-dialog .dialog-footer { flex: 0 0 auto; border-top: 1px solid var(--grid); background: var(--paper); padding: var(--space-2) var(--space-5) var(--space-3); }
+.rule-dialog .dialog-footer .preview { margin-top: 0; }
+.rule-dialog .dialog-footer .dialog-actions { margin-top: var(--space-2); }
+.preview-toggle { display: none; }
+@media (max-width: 700px) {
+  .preview-toggle { display: inline-block; padding: 2px 0; }
+  .rule-dialog .dialog-footer .preview:not(.open) { display: none; }
+}
 .afield { margin-top: var(--space-3); }
 .afield label { margin-top: 0; }
 .afield textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; resize: vertical; }

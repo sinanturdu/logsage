@@ -1,10 +1,14 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { json, renderApp } from '../test/util'
+import { PREVIEW_ANNOUNCE_MS } from './RuleForm'
 import { channel, mockAlerts, rule } from './testing'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 const B = '/api/projects/shop/alerts'
 const CHANNELS = [channel('c1', { name: 'Slack ops', kind: 'slack' }), channel('c2', { name: 'pager' })]
@@ -58,6 +62,49 @@ describe('rule form', () => {
         expect(hint?.className).toBe('field-hint')
         expect(input?.getAttribute('aria-describedby')?.split(' ')).toContain(hint?.id)
       }
+    }
+  })
+
+  it('is a header, a scrolling body and a footer with the preview and the buttons', async () => {
+    const { dialog } = await openForm()
+    expect(Array.from(dialog.children).map((c) => c.tagName)).toEqual(['H2', 'FORM'])
+    const form = dialog.querySelector('form') as HTMLFormElement
+    expect(Array.from(form.children).map((c) => c.className)).toEqual(['dialog-body', 'dialog-footer'])
+    const body = form.children[0] as HTMLElement
+    const footer = form.children[1] as HTMLElement
+    expect(within(body).getByLabelText('Name')).toBeTruthy()
+    expect(within(footer).getByTestId('rule-preview').textContent).toContain('Fires when')
+    expect(within(footer).getByRole('button', { name: 'Cancel' })).toBeTruthy()
+    expect(within(footer).getByRole('button', { name: 'Create rule' })).toBeTruthy()
+    const toggle = within(footer).getByRole('button', { name: 'Show preview' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(toggle.getAttribute('aria-controls')).toBe(within(footer).getByTestId('rule-preview').id)
+    await userEvent.setup().click(toggle)
+    expect(within(footer).getByRole('button', { name: 'Hide preview' }).getAttribute('aria-expanded')).toBe('true')
+    expect(within(footer).getByTestId('rule-preview').className).toBe('preview open')
+  })
+
+  it('announces the preview politely once typing pauses', async () => {
+    const { dialog } = await openForm()
+    const live = within(dialog).getByTestId('preview-announcement')
+    expect(live.getAttribute('aria-live')).toBe('polite')
+    await waitFor(() => expect(live.textContent).toContain('at least 5% of all logs'))
+    // From here only the fake clock moves time, so the pause is exact.
+    vi.useFakeTimers()
+    try {
+      const threshold = within(dialog).getByLabelText('Threshold (%)')
+      fireEvent.change(threshold, { target: { value: '3' } })
+      fireEvent.change(threshold, { target: { value: '37' } })
+      // The visible preview follows at once; the announcement waits for the pause.
+      expect(within(dialog).getByTestId('rule-preview').textContent).toContain('at least 37%')
+      expect(live.textContent).not.toContain('37%')
+      await act(() => vi.advanceTimersByTimeAsync(PREVIEW_ANNOUNCE_MS - 1))
+      expect(live.textContent).not.toContain('37%')
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(live.textContent).toContain('at least 37% of all logs')
+      expect(live.textContent).toContain('Resolves when')
+    } finally {
+      vi.useRealTimers()
     }
   })
 

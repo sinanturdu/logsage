@@ -32,9 +32,18 @@ describe('rule form layout', () => {
     expect(rule('.field-row .afield > label')).toContain('white-space: nowrap')
   })
 
-  it('never scrolls the dialog sideways', () => {
-    const d = rule('.dialog.rule-dialog')
-    expect(d).toContain('overflow-x: hidden')
-    expect(d).toContain('overflow-y: auto')
+  it('never scrolls the dialog sideways; only the body scrolls', () => {
+    expect(rule('.dialog.rule-dialog')).toContain('overflow: hidden')
+    const body = rule('.rule-dialog .dialog-body')
+    expect(body).toContain('overflow-x: hidden')
+    expect(body).toContain('overflow-y: auto')
+    expect(body).toContain('min-height: 0')
+  })
+
+  it('keeps the footer in view and folds the preview only below 700 px', () => {
+    expect(rule('.rule-dialog .dialog-footer')).toContain('flex: 0 0 auto')
+    expect(rule('.preview-toggle')).toContain('display: none')
+    const narrow = css.slice(css.indexOf('@media (max-width: 700px) {\n  .preview-toggle'))
+    expect(narrow).toContain('.rule-dialog .dialog-footer .preview:not(.open) { display: none; }')
   })
 })
