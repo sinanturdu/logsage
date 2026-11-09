@@ -29,6 +29,8 @@ import {
 const DAY = 86_400_000
 /** The preview is announced this long after the last change. */
 export const PREVIEW_ANNOUNCE_MS = 1000
+export const CHOOSE_CHANNEL = 'Choose at least one channel.'
+export const CREATE_A_CHANNEL = 'Create a channel'
 
 type FieldProps = { id: string; label: string; error: string | undefined; hint?: ReactNode; children: ReactNode }
 
@@ -102,10 +104,18 @@ function useServiceChoices(slug: string, chosen: readonly string[]) {
   return { names: [...new Set([...names, ...chosen])].sort(), loading: facets.isPending, failed: facets.isError }
 }
 
-type Props = { slug: string; channels: readonly Channel[]; rule?: Rule; onClose: () => void; onSaved?: (r: Rule) => void }
+type Props = {
+  slug: string
+  channels: readonly Channel[]
+  rule?: Rule
+  onClose: () => void
+  onSaved?: (r: Rule) => void
+  /** No channel yet: close this dialog and open the channel dialog instead. */
+  onCreateChannel?: (() => void) | undefined
+}
 
 /** Create or edit a rule: only the chosen type's fields, a live preview, the server's limits. */
-export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props) {
+export function RuleFormDialog({ slug, channels, rule, onClose, onSaved, onCreateChannel }: Props) {
   const qc = useQueryClient()
   const id = useId()
   const [form, setForm] = useState<RuleForm>(() => (rule ? formFromRule(rule) : emptyRuleForm()))
@@ -120,6 +130,8 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
     setForm((f) => ({ ...f, [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] }))
   const channelNames = useMemo(() => channels.filter((c) => form.channels.includes(c.id)).map((c) => c.name), [channels, form.channels])
   const preview = previewSentences(form, channelNames)
+  // Submitting is pointless without a channel: the button says why it waits.
+  const noChannel = form.channels.length === 0
   // Below 700 px the preview folds behind "Show preview" (CSS); above, it is always shown.
   const [showPreview, setShowPreview] = useState(false)
   // Screen readers hear the preview once typing pauses, not on every keystroke.
@@ -328,7 +340,14 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         <fieldset className="choices" aria-describedby={err('channels') ? `${fid('channels')}-error` : undefined}>
           <legend>Notify</legend>
           {channels.length === 0 ? (
-            <p className="field-hint">No channels yet. Create one on the Channels tab first.</p>
+            <div className="no-channels">
+              <p className="field-hint">No channels yet. A rule needs a channel to notify.</p>
+              {onCreateChannel && (
+                <button type="button" className="button" onClick={onCreateChannel}>
+                  {CREATE_A_CHANNEL}
+                </button>
+              )}
+            </div>
           ) : (
             channels.map((c, i) => (
               <label key={c.id} className="check">
@@ -381,7 +400,12 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
           <button type="button" className="button button-quiet" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="button button-primary" disabled={busy}>
+          {noChannel && (
+            <p className="field-hint submit-hint" id={`${id}-submit-hint`}>
+              {CHOOSE_CHANNEL}
+            </p>
+          )}
+          <button type="submit" className="button button-primary" disabled={busy || noChannel} aria-describedby={noChannel ? `${id}-submit-hint` : undefined}>
             {busy ? 'Saving…' : rule ? 'Save rule' : 'Create rule'}
           </button>
         </div>

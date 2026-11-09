@@ -27,9 +27,10 @@ import { ApiError } from '../api/client'
 import { ChannelFormDialog, DeleteChannelDialog, RotateDialog, kindLabel } from './ChannelDialogs'
 import { TABS, TAB_LABEL, TYPE_LABEL, conditionSummary, parseAlertsState, parseGoDuration, rulePath, serializeAlertsState, type AlertsState, type Tab } from './model'
 import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
-import { RuleFormDialog } from './RuleForm'
+import { CREATE_A_CHANNEL, RuleFormDialog } from './RuleForm'
 
 export const EMPTY_RULES = 'No alert rules yet. Create a channel first, then a rule that notifies it.'
+export const FIRST_CHANNEL = 'Channel created. Create a rule that notifies it.'
 export const EMPTY_CHANNELS = 'No channels yet. A channel is where notifications go: a webhook or a Slack incoming webhook.'
 export const EMPTY_ACTIVITY = 'No alert activity yet. State changes of your rules appear here.'
 export const VIEWER_ALERTS = 'You can see this project’s alerts. Only owners and admins can change rules and channels.'
@@ -204,7 +205,7 @@ function ChannelNames({ ids, channels }: { ids: readonly string[]; channels: rea
   )
 }
 
-function RulesTab({ slug, canManage, rules, channels, now, onCreate }: { slug: string; canManage: boolean; rules: Rule[]; channels: Channel[]; now: number; onCreate: () => void }) {
+function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateChannel }: { slug: string; canManage: boolean; rules: Rule[]; channels: Channel[]; now: number; onCreate: () => void; onCreateChannel: () => void }) {
   const navigate = useNavigate()
   const table = useRef<HTMLTableElement>(null)
   const [editing, setEditing] = useState<Rule | null>(null)
@@ -232,7 +233,14 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate }: { slug: s
         )}
       </div>
       {rules.length === 0 ? (
-        <p className="state-panel">{EMPTY_RULES}</p>
+        <div className="state-panel">
+          <p>{EMPTY_RULES}</p>
+          {canManage && channels.length === 0 && (
+            <button type="button" className="button" onClick={onCreateChannel}>
+              {CREATE_A_CHANNEL}
+            </button>
+          )}
+        </div>
       ) : (
         <div className="table-wrap">
           <table className="alerts" ref={table}>
@@ -549,6 +557,13 @@ export function AlertsPage() {
   }, [state.create, state.tab, projects.isSuccess, update])
 
   const sorted = useMemo(() => rules.data ?? [], [rules.data])
+  // No channel yet: the rule dialog and the empty Rules tab send the user to
+  // the Channels tab with the channel dialog open (create=channel, removed once handled).
+  const [firstChannel, setFirstChannel] = useState(false)
+  const createChannelFirst = () => {
+    setCreating('')
+    update({ tab: 'channels', create: 'channel' })
+  }
   const refresh = () => {
     setNow(Date.now())
     void rules.refetch()
@@ -583,12 +598,27 @@ export function AlertsPage() {
       ) : (
         <>
           {project && !canManage && <p className="notice">{VIEWER_ALERTS}</p>}
+          {firstChannel && creating === '' && (
+            <div className="notice first-channel" role="status">
+              <span>{FIRST_CHANNEL}</span>{' '}
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => {
+                  setFirstChannel(false)
+                  setCreating('rule')
+                }}
+              >
+                Create rule
+              </button>
+            </div>
+          )}
           <Tabs tab={state.tab} onSelect={(t) => update({ tab: t, rule: '' })} id={id} />
           <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${state.tab}`} className="atab-panel">
             {rules.isPending || channels.isPending ? (
               <p role="status">Loading alerts…</p>
             ) : state.tab === 'rules' ? (
-              <RulesTab slug={slug} canManage={canManage} rules={sorted} channels={channels.data ?? []} now={now} onCreate={() => setCreating('rule')} />
+              <RulesTab slug={slug} canManage={canManage} rules={sorted} channels={channels.data ?? []} now={now} onCreate={() => setCreating('rule')} onCreateChannel={createChannelFirst} />
             ) : state.tab === 'channels' ? (
               <ChannelsTab slug={slug} canManage={canManage} rules={sorted} channels={channels.data ?? []} now={now} onCreate={() => setCreating('channel')} />
             ) : (
@@ -597,8 +627,10 @@ export function AlertsPage() {
           </div>
         </>
       )}
-      {creating === 'rule' && channels.data && <RuleFormDialog slug={slug} channels={channels.data} onClose={() => setCreating('')} />}
-      {creating === 'channel' && <ChannelFormDialog slug={slug} onClose={() => setCreating('')} />}
+      {creating === 'rule' && channels.data && (
+        <RuleFormDialog slug={slug} channels={channels.data} onClose={() => setCreating('')} {...(channels.data.length === 0 && { onCreateChannel: createChannelFirst })} />
+      )}
+      {creating === 'channel' && <ChannelFormDialog slug={slug} onClose={() => setCreating('')} onCreated={() => setFirstChannel((channels.data ?? []).length === 0)} />}
     </div>
   )
 }

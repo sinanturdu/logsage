@@ -134,6 +134,7 @@ describe('rule form', () => {
     await user.type(within(dialog).getByLabelText('Window'), '0')
     await user.click(within(dialog).getByLabelText('Note (optional)'))
     await user.paste('x'.repeat(501))
+    await user.click(within(dialog).getByRole('checkbox', { name: /pager/ }))
     await user.click(within(dialog).getByRole('button', { name: 'Create rule' }))
     const name = within(dialog).getByLabelText('Name')
     expect(document.activeElement).toBe(name)
@@ -143,8 +144,18 @@ describe('rule form', () => {
     expect(dialog.textContent).toContain('Enter a percentage between 0.1 and 100.')
     expect(dialog.textContent).toContain('Enter a duration between 1 minute and 1 day.')
     expect(dialog.textContent).toContain('Use at most 500 characters.')
-    expect(dialog.textContent).toContain('Choose at least one channel.')
     expect(requests.some((r) => r.method === 'POST')).toBe(false)
+  })
+
+  it('keeps Create disabled with the reason until a channel is chosen', async () => {
+    const { user, dialog } = await openForm()
+    const create = within(dialog).getByRole('button', { name: 'Create rule' })
+    expect(create.hasAttribute('disabled')).toBe(true)
+    expect(document.getElementById(create.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Choose at least one channel.')
+    await user.click(within(dialog).getByRole('checkbox', { name: /pager/ }))
+    expect(create.hasAttribute('disabled')).toBe(false)
+    expect(create.getAttribute('aria-describedby')).toBeNull()
+    expect(within(dialog).queryByText('Choose at least one channel.')).toBeNull()
   })
 
   it('creates a rule with only the chosen type parameters', async () => {

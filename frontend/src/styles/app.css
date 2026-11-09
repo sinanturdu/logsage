@@ -444,6 +444,9 @@ table.alerts tr.failed td { background: var(--white); }
 .rule-dialog .dialog-footer .preview { margin-top: 0; }
 .rule-dialog .dialog-footer .dialog-actions { margin-top: var(--space-2); }
 .preview-toggle { display: none; }
+.submit-hint { align-self: center; margin-right: auto; }
+.no-channels .button { margin-top: var(--space-1); }
+.first-channel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 @media (max-width: 700px) {
   .preview-toggle { display: inline-block; padding: 2px 0; }
   .rule-dialog .dialog-footer .preview:not(.open) { display: none; }
