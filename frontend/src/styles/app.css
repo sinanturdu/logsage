@@ -435,8 +435,10 @@ table.alerts tr.failed td { background: var(--white); }
 .afield label { margin-top: 0; }
 .afield textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; resize: vertical; }
 .afield textarea[aria-invalid='true'] { border: 2px solid var(--danger); }
-.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 var(--space-4); }
+.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 var(--space-4); align-items: start; }
 .field-row > * { min-width: 0; }
+/* One-line labels keep the inputs of a row on one line; the explanation is the help text below. */
+.field-row .afield > label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .duration { display: flex; gap: var(--space-1); max-width: 100%; }
 /* As specific as the generic dialog input rule, and after it: the number stays narrow, the unit fits "minutes". */
 .dialog .duration input:not([type='checkbox']):not([type='radio']) { width: 5rem; flex: 0 0 5rem; min-width: 0; }

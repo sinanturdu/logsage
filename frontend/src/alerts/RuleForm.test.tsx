@@ -27,8 +27,8 @@ describe('rule form', () => {
     const { user, dialog } = await openForm()
     expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'))
     expect(labels(dialog)).toEqual([
-      'Threshold (% of logs that are error or fatal)',
-      'At least this many logs',
+      'Threshold (%)',
+      'Minimum logs',
       'Window',
       'Services (none chosen: all services)',
       'For',
@@ -36,19 +36,35 @@ describe('rule form', () => {
       'Check every',
     ])
     await user.click(within(dialog).getByRole('radio', { name: /Log volume/ }))
-    expect(labels(dialog)).toEqual(['Fires when the count is', 'Count', 'Window', 'Levels (none chosen: all levels)', 'Services (none chosen: all services)', 'For', 'Clear for', 'Check every'])
+    expect(labels(dialog)).toEqual(['Direction', 'Count', 'Window', 'Levels (none chosen: all levels)', 'Services (none chosen: all services)', 'For', 'Clear for', 'Check every'])
     await user.click(within(dialog).getByRole('radio', { name: /New error group/ }))
-    expect(labels(dialog)).toEqual(['At least this many events of the group', 'Window', 'Services (none chosen: all services)', 'For', 'Clear for', 'Check every'])
+    expect(labels(dialog)).toEqual(['Minimum events', 'Window', 'Services (none chosen: all services)', 'For', 'Clear for', 'Check every'])
     await user.click(within(dialog).getByRole('radio', { name: /^Regression/ }))
     expect(labels(dialog)).toEqual(['Window', 'Services (none chosen: all services)', 'For', 'Clear for', 'Check every'])
     await user.click(within(dialog).getByRole('radio', { name: /New groups per hour/ }))
-    expect(labels(dialog)).toEqual(['New groups per hour', 'For', 'Clear for', 'Check every'])
+    expect(labels(dialog)).toEqual(['Max new groups', 'For', 'Clear for', 'Check every'])
+  })
+
+  it('gives every field in a row a short label, then the input, then its help text', async () => {
+    const { user, dialog } = await openForm()
+    for (const t of [/Error rate/, /Log volume/, /New error group/, /New groups per hour/]) {
+      await user.click(within(dialog).getByRole('radio', { name: t }))
+      for (const field of dialog.querySelectorAll('.field-row > .afield')) {
+        const [label, control, hint] = Array.from(field.children)
+        expect(label?.tagName).toBe('LABEL')
+        expect(label?.textContent?.length).toBeLessThanOrEqual(16)
+        const input = control?.matches('input, select') ? control : control?.querySelector('input')
+        expect(input?.id).toBe(label?.getAttribute('for'))
+        expect(hint?.className).toBe('field-hint')
+        expect(input?.getAttribute('aria-describedby')?.split(' ')).toContain(hint?.id)
+      }
+    }
   })
 
   it('updates the preview sentence as the user types', async () => {
     const { user, dialog } = await openForm()
     const preview = within(dialog).getByTestId('rule-preview')
-    const threshold = within(dialog).getByLabelText('Threshold (% of logs that are error or fatal)')
+    const threshold = within(dialog).getByLabelText('Threshold (%)')
     await user.clear(threshold)
     await user.type(threshold, '20')
     await user.clear(within(dialog).getByLabelText('For'))
@@ -64,7 +80,7 @@ describe('rule form', () => {
 
   it('validates with the server limits, next to the fields, and focuses the first', async () => {
     const { user, dialog, requests } = await openForm()
-    const threshold = within(dialog).getByLabelText('Threshold (% of logs that are error or fatal)')
+    const threshold = within(dialog).getByLabelText('Threshold (%)')
     await user.clear(threshold)
     await user.type(threshold, '0.01')
     await user.clear(within(dialog).getByLabelText('Window'))
@@ -88,7 +104,7 @@ describe('rule form', () => {
     const { user, dialog, requests } = await openForm({ [`POST ${B}/rules`]: () => json(201, { rule: rule('r9') }) })
     await user.type(within(dialog).getByLabelText('Name'), 'Silence')
     await user.click(within(dialog).getByRole('radio', { name: /Log volume/ }))
-    await user.selectOptions(within(dialog).getByLabelText('Fires when the count is'), 'below')
+    await user.selectOptions(within(dialog).getByLabelText('Direction'), 'below')
     await user.clear(within(dialog).getByLabelText('Count'))
     await user.type(within(dialog).getByLabelText('Count'), '1')
     await user.click(within(dialog).getByRole('checkbox', { name: 'error' }))
@@ -142,7 +158,7 @@ describe('rule form', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: 'Edit rule Errors' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit alert rule' })
-    expect((within(dialog).getByLabelText('Threshold (% of logs that are error or fatal)') as HTMLInputElement).value).toBe('12.5')
+    expect((within(dialog).getByLabelText('Threshold (%)') as HTMLInputElement).value).toBe('12.5')
     expect((within(dialog).getByRole('checkbox', { name: /Slack ops/ }) as HTMLInputElement).checked).toBe(true)
     await user.click(within(dialog).getByRole('button', { name: 'Save rule' }))
     await waitFor(() => expect(m.requests.find((x) => x.method === 'PUT')?.body).toMatchObject({ params: { threshold_percent: 12.5, min_logs: 80 }, for: '120s' }))

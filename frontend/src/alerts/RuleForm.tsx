@@ -192,7 +192,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
 
         <div className="field-row">
           {fields.includes('threshold') && (
-            <Field id={fid('threshold')} label="Threshold (% of logs that are error or fatal)" error={err('threshold')} hint="0.1 to 100.">
+            <Field id={fid('threshold')} label="Threshold (%)" error={err('threshold')} hint="Share of error and fatal logs among all logs. 0.1 to 100.">
               <input
                 id={fid('threshold')}
                 inputMode="decimal"
@@ -204,7 +204,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('minLogs') && (
-            <Field id={fid('minLogs')} label="At least this many logs" error={err('minLogs')} hint="A smaller sample never fires. 10 to 1,000,000.">
+            <Field id={fid('minLogs')} label="Minimum logs" error={err('minLogs')} hint="A smaller sample never fires. 10 to 1,000,000.">
               <input
                 id={fid('minLogs')}
                 inputMode="numeric"
@@ -216,8 +216,8 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('op') && (
-            <Field id={fid('op')} label="Fires when the count is" error={err('op')}>
-              <select id={fid('op')} value={form.op} onChange={(e) => set('op', e.target.value === 'below' ? 'below' : 'above')}>
+            <Field id={fid('op')} label="Direction" error={err('op')} hint="Fires when the count is above or below the number.">
+              <select id={fid('op')} aria-describedby={describedBy(fid('op'), err('op'), true)} value={form.op} onChange={(e) => set('op', e.target.value === 'below' ? 'below' : 'above')}>
                 <option value="above">Above</option>
                 <option value="below">Below</option>
               </select>
@@ -236,7 +236,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('minEvents') && (
-            <Field id={fid('minEvents')} label="At least this many events of the group" error={err('minEvents')} hint="1 to 1,000,000.">
+            <Field id={fid('minEvents')} label="Minimum events" error={err('minEvents')} hint="Events of the new group in the window. 1 to 1,000,000.">
               <input
                 id={fid('minEvents')}
                 inputMode="numeric"
@@ -248,7 +248,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('maxGroups') && (
-            <Field id={fid('maxGroups')} label="New groups per hour" error={err('maxGroups')} hint="Fires above this number; the window is always 1 hour. 1 to 10,000.">
+            <Field id={fid('maxGroups')} label="Max new groups" error={err('maxGroups')} hint="Per hour; fires above this number. The window is always 1 hour. 1 to 10,000.">
               <input
                 id={fid('maxGroups')}
                 inputMode="numeric"
@@ -260,7 +260,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('window') && (
-            <Field id={fid('window')} label="Window" error={err('window')} hint="The time the condition looks back over. 1 minute to 24 hours.">
+            <Field id={fid('window')} label="Window" error={err('window')} hint="How far back the condition looks. 1 minute to 24 hours.">
               <DurationInput id={fid('window')} value={form.window} onChange={(v) => set('window', v)} error={err('window')} hint units={['m', 'h']} />
             </Field>
           )}
@@ -300,10 +300,10 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         )}
 
         <div className="field-row">
-          <Field id={fid('for')} label="For" error={err('for')} hint="How long the condition must hold before it fires. 0 to 24 hours.">
+          <Field id={fid('for')} label="For" error={err('for')} hint="How long the condition must hold to fire. 0 to 24 hours.">
             <DurationInput id={fid('for')} value={form.for} onChange={(v) => set('for', v)} error={err('for')} hint />
           </Field>
-          <Field id={fid('clearFor')} label="Clear for" error={err('clearFor')} hint="How long it must be clear before it resolves. 0 uses the interval; at most 1 hour.">
+          <Field id={fid('clearFor')} label="Clear for" error={err('clearFor')} hint="How long it must be clear to resolve. 0 uses the check interval; at most 1 hour.">
             <DurationInput id={fid('clearFor')} value={form.clearFor} onChange={(v) => set('clearFor', v)} error={err('clearFor')} hint />
           </Field>
           <Field id={fid('interval')} label="Check every" error={err('interval')} hint="30 seconds to 1 hour.">

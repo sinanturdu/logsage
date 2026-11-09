@@ -27,6 +27,11 @@ describe('rule form layout', () => {
     expect(5 + 7.5 + 0.25).toBeLessThanOrEqual(14)
   })
 
+  it('aligns a row at the top under one-line labels', () => {
+    expect(rule('.field-row')).toContain('align-items: start')
+    expect(rule('.field-row .afield > label')).toContain('white-space: nowrap')
+  })
+
   it('never scrolls the dialog sideways', () => {
     const d = rule('.dialog.rule-dialog')
     expect(d).toContain('overflow-x: hidden')
