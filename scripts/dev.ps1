@@ -13,20 +13,33 @@
             the last 15 minutes (about 70k events, loadgen seed).
     web     Run the Vite dev server with hot reload on http://localhost:5173
             (for working on the frontend; it proxies /api to the api).
-    status  Show the services and where the dev login is.
-    down    Stop everything and delete the data (docker compose down -v);
-            asks before removing .dev/ (use -Yes to skip the question).
+    alerts  Build and start the alert evaluator (cmd/alerts) and the local
+            webhook sink (cmd/alertsink) as background processes (process
+            ids and logs in .dev\), with ALERTS_ALLOW_INSECURE_LOCAL=true;
+            the api is recreated with that flag so it accepts the sink URL.
+            Prints the sink URL for a channel. -AskSecret prompts (hidden)
+            for the channel's signing secret so the sink verifies signatures.
+    alerts-demo  Send fresh log messages with new templates (for a new_group
+            rule) and a three-minute burst of errors (for an error_rate rule).
+            Create the rules in the dashboard first.
+    status  Show the services, the local alert processes and the dev login.
+    down    Stop the local alert processes and everything else, and delete
+            the data (docker compose down -v); asks before removing .dev/
+            (use -Yes to skip the question).
 
   Secrets: .env and .dev/ are git-ignored and local-only. The dev login is
-  printed once when it is created; nothing else secret is printed.
+  printed once when it is created; nothing else secret is printed. "up"
+  adds ALERTS_ENABLED=true and a random ALERTS_SECRET_KEY to .env when the
+  key is missing (never printed).
   Passwords reach the admin CLI only through stdin; keys only come back on
   stdout.
 #>
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('up', 'seed', 'web', 'status', 'down', 'help')]
+  [ValidateSet('up', 'seed', 'web', 'alerts', 'alerts-demo', 'status', 'down', 'help')]
   [string]$Command = 'help',
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$AskSecret
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +50,10 @@ $EnvFile = Join-Path $Root '.env'
 $DevDir = Join-Path $Root '.dev'
 $LoginFile = Join-Path $DevDir 'login.txt'
 $KeyFile = Join-Path $DevDir 'ingest.key'
+$SinkSecretFile = Join-Path $DevDir 'sink.secret'
+$SinkUrl = 'http://localhost:9099/hook'
+# Local alert processes: name, binary, pid file and log files in .dev\.
+$AlertProcs = @('alerts', 'alertsink')
 $DevEmail = 'dev@example.com'
 $Project = 'demo'
 $ComposeArgs = @('--env-file', $EnvFile,
@@ -148,13 +165,52 @@ function Ensure-EnvFile {
       'POSTGRES_PASSWORD' { "$key=$pg"; break }
       'DATABASE_URL' { "$key=$($value.Replace('change-me', $pg))"; break }
       'COOKIE_SECURE' { "$key=false"; break }
+      'ALERTS_ENABLED' { "$key=true"; break }
+      'ALERTS_SECRET_KEY' { "$key=$(New-AlertsKey)"; break }
       default {
         if ($value -like '*change-me*') { "$key=$(New-Secret)" } else { $line }
       }
     }
   }
   Write-LocalFile $EnvFile $out
-  Say 'created .env with random secrets and COOKIE_SECURE=false (local only, git-ignored).'
+  Say 'created .env with random secrets, COOKIE_SECURE=false and alerts on (local only, git-ignored).'
+}
+
+# 32 random bytes, standard base64: the ALERTS_SECRET_KEY format (ADR 0024).
+function New-AlertsKey {
+  $b = New-Object byte[] 32
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($b) } finally { $rng.Dispose() }
+  return [Convert]::ToBase64String($b)
+}
+
+function Get-EnvValue([string]$name) {
+  if (-not (Test-Path $EnvFile)) { return '' }
+  foreach ($line in [System.IO.File]::ReadAllLines($EnvFile)) {
+    if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
+    $key, $value = $line -split '=', 2
+    if ($key.Trim() -eq $name) { return $value.Trim() }
+  }
+  return ''
+}
+
+# An older .env without an alerts key gets one (and ALERTS_ENABLED=true) so
+# the Alerts page works; an existing key is kept. The key is never printed.
+function Ensure-AlertsKey {
+  if (Get-EnvValue 'ALERTS_SECRET_KEY') { return }
+  $lines = @([System.IO.File]::ReadAllLines($EnvFile))
+  $seen = @{}
+  $out = foreach ($line in $lines) {
+    $key = ($line -split '=', 2)[0].Trim()
+    if ($line -notmatch '^\s*#' -and $line -match '=' -and ($key -eq 'ALERTS_SECRET_KEY' -or $key -eq 'ALERTS_ENABLED')) {
+      $seen[$key] = $true
+      if ($key -eq 'ALERTS_ENABLED') { 'ALERTS_ENABLED=true' } else { "ALERTS_SECRET_KEY=$(New-AlertsKey)" }
+    } else { $line }
+  }
+  if (-not $seen['ALERTS_ENABLED']) { $out = @($out) + 'ALERTS_ENABLED=true' }
+  if (-not $seen['ALERTS_SECRET_KEY']) { $out = @($out) + "ALERTS_SECRET_KEY=$(New-AlertsKey)" }
+  Write-LocalFile $EnvFile $out
+  Say 'added ALERTS_ENABLED=true and a random ALERTS_SECRET_KEY to .env (not printed). Losing the key makes stored channel URLs and secrets unreadable.'
 }
 
 function Ensure-DevDir {
@@ -227,6 +283,7 @@ function Ensure-IngestKey {
 function Cmd-Up {
   Require-Docker
   Ensure-EnvFile
+  Ensure-AlertsKey
   Ensure-DevDir
   Say 'starting the stack (first run builds the images; this takes a few minutes)...'
   Compose-Migrating up -d --build
@@ -237,7 +294,7 @@ function Cmd-Up {
   Ensure-Project
   Ensure-IngestKey
   Say 'ready. Dashboard: http://localhost:8083'
-  Say 'next: dev.ps1 seed for demo data; dev.ps1 web only for hot-reload frontend work (http://localhost:5173).'
+  Say 'next: dev.ps1 seed for demo data; dev.ps1 alerts to try alerts; dev.ps1 web only for hot-reload frontend work (http://localhost:5173).'
 }
 
 function Cmd-Seed {
@@ -273,22 +330,163 @@ function Cmd-Web {
   } finally { Pop-Location }
 }
 
+function Proc-File([string]$name, [string]$ext) { return (Join-Path $DevDir "$name.$ext") }
+
+# Returns the running process recorded in .dev\<name>.pid, or $null. The
+# recorded name must match, so a reused process id is never touched.
+function Get-AlertProc([string]$name) {
+  $pidFile = Proc-File $name 'pid'
+  if (-not (Test-Path $pidFile)) { return $null }
+  $id = 0
+  if (-not [int]::TryParse(((Get-Content $pidFile -Raw).Trim()), [ref]$id)) { return $null }
+  $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+  if ($p -and $p.ProcessName -eq $name) { return $p }
+  return $null
+}
+
+function Stop-AlertProcs {
+  foreach ($name in $AlertProcs) {
+    $p = Get-AlertProc $name
+    if ($p) { Stop-Process -Id $p.Id -Force; $p.WaitForExit(); Say "stopped $name (pid $($p.Id))." }
+    $pidFile = Proc-File $name 'pid'
+    if (Test-Path $pidFile) { Remove-Item $pidFile }
+  }
+}
+
+# Starts a built binary in the background with extra environment variables
+# that only this child process sees (restored afterwards); logs go to .dev\.
+function Start-AlertProc([string]$name, [string]$exe, [hashtable]$vars, [string[]]$argv) {
+  $saved = @{}
+  foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process'); [Environment]::SetEnvironmentVariable($k, $vars[$k], 'Process') }
+  try {
+    $startArgs = @{ FilePath = $exe; PassThru = $true; WindowStyle = 'Hidden'
+      RedirectStandardOutput = (Proc-File $name 'log'); RedirectStandardError = (Proc-File $name 'err.log') }
+    if ($argv) { $startArgs.ArgumentList = $argv }
+    $p = Start-Process @startArgs
+  } finally {
+    foreach ($k in $vars.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+  }
+  Write-LocalFile (Proc-File $name 'pid') @("$($p.Id)")
+  Say "started $name (pid $($p.Id)); log: .dev\$name.log and .dev\$name.err.log"
+}
+
+function Cmd-Alerts {
+  Require-Docker
+  Require-Tool 'go' 'Install Go 1.23 or newer (https://go.dev/dl/).'
+  if (-not (Test-Path $EnvFile)) { Fail 'no .env yet. Run: dev.ps1 up' }
+  Ensure-AlertsKey
+  Ensure-DevDir
+  if ($AskSecret) {
+    $sec = Read-Host 'dev: paste the channel signing secret (input hidden)' -AsSecureString
+    $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+    if (-not $plain.StartsWith('lsw_')) { Fail 'that does not look like a signing secret (it starts with lsw_).' }
+    Write-LocalFile $SinkSecretFile @($plain)
+    Say 'saved the signing secret in .dev\sink.secret (not printed).'
+  }
+  Stop-AlertProcs
+  $bin = Join-Path $DevDir 'bin'
+  if (-not (Test-Path $bin)) { New-Item -ItemType Directory -Path $bin | Out-Null }
+  Say 'building cmd/alerts and cmd/alertsink...'
+  Push-Location (Join-Path $Root 'backend')
+  try {
+    & go build -o (Join-Path $bin 'alerts.exe') ./cmd/alerts
+    if ($LASTEXITCODE -ne 0) { Fail 'go build ./cmd/alerts failed.' }
+    & go build -o (Join-Path $bin 'alertsink.exe') ./cmd/alertsink
+    if ($LASTEXITCODE -ne 0) { Fail 'go build ./cmd/alertsink failed.' }
+  } finally { Pop-Location }
+
+  # The api checks channel URLs: recreate it with the development flag so it
+  # accepts the sink's plain http localhost URL (dev.ps1 up turns it off again).
+  Say 'recreating the api with ALERTS_ALLOW_INSECURE_LOCAL=true (development only)...'
+  $env:ALERTS_ALLOW_INSECURE_LOCAL = 'true'
+  try { Compose up -d --no-deps api } finally { Remove-Item Env:ALERTS_ALLOW_INSECURE_LOCAL -ErrorAction SilentlyContinue }
+  Wait-Healthy
+
+  $pgUser = Get-EnvValue 'POSTGRES_USER'; if (-not $pgUser) { $pgUser = 'logsage' }
+  $pgDb = Get-EnvValue 'POSTGRES_DB'; if (-not $pgDb) { $pgDb = 'logsage' }
+  $pgPass = [Uri]::EscapeDataString((Get-EnvValue 'POSTGRES_PASSWORD'))
+  $chDb = Get-EnvValue 'CLICKHOUSE_DB'; if (-not $chDb) { $chDb = 'logsage' }
+  $vars = @{
+    DATABASE_URL = "postgres://${pgUser}:$pgPass@127.0.0.1:5432/${pgDb}?sslmode=disable"
+    CLICKHOUSE_URL = 'http://127.0.0.1:8123'; CLICKHOUSE_DB = $chDb
+    CLICKHOUSE_USER = (Get-EnvValue 'CLICKHOUSE_USER'); CLICKHOUSE_PASSWORD = (Get-EnvValue 'CLICKHOUSE_PASSWORD')
+    ALERTS_ENABLED = 'true'; ALERTS_SECRET_KEY = (Get-EnvValue 'ALERTS_SECRET_KEY')
+    ALERTS_ALLOW_INSECURE_LOCAL = 'true'; ALERTS_HTTP_ADDR = '127.0.0.1:8084'
+    PUBLIC_DASHBOARD_URL = 'http://localhost:8083'; LOG_FORMAT = 'text'
+  }
+  Start-AlertProc 'alerts' (Join-Path $bin 'alerts.exe') $vars $null
+  $sinkVars = @{ ALERTSINK_SECRET = '' }
+  if (Test-Path $SinkSecretFile) { $sinkVars.ALERTSINK_SECRET = (Get-Content $SinkSecretFile -Raw).Trim() }
+  Start-AlertProc 'alertsink' (Join-Path $bin 'alertsink.exe') $sinkVars @('-addr', '127.0.0.1:9099')
+  Say "sink URL for a webhook channel: $SinkUrl"
+  Say 'sink output: .dev\alertsink.log (verified=true when the signature checks out); deliveries as JSON: http://127.0.0.1:9099/deliveries'
+  if (-not $sinkVars.ALERTSINK_SECRET) {
+    Say 'signatures are not checked yet: create the channel, copy its secret, then run dev.ps1 alerts -AskSecret.'
+  }
+  Say 'evaluator health: http://127.0.0.1:8084/stats; stop both with dev.ps1 down.'
+}
+
+# Sends events straight to the ingest API with the dev ingest key.
+function Send-Events([string]$key, [object[]]$events) {
+  $body = @{ events = $events } | ConvertTo-Json -Depth 4 -Compress
+  $r = Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:8080/v1/ingest' -ContentType 'application/json' `
+    -Headers @{ 'X-API-Key' = $key } -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  if ($r.StatusCode -ge 300) { Fail "ingest answered $($r.StatusCode)." }
+}
+
+function Cmd-AlertsDemo {
+  Require-Docker
+  Require-Tool 'go' 'Install Go 1.23 or newer (https://go.dev/dl/).'
+  if (-not (Test-Path $KeyFile)) { Fail 'no ingest key yet. Run: dev.ps1 up' }
+  $key = (Get-Content $KeyFile -Raw).Trim()
+  Say 'create the rules first (Alerts page); a new_group rule fires once per new group.'
+  # A letter-only word unique to this run makes the templates new each time.
+  $letters = 'abcdefghijklmnopqrstuvwxyz'
+  $rnd = New-Object System.Random
+  $word = -join (1..8 | ForEach-Object { $letters[$rnd.Next(26)] })
+  $now = [DateTime]::UtcNow
+  $events = @()
+  foreach ($i in 0..19) {
+    $ts = $now.AddSeconds(-$i).ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+    $events += @{ timestamp = $ts; level = 'error'; service = 'checkout'; message = "demo $word feature flag lookup failed for cart" }
+    $events += @{ timestamp = $ts; level = 'warn'; service = 'payments'; message = "demo $word card network answered slowly" }
+  }
+  Send-Events $key $events
+  Say "sent 40 events with two new message templates (word: $word)."
+  Say 'now a three-minute burst of payments errors (loadgen demo --incident; Ctrl+C stops it)...'
+  Push-Location (Join-Path $Root 'backend')
+  $env:LOADGEN_INGEST_KEY = $key
+  try {
+    & go run ./cmd/loadgen demo --rate 20 --incident --incident-after 0s --incident-duration 3m --duration 3m --incident-rate 50
+    if ($LASTEXITCODE -ne 0) { Fail 'loadgen demo failed.' }
+  } finally {
+    Remove-Item Env:LOADGEN_INGEST_KEY -ErrorAction SilentlyContinue
+    Pop-Location
+  }
+  Say 'done. Alerts resolve after their clear_for once the burst is over.'
+}
+
 function Cmd-Status {
   Require-Docker
   if (Test-Path $EnvFile) { Compose ps } else { Say 'no .env yet; run: dev.ps1 up' }
+  foreach ($name in $AlertProcs) {
+    $p = Get-AlertProc $name
+    if ($p) { Say "$name is running (pid $($p.Id)); log: .dev\$name.log" } else { Say "$name is not running (dev.ps1 alerts starts it)." }
+  }
   if (Test-Path $LoginFile) { Say "dev login: $DevEmail (password in .dev\login.txt)" } else { Say 'no dev login yet.' }
   Say 'dashboard: http://localhost:5173  API: http://127.0.0.1:8083'
 }
 
 function Cmd-Down {
   Require-Docker
+  Stop-AlertProcs
   if (Test-Path $EnvFile) {
     Compose down -v
     Say 'stack stopped and its data deleted.'
   } else { Say 'no .env; nothing to stop.' }
   if (Test-Path $DevDir) {
     $answer = 'n'
-    if ($Yes) { $answer = 'y' } else { $answer = Read-Host 'dev: remove .dev\ (dev login and ingest key)? [y/N]' }
+    if ($Yes) { $answer = 'y' } else { $answer = Read-Host 'dev: remove .dev\ (dev login, ingest key, sink secret, alert logs and binaries)? [y/N]' }
     if ($answer -match '^[yY]') { Remove-Item -Recurse -Force $DevDir; Say 'removed .dev\.' } else { Say 'kept .dev\.' }
   }
 }
@@ -297,6 +495,8 @@ switch ($Command) {
   'up' { Cmd-Up }
   'seed' { Cmd-Seed }
   'web' { Cmd-Web }
+  'alerts' { Cmd-Alerts }
+  'alerts-demo' { Cmd-AlertsDemo }
   'status' { Cmd-Status }
   'down' { Cmd-Down }
   default { Get-Help $PSCommandPath -Detailed | Out-String | Write-Host }
