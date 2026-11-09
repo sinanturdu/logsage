@@ -60,6 +60,26 @@ K1 (ADR 0024) added alert rules, channels, the evaluator and the alert API. K2 p
 
 **Text only:** names, notes, templates, hosts, services and server messages are rendered with `LogText` or `TemplateText` (text nodes). XSS payload tests cover each of them.
 
+## Addendum: K2.1 polish
+
+**Dialog structure:** the rule dialog is three parts.
+- **Header:** the title.
+- **Body:** the form, the only part that scrolls (vertical only; the dialog never scrolls sideways).
+- **Footer:** sticky, with the plain-language preview and Cancel and Create, so the preview stays visible while the form is filled in.
+- Below 700 px the preview folds behind a "Show preview" button (`aria-expanded`, `aria-controls`) to save room.
+- The visible preview updates on every keystroke. A separate, visually hidden `role="status"` (polite) receives the same sentences one second after typing pauses, so screen readers hear the result once rather than on every key.
+
+**Layout:**
+- The field rows are a wrapping grid (`repeat(auto-fit, minmax(14rem, 1fr))`) whose children may shrink.
+- A duration is a 5rem number and a 7.5rem unit. Their rule is as specific as the generic dialog input rule, which had made the number 100% wide and cut the unit to "n".
+- Labels are short and on one line; the explanations are help text, described by the input.
+- Radio options (rule type, channel type, API key kind) share one `Choice` component. The name labels the radio and the description describes it.
+
+**No-channels flow:** a rule needs a channel.
+- "Create a channel" in the rule dialog and in the empty Rules tab closes the dialog and sets `tab=channels&create=channel`. The page opens the channel dialog and removes `create` with a replace. This is the parameter the palette already uses, not a new `create=1`.
+- When the first channel of the project is created, a status notice says "Channel created. Create a rule that notifies it." with a Create rule button.
+- Create in the rule form is disabled until a channel is chosen, described by "Choose at least one channel.".
+
 ## Consequences
 - The rules table needs no request per rule; a rule page lists exactly its deliveries.
 - The preview and the client-side validation must follow the backend when its limits or semantics change (`model.ts` names `alert.Validate`).

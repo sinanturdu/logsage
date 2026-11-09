@@ -239,8 +239,10 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 
 /* Project nav, dialogs and the API keys screen (ADR 0019) */
 .project-nav { display: flex; gap: var(--space-3); font-size: var(--text-md); }
-.project-nav a { color: var(--pencil); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
-.project-nav a[aria-current='page'] { color: var(--ink); border-bottom-color: var(--pen); }
+.project-nav a, .project-nav a:visited { color: var(--pencil); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
+/* Every nav link has the same states: pencil, ink on hover, ink with the pen underline when current. */
+.project-nav a:hover { color: var(--ink); border-bottom-color: var(--grid); }
+.project-nav a[aria-current='page'], .project-nav a[aria-current='page']:visited { color: var(--ink); border-bottom-color: var(--pen); }
 .dialog-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; padding: var(--space-4); z-index: 20; }
 .dialog { background: var(--paper, var(--white)); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: var(--space-5); width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
 .dialog h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
@@ -249,7 +251,7 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 .dialog input[aria-invalid='true'] { border: 2px solid var(--danger); }
 .dialog fieldset { border: 0; margin: 0; padding: 0; }
 .dialog legend { font-weight: 500; padding: 0; }
-.dialog .choice { display: flex; gap: var(--space-2); align-items: baseline; font-weight: 400; margin-top: var(--space-2); }
+.dialog .choice { display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 400; margin-top: var(--space-2); }
 .dialog .check { display: flex; gap: var(--space-2); align-items: center; font-weight: 400; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
 .button-danger { background: var(--danger); border-color: var(--danger); color: var(--white); }
@@ -277,6 +279,11 @@ table.keys th { font-weight: 500; color: var(--pencil); }
 .secret { align-items: flex-start; }
 .key-block { flex: 1; min-width: 0; font: var(--text-md) var(--font-mono); overflow-wrap: anywhere; word-break: break-all; user-select: all; background: var(--white); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 8px; cursor: text; }
 .choice-desc { color: var(--pencil); }
+/* A radio option: the name on one line, the muted description below it. */
+.choice-text { display: flex; flex-direction: column; min-width: 0; }
+.dialog .choice input { margin-top: 3px; }
+.choice-name { font-weight: 500; color: var(--ink); }
+.choice-text .choice-desc { font-size: var(--text-sm); }
 .examples [role='tablist'] { display: flex; gap: 2px; border-bottom: 1px solid var(--line-strong); }
 .examples [role='tab'] { background: none; border: 1px solid transparent; border-bottom: 0; padding: 4px 10px; font: inherit; font-size: var(--text-sm); color: var(--pencil); cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; }
 .examples [role='tab'][aria-selected='true'] { color: var(--ink); border-color: var(--line-strong); background: var(--white); margin-bottom: -1px; }
@@ -410,7 +417,8 @@ table.alerts tr.failed td { background: var(--white); }
 .astate-disabled { color: var(--pencil); }
 .dstatus-failed { color: var(--level-error); font-weight: 700; }
 .dstatus-cancelled { color: var(--pencil); }
-.project-nav a.nav-firing { color: var(--level-error); font-weight: 700; }
+/* The firing count keeps its red in every state; the current page still shows the pen underline. */
+.project-nav a.nav-firing, .project-nav a.nav-firing:visited, .project-nav a.nav-firing:hover { color: var(--level-error); font-weight: 700; }
 .switch { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 2px 0; font: inherit; color: var(--ink); cursor: pointer; }
 .switch-track { display: inline-block; width: 28px; height: 16px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--white); position: relative; }
 .switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--pencil); }
@@ -430,15 +438,34 @@ table.alerts tr.failed td { background: var(--white); }
 .timeline { margin: 0; padding-left: var(--space-5); font-size: var(--text-md); }
 .timeline li { margin-bottom: var(--space-1); overflow-wrap: anywhere; }
 .named-list { margin: 0 0 var(--space-3); padding-left: var(--space-5); overflow-wrap: anywhere; }
-.dialog.rule-dialog { width: min(760px, 100%); }
+.dialog.rule-dialog { width: min(760px, 100%); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* Header, scrolling body, sticky footer: the preview and the buttons stay in view. */
+.rule-dialog > h2 { margin: 0; padding: var(--space-4) var(--space-5) var(--space-2); }
+.rule-dialog .dialog-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.rule-dialog .dialog-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 0 var(--space-5) var(--space-4); }
+.rule-dialog .dialog-footer { flex: 0 0 auto; border-top: 1px solid var(--grid); background: var(--paper); padding: var(--space-2) var(--space-5) var(--space-3); }
+.rule-dialog .dialog-footer .preview { margin-top: 0; }
+.rule-dialog .dialog-footer .dialog-actions { margin-top: var(--space-2); }
+.preview-toggle { display: none; }
+.submit-hint { align-self: center; margin-right: auto; }
+.no-channels .button { margin-top: var(--space-1); }
+.first-channel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+@media (max-width: 700px) {
+  .preview-toggle { display: inline-block; padding: 2px 0; }
+  .rule-dialog .dialog-footer .preview:not(.open) { display: none; }
+}
 .afield { margin-top: var(--space-3); }
 .afield label { margin-top: 0; }
 .afield textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; resize: vertical; }
 .afield textarea[aria-invalid='true'] { border: 2px solid var(--danger); }
-.field-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0 var(--space-4); }
-.duration { display: flex; gap: var(--space-1); }
-.dialog .duration input { width: 6rem; flex: 0 0 auto; }
-.dialog .duration select { width: auto; flex: 1; }
+.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 var(--space-4); align-items: start; }
+.field-row > * { min-width: 0; }
+/* One-line labels keep the inputs of a row on one line; the explanation is the help text below. */
+.field-row .afield > label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duration { display: flex; gap: var(--space-1); max-width: 100%; }
+/* As specific as the generic dialog input rule, and after it: the number stays narrow, the unit fits "minutes". */
+.dialog .duration input:not([type='checkbox']):not([type='radio']) { width: 5rem; flex: 0 0 5rem; min-width: 0; }
+.dialog .duration select { width: 7.5rem; flex: 0 1 7.5rem; min-width: 0; }
 .dialog fieldset.choices { margin-top: var(--space-3); }
 .inline-choices { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); }
 .inline-choices legend { width: 100%; }

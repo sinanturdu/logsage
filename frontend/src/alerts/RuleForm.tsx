@@ -1,4 +1,5 @@
-import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Choice } from '../components/Choice'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
@@ -26,6 +27,10 @@ import {
 } from './model'
 
 const DAY = 86_400_000
+/** The preview is announced this long after the last change. */
+export const PREVIEW_ANNOUNCE_MS = 1000
+export const CHOOSE_CHANNEL = 'Choose at least one channel.'
+export const CREATE_A_CHANNEL = 'Create a channel'
 
 type FieldProps = { id: string; label: string; error: string | undefined; hint?: ReactNode; children: ReactNode }
 
@@ -99,10 +104,18 @@ function useServiceChoices(slug: string, chosen: readonly string[]) {
   return { names: [...new Set([...names, ...chosen])].sort(), loading: facets.isPending, failed: facets.isError }
 }
 
-type Props = { slug: string; channels: readonly Channel[]; rule?: Rule; onClose: () => void; onSaved?: (r: Rule) => void }
+type Props = {
+  slug: string
+  channels: readonly Channel[]
+  rule?: Rule
+  onClose: () => void
+  onSaved?: (r: Rule) => void
+  /** No channel yet: close this dialog and open the channel dialog instead. */
+  onCreateChannel?: (() => void) | undefined
+}
 
 /** Create or edit a rule: only the chosen type's fields, a live preview, the server's limits. */
-export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props) {
+export function RuleFormDialog({ slug, channels, rule, onClose, onSaved, onCreateChannel }: Props) {
   const qc = useQueryClient()
   const id = useId()
   const [form, setForm] = useState<RuleForm>(() => (rule ? formFromRule(rule) : emptyRuleForm()))
@@ -117,6 +130,17 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
     setForm((f) => ({ ...f, [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] }))
   const channelNames = useMemo(() => channels.filter((c) => form.channels.includes(c.id)).map((c) => c.name), [channels, form.channels])
   const preview = previewSentences(form, channelNames)
+  // Submitting is pointless without a channel: the button says why it waits.
+  const noChannel = form.channels.length === 0
+  // Below 700 px the preview folds behind "Show preview" (CSS); above, it is always shown.
+  const [showPreview, setShowPreview] = useState(false)
+  // Screen readers hear the preview once typing pauses, not on every keystroke.
+  const [announced, setAnnounced] = useState('')
+  const sentence = `${preview.fires} ${preview.resolves}`
+  useEffect(() => {
+    const t = setTimeout(() => setAnnounced(sentence), PREVIEW_ANNOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [sentence])
   const fid = (f: FieldName) => `${id}-${f}`
 
   async function submit(e: FormEvent) {
@@ -150,7 +174,8 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
   const err = (f: FieldName) => errors[f]
   return (
     <Dialog title={rule ? 'Edit alert rule' : 'Create an alert rule'} onClose={onClose} initialFocus={nameInput} className="rule-dialog">
-      <form onSubmit={(e) => void submit(e)} noValidate>
+      <form className="dialog-form" onSubmit={(e) => void submit(e)} noValidate>
+        <div className="dialog-body">
         <Field id={fid('name')} label="Name" error={err('name')}>
           <input
             ref={nameInput}
@@ -165,23 +190,16 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         <fieldset className="choices" aria-describedby={err('type') ? `${fid('type')}-error` : undefined}>
           <legend>Type</legend>
           {RULE_TYPES.map((t) => (
-            <label key={t} className="choice">
-              <input
-                type="radio"
-                name={`${id}-type`}
-                id={t === form.type ? fid('type') : undefined}
-                value={t}
-                checked={form.type === t}
-                aria-describedby={`${id}-type-${t}`}
-                onChange={() => set('type', t)}
-              />
-              <span>
-                <b>{TYPE_LABEL[t]}</b>{' '}
-                <span className="choice-desc" id={`${id}-type-${t}`}>
-                  {TYPE_HINT[t]}
-                </span>
-              </span>
-            </label>
+            <Choice
+              key={t}
+              name={`${id}-type`}
+              id={t === form.type ? fid('type') : undefined}
+              value={t}
+              checked={form.type === t}
+              label={TYPE_LABEL[t]}
+              description={TYPE_HINT[t]}
+              onChange={() => set('type', t)}
+            />
           ))}
           {err('type') && (
             <p className="field-error" id={`${fid('type')}-error`}>
@@ -192,7 +210,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
 
         <div className="field-row">
           {fields.includes('threshold') && (
-            <Field id={fid('threshold')} label="Threshold (% of logs that are error or fatal)" error={err('threshold')} hint="0.1 to 100.">
+            <Field id={fid('threshold')} label="Threshold (%)" error={err('threshold')} hint="Share of error and fatal logs among all logs. 0.1 to 100.">
               <input
                 id={fid('threshold')}
                 inputMode="decimal"
@@ -204,7 +222,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('minLogs') && (
-            <Field id={fid('minLogs')} label="At least this many logs" error={err('minLogs')} hint="A smaller sample never fires. 10 to 1,000,000.">
+            <Field id={fid('minLogs')} label="Minimum logs" error={err('minLogs')} hint="A smaller sample never fires. 10 to 1,000,000.">
               <input
                 id={fid('minLogs')}
                 inputMode="numeric"
@@ -216,8 +234,8 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('op') && (
-            <Field id={fid('op')} label="Fires when the count is" error={err('op')}>
-              <select id={fid('op')} value={form.op} onChange={(e) => set('op', e.target.value === 'below' ? 'below' : 'above')}>
+            <Field id={fid('op')} label="Direction" error={err('op')} hint="Fires when the count is above or below the number.">
+              <select id={fid('op')} aria-describedby={describedBy(fid('op'), err('op'), true)} value={form.op} onChange={(e) => set('op', e.target.value === 'below' ? 'below' : 'above')}>
                 <option value="above">Above</option>
                 <option value="below">Below</option>
               </select>
@@ -236,7 +254,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('minEvents') && (
-            <Field id={fid('minEvents')} label="At least this many events of the group" error={err('minEvents')} hint="1 to 1,000,000.">
+            <Field id={fid('minEvents')} label="Minimum events" error={err('minEvents')} hint="Events of the new group in the window. 1 to 1,000,000.">
               <input
                 id={fid('minEvents')}
                 inputMode="numeric"
@@ -248,7 +266,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('maxGroups') && (
-            <Field id={fid('maxGroups')} label="New groups per hour" error={err('maxGroups')} hint="Fires above this number; the window is always 1 hour. 1 to 10,000.">
+            <Field id={fid('maxGroups')} label="Max new groups" error={err('maxGroups')} hint="Per hour; fires above this number. The window is always 1 hour. 1 to 10,000.">
               <input
                 id={fid('maxGroups')}
                 inputMode="numeric"
@@ -260,7 +278,7 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
             </Field>
           )}
           {fields.includes('window') && (
-            <Field id={fid('window')} label="Window" error={err('window')} hint="The time the condition looks back over. 1 minute to 24 hours.">
+            <Field id={fid('window')} label="Window" error={err('window')} hint="How far back the condition looks. 1 minute to 24 hours.">
               <DurationInput id={fid('window')} value={form.window} onChange={(v) => set('window', v)} error={err('window')} hint units={['m', 'h']} />
             </Field>
           )}
@@ -300,10 +318,10 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         )}
 
         <div className="field-row">
-          <Field id={fid('for')} label="For" error={err('for')} hint="How long the condition must hold before it fires. 0 to 24 hours.">
+          <Field id={fid('for')} label="For" error={err('for')} hint="How long the condition must hold to fire. 0 to 24 hours.">
             <DurationInput id={fid('for')} value={form.for} onChange={(v) => set('for', v)} error={err('for')} hint />
           </Field>
-          <Field id={fid('clearFor')} label="Clear for" error={err('clearFor')} hint="How long it must be clear before it resolves. 0 uses the interval; at most 1 hour.">
+          <Field id={fid('clearFor')} label="Clear for" error={err('clearFor')} hint="How long it must be clear to resolve. 0 uses the check interval; at most 1 hour.">
             <DurationInput id={fid('clearFor')} value={form.clearFor} onChange={(v) => set('clearFor', v)} error={err('clearFor')} hint />
           </Field>
           <Field id={fid('interval')} label="Check every" error={err('interval')} hint="30 seconds to 1 hour.">
@@ -322,7 +340,14 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
         <fieldset className="choices" aria-describedby={err('channels') ? `${fid('channels')}-error` : undefined}>
           <legend>Notify</legend>
           {channels.length === 0 ? (
-            <p className="field-hint">No channels yet. Create one on the Channels tab first.</p>
+            <div className="no-channels">
+              <p className="field-hint">No channels yet. A rule needs a channel to notify.</p>
+              {onCreateChannel && (
+                <button type="button" className="button" onClick={onCreateChannel}>
+                  {CREATE_A_CHANNEL}
+                </button>
+              )}
+            </div>
           ) : (
             channels.map((c, i) => (
               <label key={c.id} className="check">
@@ -349,28 +374,41 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved }: Props
           />
         </Field>
 
-        {/* Not a live region: it changes on every keystroke. */}
-        <div className="preview" role="group" aria-label="Preview" data-testid="rule-preview">
-          <p>
-            <LogText text={preview.fires} mono={false} />
-          </p>
-          <p>
-            <LogText text={preview.resolves} mono={false} />
-          </p>
-        </div>
-
         {formError && (
           <p className="form-error" role="alert">
             {formError}
           </p>
         )}
+        </div>
+        <div className="dialog-footer">
+          <button type="button" className="button button-quiet preview-toggle" aria-expanded={showPreview} aria-controls={`${id}-preview`} onClick={() => setShowPreview((v) => !v)}>
+            {showPreview ? 'Hide preview' : 'Show preview'}
+          </button>
+          {/* Visible and updated on every keystroke; screen readers get the debounced copy below. */}
+          <div className={`preview${showPreview ? ' open' : ''}`} id={`${id}-preview`} role="group" aria-label="Preview" data-testid="rule-preview">
+            <p>
+              <LogText text={preview.fires} mono={false} />
+            </p>
+            <p>
+              <LogText text={preview.resolves} mono={false} />
+            </p>
+          </div>
+          <p className="visually-hidden" role="status" aria-live="polite" data-testid="preview-announcement">
+            {announced}
+          </p>
         <div className="dialog-actions">
           <button type="button" className="button button-quiet" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="button button-primary" disabled={busy}>
+          {noChannel && (
+            <p className="field-hint submit-hint" id={`${id}-submit-hint`}>
+              {CHOOSE_CHANNEL}
+            </p>
+          )}
+          <button type="submit" className="button button-primary" disabled={busy || noChannel} aria-describedby={noChannel ? `${id}-submit-hint` : undefined}>
             {busy ? 'Saving…' : rule ? 'Save rule' : 'Create rule'}
           </button>
+        </div>
         </div>
       </form>
     </Dialog>

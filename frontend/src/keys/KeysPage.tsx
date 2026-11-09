@@ -1,3 +1,4 @@
+import { Choice } from '../components/Choice'
 import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router'
@@ -225,23 +226,7 @@ function CreateKeyDialog({ slug, onClose }: { slug: string; onClose: () => void 
         <fieldset>
           <legend>Kind</legend>
           {KINDS.map((k) => (
-            <label key={k.kind} className="choice">
-              <input
-                type="radio"
-                name={`${id}-kind`}
-                value={k.kind}
-                checked={kind === k.kind}
-                aria-labelledby={`${id}-kname-${k.kind}`}
-                aria-describedby={`${id}-kind-${k.kind}`}
-                onChange={() => setKind(k.kind)}
-              />
-              <span>
-                <b id={`${id}-kname-${k.kind}`}>{k.label}</b>{' '}
-                <span className="choice-desc" id={`${id}-kind-${k.kind}`}>
-                  {k.description}
-                </span>
-              </span>
-            </label>
+            <Choice key={k.kind} name={`${id}-kind`} value={k.kind} checked={kind === k.kind} label={k.label} description={k.description} onChange={() => setKind(k.kind)} />
           ))}
         </fieldset>
         <label htmlFor={`${id}-name`}>Name</label>

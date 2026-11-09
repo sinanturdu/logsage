@@ -1,3 +1,4 @@
+import { Choice } from '../components/Choice'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Dialog } from '../components/Dialog'
@@ -104,7 +105,7 @@ export function SecretDialog({ title, secret, onDone }: { title: string; secret:
 }
 
 /** Create a channel, or edit its name, URL and sample setting. */
-export function ChannelFormDialog({ slug, channel, onClose }: { slug: string; channel?: Channel; onClose: () => void }) {
+export function ChannelFormDialog({ slug, channel, onClose, onCreated }: { slug: string; channel?: Channel; onClose: () => void; onCreated?: () => void }) {
   const qc = useQueryClient()
   const id = useId()
   const [kind, setKind] = useState<ChannelKind>(channel?.kind ?? 'webhook')
@@ -139,6 +140,7 @@ export function ChannelFormDialog({ slug, channel, onClose }: { slug: string; ch
       }
       const res = await createChannel(slug, { name: n, kind, url: u, include_sample: sample })
       void qc.invalidateQueries({ queryKey: alertsKey(slug) })
+      onCreated?.()
       if (res.secret) setSecret(res.secret)
       else onClose()
     } catch (err) {
@@ -160,15 +162,7 @@ export function ChannelFormDialog({ slug, channel, onClose }: { slug: string; ch
           <fieldset className="choices">
             <legend>Type</legend>
             {KINDS.map((k) => (
-              <label key={k.kind} className="choice">
-                <input type="radio" name={`${id}-kind`} value={k.kind} checked={kind === k.kind} aria-describedby={`${id}-kind-${k.kind}`} onChange={() => setKind(k.kind)} />
-                <span>
-                  <b>{k.label}</b>{' '}
-                  <span className="choice-desc" id={`${id}-kind-${k.kind}`}>
-                    {k.description}
-                  </span>
-                </span>
-              </label>
+              <Choice key={k.kind} name={`${id}-kind`} value={k.kind} checked={kind === k.kind} label={k.label} description={k.description} onChange={() => setKind(k.kind)} />
             ))}
           </fieldset>
         )}
