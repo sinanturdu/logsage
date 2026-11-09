@@ -21,7 +21,7 @@ flowchart LR
 ## Components
 - **Ingestion API**: authenticates API key, validates batch, enforces size limits and stream backpressure (`429`), writes to Redis Stream, returns `202 Accepted`.
 - **Log Processor** (`cmd/processor`): consumer group worker. Parses and validates entries, batches inserts into ClickHouse (by size or 1 s), acknowledges only after a successful write, dead-letters unusable entries. Fingerprinting comes later. See "Processor (v0.1)" below and ADR 0008.
-- **Alert Engine**: evaluates rules on a sliding window; opens incidents and sends notifications.
+- **Alerts** (`cmd/alerts`, v0.3 K1): evaluates alert rules over event-time windows through the shared query service, keeps their state in PostgreSQL and delivers signed webhook notifications through an outbox and an SSRF-safe client. One instance evaluates (advisory lock); see "Alerts (K1)" below and ADR 0024. Incidents come later (L).
 - **Query API** (`cmd/query`): read-only REST search over ClickHouse (`GET /v1/logs`, v0.1); WebSocket live tail later. Always scoped by `project_id` through one query builder. See "Query API (v0.1 contract)" and ADR 0009.
 - **AI Service**: anomaly detection and root-cause suggestions. Called by the backend over HTTP.
 - **Management API** (`cmd/api`, v0.2): login with server-side sessions, projects, member roles and API keys over JSON. PostgreSQL only. See "Management API (v0.2 contract)" and ADR 0013.
@@ -206,7 +206,9 @@ error_groups (project_id uuid FK -> projects ON DELETE CASCADE, fingerprint bigi
 ```
 No row means `open`. A status change upserts the row and writes an `audit_log` row (`group.status`) in one transaction.
 
-Planned: `alert_rules`, `incidents`, `incident_events`, `deploy_events`.
+Migration 0004 (ADR 0024): `notification_channels` (URL and signing secret sealed with AES-256-GCM, `url_host` for display), `alert_rules` (type, `params` jsonb, interval, window, for, clear_for, repeat, `version`, `next_eval_at`), `alert_rule_channels`, `alert_states` (one row per rule and dedup key, optimistic `version`), `alert_events` (every transition, kept when the rule is deleted) and `alert_notifications` (the outbox: status, attempts, `next_attempt_at`, lease, unique `idempotency_key`, payload without secrets).
+
+Planned: `incidents`, `incident_events`, `deploy_events`.
 
 ### API key lifecycle (v0.2 package G)
 - **Create:** `admin create-key --project SLUG --kind ingest|query --name N [--expires-in 720h]` generates `lsk_<ing|qry>_<8 base32 chars>_<43 base64url chars>` from `crypto/rand` (40-bit prefix, 256-bit secret), stores only prefix and SHA-256, and prints the key once.
@@ -300,6 +302,22 @@ How the stream works:
 - **Old events:** logs with an event time older than `TAIL_MAX_LATENESS` (10m) at arrival are not streamed live.
 - **Resume:** a reconnect with `Last-Event-ID` within `TAIL_MAX_REPLAY` (5m) resumes without gaps or duplicates.
 - **Stream lifetime:** a stream closes after `TAIL_MAX_DURATION` (1h). Session and membership are re-checked every `TAIL_AUTH_RECHECK` (30s), and a client slower than `TAIL_WRITE_TIMEOUT` per write is dropped.
+
+### Alerts (K1, ADR 0024)
+Session auth under `/api/projects/{slug}/alerts`; viewers read, owners and admins write, non-members get 404, every write leaves an audit row (no URLs or secrets). With `ALERTS_ENABLED=false`, or without a usable `ALERTS_SECRET_KEY`, the endpoints answer 503 with the reason.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET`/`POST rules`, `GET`/`PUT`/`DELETE rules/{id}`, `POST rules/{id}/enable` and `/disable` | Rules. Body: `name`, `note`, `type`, `params`, `interval`, `window`, `for`, `clear_for`, `repeat` (durations such as `30s`, `5m`), `enabled`, `channels` (1–10 ids). |
+| `GET`/`POST channels`, `GET`/`PUT`/`DELETE channels/{id}`, `POST channels/{id}/rotate-secret` | Channels: `name`, `kind` (`webhook` or `slack`), `url` (checked by the SSRF rules), `include_sample`. The webhook signing secret appears only in the create and rotate responses. |
+| `POST channels/{id}/test` | A test delivery (`alert.test`, `"test": true`), at most 5 per channel per 10 minutes (429 with `Retry-After`). |
+| `GET states`, `GET events?rule=&before=&limit=`, `GET notifications?channel=&status=&before=&limit=` | Pending and firing states, transitions and the delivery history, newest first (`next_before` pages). |
+
+**Rule types:** `error_rate` (error and fatal share of the window, with `min_logs`), `log_volume` (`above` or `below` a count; below 1 is silence), `new_group` (first seen in the window with `min_events`; once per group), `regression` (a resolved group seen again; once per resolution), `new_groups_per_hour` (guard against group explosions). Limits: interval 30 s–1 h, window 1 min–24 h, 50 rules and 10 channels per project.
+
+**Evaluation (`cmd/alerts`):** every `ALERTS_TICK` the instance holding the PostgreSQL advisory lock evaluates due rules (at most `ALERTS_QUERIES_PER_CYCLE`, `ALERTS_CONCURRENCY` at a time) over `[now - lateness - window, now - lateness)` in event time (`ALERTS_LATENESS`, default 60 s). Queries go through `query.Service` (project scope, `readonly`, time and row limits, `log_comment = 'alerts'`). States move ok → pending (`for`) → firing → resolved (after `clear_for` outside a hysteresis band); `repeat` re-notifies. A rule disabled or deleted while firing sends a final `alert.resolved` with `reason`. Health on `ALERTS_HTTP_ADDR` (`:8084`): `/healthz`, `/readyz`, `/stats`.
+
+**Delivery:** the outbox is claimed with `FOR UPDATE SKIP LOCKED`; retries back off from 10 s, doubling with jitter, up to `ALERTS_MAX_ATTEMPTS`; at most `ALERTS_CHANNEL_RATE` sends per channel per minute. Webhooks carry `X-LogSage-Event`, `X-LogSage-Delivery` (idempotency key) and `X-LogSage-Signature: t=<unix>,v1=<hex HMAC-SHA256 over "t.body">`; Slack gets an escaped `{"text": ...}`. The client allows only https to public addresses (every DNS answer checked, the checked address dialed, no redirects, proxies, cookies, keep-alive or zones; TLS 1.2+ verified).
 
 ## Dashboard (v0.2)
 `frontend/`, ADR 0016.

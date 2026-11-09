@@ -276,6 +276,12 @@ func quoteShort(s string) string {
 // run executes stmt with the read-only settings: readonly=1, the execution
 // time limit and a result row limit.
 func (s *Service) run(ctx context.Context, stmt Statement, maxRows int) ([]byte, error) {
+	return s.runWith(ctx, stmt, maxRows, nil)
+}
+
+// runWith is run with extra settings (for example log_comment); they cannot
+// replace the read-only ones.
+func (s *Service) runWith(ctx context.Context, stmt Statement, maxRows int, extra map[string]string) ([]byte, error) {
 	// The request deadline is a little longer than ClickHouse's own limit so
 	// ClickHouse normally reports the timeout itself.
 	ctx, cancel := context.WithTimeout(ctx, s.opts.Timeout+2*time.Second)
@@ -286,6 +292,11 @@ func (s *Service) run(ctx context.Context, stmt Statement, maxRows int) ([]byte,
 		"timeout_overflow_mode": "throw",
 		"max_result_rows":       strconv.Itoa(maxRows),
 		"result_overflow_mode":  "throw",
+	}
+	for k, v := range extra {
+		if _, fixed := settings[k]; !fixed {
+			settings[k] = v
+		}
 	}
 	body, err := s.store.QueryWithParams(ctx, stmt.SQL, stmt.Params, settings)
 	if err != nil {

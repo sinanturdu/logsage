@@ -87,11 +87,11 @@ func TestIntegrationMigrateAppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Applied) != 3 || res.Applied[0] != "0001_projects_and_api_keys" || res.Applied[1] != "0002_users_sessions_members_audit" || res.Applied[2] != "0003_error_groups" || res.Current != 3 {
+	if len(res.Applied) != 4 || res.Applied[0] != "0001_projects_and_api_keys" || res.Applied[1] != "0002_users_sessions_members_audit" || res.Applied[2] != "0003_error_groups" || res.Applied[3] != "0004_alerts" || res.Current != 4 {
 		t.Fatalf("first run = %+v", res)
 	}
 	res, err = Migrate(ctx, pool, migrations.Postgres())
-	if err != nil || len(res.Applied) != 0 || res.Current != 3 {
+	if err != nil || len(res.Applied) != 0 || res.Current != 4 {
 		t.Fatalf("second run = %+v, %v; want nothing applied", res, err)
 	}
 	var id, slug string
@@ -100,8 +100,8 @@ func TestIntegrationMigrateAppliesAndIsIdempotent(t *testing.T) {
 	}
 	var n int
 	_ = pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&n)
-	if n != 3 {
-		t.Errorf("schema_migrations rows = %d, want 3", n)
+	if n != 4 {
+		t.Errorf("schema_migrations rows = %d, want 4", n)
 	}
 }
 
@@ -215,7 +215,7 @@ func TestIntegrationMigrateConcurrentRunners(t *testing.T) {
 		if len(results[i].Applied) > 0 {
 			appliedBy++
 		}
-		if results[i].Current != 3 {
+		if results[i].Current != 4 {
 			t.Errorf("runner %d ended at version %d", i, results[i].Current)
 		}
 	}

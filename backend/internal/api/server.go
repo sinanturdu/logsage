@@ -78,7 +78,9 @@ type Options struct {
 	// MaxConcurrentQueries caps running log reads per user (default
 	// DefaultMaxConcurrentQueries); above it the answer is 429.
 	MaxConcurrentQueries int
-	Now                  func() time.Time // default time.Now
+	// Alerts turns the alert endpoints on (ADR 0024); nil answers 503.
+	Alerts *AlertsOptions
+	Now    func() time.Time // default time.Now
 }
 
 // Server serves the management API.
@@ -145,6 +147,24 @@ func (s *Server) Register(mux *http.ServeMux) {
 	m.HandleFunc("GET /api/projects/{slug}/groups", s.authed(s.readLogs(s.prepareGroups)))
 	m.HandleFunc("GET /api/projects/{slug}/groups/{fingerprint}", s.authed(s.readLogs(s.prepareGroupDetail)))
 	m.HandleFunc("POST /api/projects/{slug}/groups/{fingerprint}/status", s.authed(s.handleGroupStatus))
+	a := "/api/projects/{slug}/alerts"
+	m.HandleFunc("GET "+a+"/rules", s.authed(s.handleListRules))
+	m.HandleFunc("POST "+a+"/rules", s.authed(s.handleCreateRule))
+	m.HandleFunc("GET "+a+"/rules/{id}", s.authed(s.handleGetRule))
+	m.HandleFunc("PUT "+a+"/rules/{id}", s.authed(s.handleUpdateRule))
+	m.HandleFunc("DELETE "+a+"/rules/{id}", s.authed(s.handleDeleteRule))
+	m.HandleFunc("POST "+a+"/rules/{id}/enable", s.authed(s.handleEnableRule(true)))
+	m.HandleFunc("POST "+a+"/rules/{id}/disable", s.authed(s.handleEnableRule(false)))
+	m.HandleFunc("GET "+a+"/channels", s.authed(s.handleListChannels))
+	m.HandleFunc("POST "+a+"/channels", s.authed(s.handleCreateChannel))
+	m.HandleFunc("GET "+a+"/channels/{id}", s.authed(s.handleGetChannel))
+	m.HandleFunc("PUT "+a+"/channels/{id}", s.authed(s.handleUpdateChannel))
+	m.HandleFunc("DELETE "+a+"/channels/{id}", s.authed(s.handleDeleteChannel))
+	m.HandleFunc("POST "+a+"/channels/{id}/rotate-secret", s.authed(s.handleRotateSecret))
+	m.HandleFunc("POST "+a+"/channels/{id}/test", s.authed(s.handleTestChannel))
+	m.HandleFunc("GET "+a+"/states", s.authed(s.handleAlertStates))
+	m.HandleFunc("GET "+a+"/events", s.authed(s.handleAlertEvents))
+	m.HandleFunc("GET "+a+"/notifications", s.authed(s.handleNotifications))
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeError(w, http.StatusNotFound) })
 	mux.Handle("/api/", s.secure(m))
 }

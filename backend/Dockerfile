@@ -20,7 +20,7 @@ COPY backend/ ./
 # Only cmd/api imports internal/web; the other binaries do not change.
 COPY --from=web /web/dist/ ./internal/web/dist/
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ \
-      ./cmd/ingest ./cmd/processor ./cmd/query ./cmd/admin ./cmd/api
+      ./cmd/ingest ./cmd/processor ./cmd/query ./cmd/admin ./cmd/api ./cmd/alerts
 
 # Alpine rather than distroless: compose healthchecks use busybox wget.
 FROM alpine:3.20

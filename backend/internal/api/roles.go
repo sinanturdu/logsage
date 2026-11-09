@@ -10,6 +10,7 @@ const (
 	actManageKeys                 // create and revoke keys
 	actDisable                    // disable the project
 	actManageGroups               // change an error group's status (ADR 0022)
+	actManageAlerts               // create and change alert rules and channels (ADR 0024)
 )
 
 // can is the role matrix (ADR 0013). Non-members never reach it: they get
@@ -18,7 +19,7 @@ func can(role postgres.Role, a action) bool {
 	switch a {
 	case actView:
 		return role == postgres.RoleOwner || role == postgres.RoleAdmin || role == postgres.RoleViewer
-	case actManageKeys, actManageGroups:
+	case actManageKeys, actManageGroups, actManageAlerts:
 		return role == postgres.RoleOwner || role == postgres.RoleAdmin
 	case actDisable:
 		return role == postgres.RoleOwner
