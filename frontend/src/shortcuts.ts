@@ -17,6 +17,9 @@ export type ShortcutId =
   | 'groups-next'
   | 'groups-previous'
   | 'groups-open'
+  | 'alerts-next'
+  | 'alerts-previous'
+  | 'alerts-open'
 
 type Keyish = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>
 
@@ -25,7 +28,7 @@ export type Shortcut = {
   /** What the help shows, one entry per key combination. */
   keys: readonly string[]
   description: string
-  where: 'Anywhere' | 'Log explorer' | 'Live tail' | 'Error groups'
+  where: 'Anywhere' | 'Log explorer' | 'Live tail' | 'Error groups' | 'Alerts'
   /** Also active while typing in a text field. */
   whileTyping: boolean
   matches: (e: Keyish) => boolean
@@ -76,6 +79,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'groups-next', keys: ['j'], description: 'Select the next group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'j' },
   { id: 'groups-previous', keys: ['k'], description: 'Select the previous group', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'k' },
   { id: 'groups-open', keys: ['Enter'], description: 'Open the selected group, or expand a combined row', where: 'Error groups', whileTyping: false, matches: (e) => plain(e) && e.key === 'Enter' },
+  { id: 'alerts-next', keys: ['j'], description: 'Select the next row', where: 'Alerts', whileTyping: false, matches: (e) => plain(e) && e.key === 'j' },
+  { id: 'alerts-previous', keys: ['k'], description: 'Select the previous row', where: 'Alerts', whileTyping: false, matches: (e) => plain(e) && e.key === 'k' },
+  { id: 'alerts-open', keys: ['Enter'], description: 'Open the selected rule', where: 'Alerts', whileTyping: false, matches: (e) => plain(e) && e.key === 'Enter' },
 ]
 
 /** Whether the event comes from a place where typed characters are text. */

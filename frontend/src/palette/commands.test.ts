@@ -9,6 +9,7 @@ describe('commandsFor', () => {
   it('lists explorer commands on the logs page', () => {
     expect(labels(ctx())).toEqual([
       'Go to Error groups',
+      'Go to Alerts',
       'Go to API keys',
       'Switch project: shop',
       'Last 15 minutes',
@@ -49,6 +50,7 @@ describe('commandsFor', () => {
     expect(c.map((x) => x.label)).toEqual([
       'Go to Logs',
       'Go to Error groups',
+      'Go to Alerts',
       'Switch project: shop',
       'Copy link to this view',
       'Change password...',
@@ -79,7 +81,7 @@ describe('defaultCommands', () => {
   const labels = (c: AppContext, recent: string[] = []) => defaultCommands(commandsFor(c), recent, c.explorer).map((x) => x.label)
 
   it('on the logs page: the other page, live, the next ranges, projects, shortcuts', () => {
-    expect(labels(ctx())).toEqual(['Go to Error groups', 'Go to API keys', 'Turn live tail on', 'Last 1 hour', 'Last 6 hours', 'Switch project: shop', 'Show keyboard shortcuts'])
+    expect(labels(ctx())).toEqual(['Go to Error groups', 'Go to API keys', 'Turn live tail on', 'Last 1 hour', 'Last 6 hours', 'Switch project: shop', 'Go to Alerts', 'Show keyboard shortcuts'])
   })
 
   it('adds Clear filters only with filters, and says Turn live tail off while live', () => {
@@ -92,7 +94,7 @@ describe('defaultCommands', () => {
   })
 
   it('on the keys page and with one project: no explorer commands, no switch', () => {
-    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Go to Error groups', 'Show keyboard shortcuts'])
+    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Go to Error groups', 'Go to Alerts', 'Show keyboard shortcuts'])
   })
 
   it('puts up to two recent commands first, at most 8 in all, and always keeps the shortcuts help', () => {

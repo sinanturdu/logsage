@@ -23,11 +23,13 @@ export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean
 
 export type AppContext = {
   slug: string | null
-  section: 'logs' | 'groups' | 'keys' | 'other'
+  section: 'logs' | 'groups' | 'alerts' | 'keys' | 'other'
   projects: readonly string[]
   explorer: ExplorerContext | null
   /** Set on the error groups list. */
   groups?: GroupsContext | null
+  /** Owners and admins of the current project can create alert rules and channels. */
+  canManageAlerts?: boolean
 }
 
 export type Action =
@@ -61,7 +63,7 @@ const RANGES: { preset: Preset; label: string; keywords: string[] }[] = [
 ]
 
 const ERRORS: Level[] = ['error', 'fatal']
-const path = (slug: string, section: 'logs' | 'groups' | 'keys') => `/projects/${encodeURIComponent(slug)}/${section}`
+const path = (slug: string, section: 'logs' | 'groups' | 'alerts' | 'keys', query = '') => `/projects/${encodeURIComponent(slug)}/${section}${query}`
 
 const STATUS_COMMAND: Record<StatusFilter, string> = {
   open: 'Show open groups',
@@ -79,9 +81,14 @@ export function commandsFor(ctx: AppContext): Command[] {
   if (ctx.slug) {
     if (ctx.section !== 'logs') add('Navigation', 'go-logs', 'Go to Logs', { type: 'navigate', to: path(ctx.slug, 'logs') }, ['explorer', 'search', 'home'])
     if (ctx.section !== 'groups') add('Navigation', 'go-groups', 'Go to Error groups', { type: 'navigate', to: path(ctx.slug, 'groups') }, ['groups', 'errors', 'issues', 'problems'])
+    if (ctx.section !== 'alerts') add('Navigation', 'go-alerts', 'Go to Alerts', { type: 'navigate', to: path(ctx.slug, 'alerts') }, ['alerts', 'rules', 'notifications', 'webhooks', 'firing'])
+    if (ctx.canManageAlerts) {
+      add('Navigation', 'create-rule', 'Create alert rule...', { type: 'navigate', to: path(ctx.slug, 'alerts', '?create=rule') }, ['alert', 'rule', 'new', 'notify'])
+      add('Navigation', 'create-channel', 'Create channel...', { type: 'navigate', to: path(ctx.slug, 'alerts', '?tab=channels&create=channel') }, ['webhook', 'slack', 'channel', 'new'])
+    }
     if (ctx.section !== 'keys') add('Navigation', 'go-keys', 'Go to API keys', { type: 'navigate', to: path(ctx.slug, 'keys') }, ['tokens', 'ingest', 'credentials'])
   }
-  const section = ctx.section === 'keys' || ctx.section === 'groups' ? ctx.section : 'logs'
+  const section = ctx.section === 'keys' || ctx.section === 'groups' || ctx.section === 'alerts' ? ctx.section : 'logs'
   for (const p of ctx.projects) {
     if (p === ctx.slug) continue
     add('Navigation', `project:${p}`, `Switch project: ${p}`, { type: 'navigate', to: path(p, section) }, ['project', 'change'])
@@ -168,6 +175,7 @@ export function defaultCommands(all: readonly Command[], recent: readonly string
   push(byId.get('clear'))
   if (explorer) for (const p of NEXT_RANGES[explorer.preset ?? 'absolute']) push(byId.get(`range:${p}`))
   for (const c of all) if (c.id.startsWith('project:')) push(c)
+  push(byId.get('go-alerts')) // when there is room left
   if (help) out.push(help)
   return out
 }

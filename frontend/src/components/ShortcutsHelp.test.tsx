@@ -21,7 +21,7 @@ describe('keyboard shortcuts help', () => {
     await user.keyboard('?')
     const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' })
     const listed = Array.from(dialog.querySelectorAll<HTMLElement>('[data-shortcut]'))
-    expect(listed.map((d) => d.dataset.shortcut)).toEqual(['palette', 'help', 'search', 'next', 'previous', 'toggle', 'escape', 'trace', 'live', 'retry', 'groups-search', 'groups-next', 'groups-previous', 'groups-open'])
+    expect(listed.map((d) => d.dataset.shortcut)).toEqual(['palette', 'help', 'search', 'next', 'previous', 'toggle', 'escape', 'trace', 'live', 'retry', 'groups-search', 'groups-next', 'groups-previous', 'groups-open', 'alerts-next', 'alerts-previous', 'alerts-open'])
     for (const s of SHORTCUTS) {
       const row = dialog.querySelector(`[data-shortcut="${s.id}"]`) as HTMLElement
       expect(Array.from(row.querySelectorAll('kbd')).map((k) => k.textContent)).toEqual(s.keys)

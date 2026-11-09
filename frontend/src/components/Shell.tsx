@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router'
 import { useProjects } from '../api/projects'
+import { useFiringCount } from '../alerts/api'
 import { copyText } from '../explorer/clipboard'
 import { BridgeContext, type ExplorerBridge } from '../palette/bridge'
 import { CommandPalette } from '../palette/CommandPalette'
@@ -13,7 +14,20 @@ import { ShortcutsHelp } from './ShortcutsHelp'
 export const LINK_COPIED = 'Copied the link to this view.'
 export const linkFallback = (url: string) => `Copy is not available here. Select the link and copy it with Ctrl+C: ${url}`
 
-/** Logs, error groups and API keys of the current project. */
+/** "Alerts", or "Alerts, 2 firing" from the states endpoint (polled every 30 s while the tab is visible). */
+function AlertsLink({ slug, base }: { slug: string; base: string }) {
+  const projects = useProjects()
+  const member = projects.data?.some((p) => p.slug === slug) ?? false
+  const firing = useFiringCount(slug, member)
+  const n = firing.data ?? 0
+  return (
+    <NavLink to={`${base}/alerts`} className={n > 0 ? 'nav-firing' : ''}>
+      {n > 0 ? `Alerts, ${n} firing` : 'Alerts'}
+    </NavLink>
+  )
+}
+
+/** Logs, error groups, alerts and API keys of the current project. */
 function ProjectNav() {
   const m = useMatch('/projects/:slug/*')
   const slug = m?.params.slug
@@ -23,6 +37,7 @@ function ProjectNav() {
     <nav className="project-nav" aria-label="Project sections">
       <NavLink to={`${base}/logs`}>Logs</NavLink>
       <NavLink to={`${base}/groups`}>Error groups</NavLink>
+      <AlertsLink slug={slug} base={base} />
       <NavLink to={`${base}/keys`}>API keys</NavLink>
     </nav>
   )
@@ -62,7 +77,7 @@ export function Shell() {
   const { pathname } = useLocation()
   const projects = useProjects()
   const { signOut } = useSignOut()
-  const m = /^\/projects\/([^/]+)\/(logs|keys|groups)/.exec(pathname)
+  const m = /^\/projects\/([^/]+)\/(logs|keys|groups|alerts)/.exec(pathname)
   // Any route change closes the palette.
   const [path, setPath] = useState(pathname)
   if (path !== pathname) {
@@ -131,8 +146,9 @@ export function Shell() {
   const commands = palette
     ? commandsFor({
         slug: m ? decodeURIComponent(m[1] ?? '') : null,
-        section: m?.[2] === 'logs' || m?.[2] === 'keys' || m?.[2] === 'groups' ? m[2] : 'other',
+        section: m?.[2] === 'logs' || m?.[2] === 'keys' || m?.[2] === 'groups' || m?.[2] === 'alerts' ? m[2] : 'other',
         projects: projects.data?.map((p) => p.slug) ?? [],
+        canManageAlerts: projects.data?.some((p) => m !== null && p.slug === decodeURIComponent(m[1] ?? '') && (p.role === 'owner' || p.role === 'admin')) ?? false,
         explorer: m?.[2] === 'logs' ? explorerCtx : null,
         // Only on the list itself, not on a group's page.
         groups: m?.[2] === 'groups' && /^\/projects\/[^/]+\/groups\/?$/.test(pathname) ? groupsCtx : null,
