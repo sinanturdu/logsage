@@ -23,6 +23,15 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - Palette commands: Go to Error groups, status filters, sort orders and new only.
   - "Combine same message" (J2.1): a toggle, URL parameter `combine=1` and palette command that show one expandable row per template shared by several services, computed from the groups loaded so far.
 
+- Alerts backend (v0.3 package K1, ADR 0024):
+  - Rules: `error_rate`, `log_volume` (above or below; below 1 is silence), `new_group`, `regression` and the `new_groups_per_hour` guard, with `for`, `clear_for` (hysteresis), `repeat`, per-project limits and validation.
+  - `cmd/alerts`: evaluates due rules through the shared query service in event-time windows with a lateness grace, one instance at a time (PostgreSQL advisory lock), and delivers notifications from an outbox (at least once, backoff with jitter, per-channel rate limit, idempotency key). Compose profile `alerts`.
+  - Channels: signed JSON webhooks (`X-LogSage-Signature`, HMAC-SHA256 with a timestamp) and Slack-compatible webhooks. URLs and signing secrets are sealed with AES-256-GCM under `ALERTS_SECRET_KEY`; the secret is shown once.
+  - SSRF-safe outbound client: https to public addresses only, every DNS answer checked and the checked address dialed, no redirects, proxies, cookies, credentials, zones or connection reuse, TLS 1.2+ verified, tight timeouts and a response size limit.
+  - A rule disabled or deleted while firing sends a final `alert.resolved` notice with a `reason`.
+  - API under `/api/projects/{slug}/alerts`: rules, channels (create, edit, delete, rotate secret, test send), states, events and delivery history; 503 with the reason when alerts are off or the key is missing.
+  - `cmd/alertsink`: a loopback-only webhook receiver that verifies signatures, for trying alerts locally.
+
 ### Fixed
 - Error groups (J2.1):
   - The range row on the groups pages started about 24 px right of the content; it now lines up as in the explorer.

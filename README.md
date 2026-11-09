@@ -218,6 +218,13 @@ Running the services without Docker, the load generator and all commands are des
 
 - **Browser headers:** the dashboard is served with a strict Content-Security-Policy (same-origin scripts, styles, fonts and requests only; no `unsafe-inline`, no `unsafe-eval`, no framing). Every response also carries `nosniff`, `Referrer-Policy: no-referrer`, a Permissions-Policy, COOP, CORP and `X-Frame-Options: DENY` ([ADR 0021](docs/adr/0021-serve-dashboard-csp-runtime-config.md)).
 - **TLS:** LogSage does not terminate TLS. In production, put a reverse proxy or load balancer with TLS in front of `cmd/api` (`:8083`) and ingest (`:8080`), and set `COOKIE_SECURE=true`. That gives `__Host-` cookies and turns on HSTS. Keep the ports bound to 127.0.0.1 or a private network behind the proxy.
+- **Alerts** (ADR 0024): off by default. To turn them on, set `ALERTS_ENABLED=true` and `ALERTS_SECRET_KEY` (32 random bytes, base64) in `.env`, then start the evaluator with `--profile alerts`. Make a key in PowerShell:
+
+  ```powershell
+  $b = New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+  ```
+
+  The key seals every channel's webhook URL and signing secret: **losing or changing it makes them unreadable**, and the channels must be recreated. Webhooks must be https to a public address; deliveries are signed (`X-LogSage-Signature: t=<unix>,v1=<hex HMAC-SHA256 over "t.body">`), and receivers should reject timestamps older than 5 minutes.
 - **Keys and passwords:** API keys are stored as hashes and shown once; passwords use argon2id; sessions are server-side; nothing secret is kept in browser storage. Report security issues privately to the maintainer rather than in a public issue.
 
 ## Documentation

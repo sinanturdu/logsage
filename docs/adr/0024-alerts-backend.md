@@ -1,11 +1,11 @@
 # ADR 0024: Alerts backend (rules, evaluator, webhook notifications)
 
-Status: **draft** (v0.3 package K1), waiting for the owner's approval before any code.
+Status: **accepted** (v0.3 package K1, 2026-11-09). Approved with three changes, which are part of the text below: zoned IPv6 addresses, TLS 1.2+ and no connection reuse in the outbound client; a final resolved notice when a firing rule is disabled or deleted; and a required, validated `ALERTS_SECRET_KEY`.
 
 ## Context
 v0.3 has error groups (ADR 0022, 0023). Package K adds alerts: rules over the logs and groups of a project, evaluated on a schedule, with notifications to webhooks. K1 is the backend only; the UI is K2. Everything must be project-scoped, deterministic and safe to run next to the query API. Notifications leave the system, so the outbound HTTP client is the main security risk (SSRF).
 
-## Decision (proposed)
+## Decision
 
 ### 1. Rule types
 Every rule has:
@@ -64,9 +64,10 @@ pending --cond false--> ok (no notification)
 - **Group rules:** `new_group` and `regression` states go to `resolved` once their window has passed. A group that is new once is not new again.
 - **Query error:** the state does not change. An `eval_error` event is recorded (rate limited) and shown in `/stats`; no notification is sent.
 - **Edits:**
-  - Changing the type, query parameters or window resets the rule's states to `ok`. A firing state is closed with a `resolved` event marked `reason: "rule changed"`, and **no** notification is sent; the docs say so.
+  - Changing the type, query parameters or window resets the rule's states. A firing state is closed with a `resolved` event marked `reason: "rule_changed"`, and **no** notification is sent; the docs say so.
   - Changing the name, note, channels or repeat keeps the state.
-- **Disable or delete while firing:** the open states are closed with `reason: "rule disabled"` or `"rule deleted"`, and no resolved notification is sent. Pending outbox rows for that rule are marked `cancelled`. Deleting a rule keeps its events (`ON DELETE SET NULL` for the rule id, with the rule name copied into the event).
+- **Disable or delete while firing** (owner's change): each firing state is closed with a firing-to-resolved event (`reason` `rule_disabled` or `rule_deleted`), and one final `alert.resolved` delivery per channel is queued with that `reason` in the payload. Only the rule's *other* pending deliveries are cancelled. A pending state just goes to `ok`. Deleting a rule keeps its events and deliveries (`ON DELETE SET NULL` for the rule id, with the rule name copied into the event).
+- **Group keys fire once:** a `new_group` or `regression` key that has resolved never fires again (a group is new once; a regression is per resolution).
 - **Channel deleted:** its pending outbox rows are cancelled, and rules keep their other channels. A rule left with no channel keeps evaluating, and its events record "no channel".
 - **Restart:** state lives in PostgreSQL, so a restarted evaluator continues. A rule that was firing stays firing, with no new notification until `repeat`. `next_eval_at` is recomputed, and missed cycles are not replayed.
 
@@ -121,6 +122,9 @@ pending --cond false--> ok (no notification)
   - TLS keeps `ServerName` = the original host, with normal certificate verification.
   - There is no second lookup, so DNS rebinding cannot swap the address.
   - Proxies from the environment are ignored (`Proxy: nil`).
+  - **Zones** (owner's change): an IPv6 zone identifier (`fe80::1%eth0`, `%25` in a URL) is refused in URLs and in DNS answers, even for loopback in development mode.
+  - **TLS** (owner's change): whatever configuration a caller passes, the client forces TLS 1.2 or newer and certificate verification (`InsecureSkipVerify` false, no custom verify hooks).
+  - **No connection reuse** (owner's change): `DisableKeepAlives`, so every delivery resolves, checks and dials again; a test shows one new connection per delivery.
 - **Request limits:**
   - No redirects (`CheckRedirect` returns an error; a 3xx is a failed attempt).
   - Timeouts: connect 3 s, TLS 5 s, response headers 5 s, total per attempt 10 s.
@@ -140,7 +144,7 @@ pending --cond false--> ok (no notification)
 
 ### 6. Payload (version 1)
 ```json
-{"version":1,"event":"alert.firing","idempotency_key":"…","sent_at":"…","test":false,
+{"version":1,"event":"alert.firing","idempotency_key":"…","created_at":"…","test":false,
  "project":"demo","rule":{"id":"…","name":"Checkout errors","type":"error_rate"},
  "state":"firing","value":12.5,"threshold":5,"unit":"percent",
  "window":{"from":"…","to":"…","seconds":300},"fired_at":"…","resolved_at":null,
@@ -149,7 +153,10 @@ pending --cond false--> ok (no notification)
 ```
 - `group` is only present for group rules, and `url` only when `PUBLIC_DASHBOARD_URL` is set.
 - `sample` is a raw message, and only when the channel's `include_sample` is on (off by default, because logs may hold secrets). It is cut to 1 KiB.
-- `idempotency_key` = `sha256(rule id, dedup key, transition, fired_at, repeat number)`, hex-encoded. A redelivery has the same key, so receivers can deduplicate.
+- `idempotency_key` = `sha256(rule id, dedup key, event, fired_at, repeat number, channel id)`, hex-encoded. A redelivery has the same key, so receivers can deduplicate.
+- `created_at` (when the notification was made) replaces the draft's `sent_at`: the body is signed and must be the same on every retry.
+- `reason` is present only on a resolved notice that a rule change caused: `rule_disabled` or `rule_deleted`.
+- `unit` is `percent` (error_rate), `logs` (log_volume), `groups` (new_groups_per_hour) or `events` (group rules); `repeat` counts re-notifications.
 
 ### 7. Outbox delivery
 - **At least once:**
@@ -172,7 +179,7 @@ Viewers read; owners and admins write; non-members get 404. POSTs need the JSON 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/projects/{slug}/alerts/rules`, `POST …/rules` | List the rules (each with its current state summary) or create one. |
-| `GET/PUT/DELETE …/rules/{id}`, `POST …/rules/{id}/enable`, `…/disable` | Read, replace, delete, enable or disable a rule. |
+| `GET/PUT/DELETE …/rules/{id}`, `POST …/rules/{id}/enable`, `…/disable` | Read, replace, delete, enable or disable a rule. PUT and DELETE work from the same origin (the dashboard); cross-origin preflight still allows only GET and POST. |
 | `GET …/alerts/channels`, `POST …/channels` | List the channels (the URL shown as scheme plus host only, never the secret) or create one (the response holds the secret once). |
 | `GET/PUT/DELETE …/channels/{id}`, `POST …/channels/{id}/rotate-secret` | Read, edit, delete a channel or rotate its secret (shown once). |
 | `POST …/channels/{id}/test` | Send a test notification (`"test": true`, event `alert.test`), at most 5 per channel per 10 min (429 with `Retry-After`). It goes through the outbox and returns the notification id. |
@@ -202,5 +209,14 @@ Viewers read; owners and admins write; non-members get 404. POSTs need the JSON 
 - Anomaly detection (v0.4).
 - The alerts UI (K2), and incidents (L).
 
+### 10. Configuration (owner's change)
+- `ALERTS_ENABLED` (default false). With it true, `ALERTS_SECRET_KEY` must be 32 bytes, base64. If the key is missing or malformed, `cmd/alerts` refuses to start, and the alert endpoints of `cmd/api` answer 503 with "alerts are not configured: ALERTS_SECRET_KEY is missing or not 32 bytes base64…". The key is never logged. With alerts off they answer 503 "alerts are disabled…".
+- `README.md` and `.env.example` show how to make a key in PowerShell (`System.Security.Cryptography.RandomNumberGenerator`, then base64) and say that losing or changing it makes the stored channel URLs and secrets unreadable: channels must then be recreated.
+- `cmd/alerts` is its own compose profile (`alerts`), so the default stack does not start it without a key.
+
 ## Consequences
-To be completed after approval.
+- Alerts need a second long-running binary (`cmd/alerts`) and a secret key; the default stack runs without them.
+- Every webhook delivery resolves and dials afresh (no keep-alive): a little slower, never reusing a connection checked for another address.
+- Notifications are at least once; receivers deduplicate with `X-LogSage-Delivery` (the idempotency key) and verify `X-LogSage-Signature`.
+- The evaluator's ClickHouse load is bounded per cycle, not per project; v1.0's read-only ClickHouse user should also cap its concurrency.
+- K2 (the alerts UI) builds on these endpoints; muting and email remain out of scope.
