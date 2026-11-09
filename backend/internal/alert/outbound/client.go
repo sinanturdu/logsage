@@ -47,8 +47,9 @@ type Options struct {
 
 // Client posts to user-configured URLs safely. Safe for concurrent use.
 type Client struct {
-	opts Options
-	http *http.Client
+	opts      Options
+	http      *http.Client
+	transport *http.Transport
 }
 
 // Errors returned by CheckURL and Validate (wrapped with details).
@@ -83,10 +84,16 @@ func New(opts Options) *Client {
 		opts.Resolver = net.DefaultResolver
 	}
 	c := &Client{opts: opts}
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	tlsCfg := &tls.Config{}
 	if opts.TLS != nil {
 		tlsCfg = opts.TLS.Clone()
 	}
+	// Whatever a caller passes: TLS 1.2 or newer, and certificates are
+	// always verified.
+	tlsCfg.MinVersion = max(tlsCfg.MinVersion, tls.VersionTLS12)
+	tlsCfg.InsecureSkipVerify = false
+	tlsCfg.VerifyPeerCertificate = nil
+	tlsCfg.VerifyConnection = nil
 	tr := &http.Transport{
 		Proxy:                  nil, // never an environment proxy
 		DialContext:            c.dialContext,
@@ -97,6 +104,7 @@ func New(opts Options) *Client {
 		ForceAttemptHTTP2:      true,
 		MaxResponseHeaderBytes: 16 << 10,
 	}
+	c.transport = tr
 	c.http = &http.Client{
 		Transport: tr,
 		Timeout:   opts.TotalTimeout,
@@ -202,6 +210,9 @@ func (c *Client) Validate(ctx context.Context, raw string) error {
 }
 
 func (c *Client) allowed(a netip.Addr) bool {
+	if a.Zone() != "" {
+		return false // a zoned address (fe80::1%eth0) is never dialed
+	}
 	if c.opts.allowAddr != nil && c.opts.allowAddr(a) {
 		return true
 	}

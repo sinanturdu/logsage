@@ -352,3 +352,84 @@ func atoi(t *testing.T, s string) int {
 	}
 	return n
 }
+
+func TestZonesAreRejectedEverywhere(t *testing.T) {
+	cl := New(Options{AllowInsecureLocal: true, Resolver: resolves("fe80::1%eth0")})
+	for _, u := range []string{"https://[fe80::1%25eth0]/x", "http://[::1%25lo]:9000/x", "https://[fe80::1%eth0]/x"} {
+		if _, err := cl.CheckURL(u); err == nil {
+			t.Errorf("CheckURL(%s) accepted a zone", u)
+		}
+	}
+	// A resolver answer with a zone is refused, even for loopback in dev mode.
+	if err := cl.Validate(context.Background(), "https://hooks.example.com/x"); !errors.Is(err, ErrAddress) {
+		t.Errorf("zoned answer: %v", err)
+	}
+	if cl.allowed(netip.MustParseAddr("::1%lo")) {
+		t.Error("zoned loopback allowed")
+	}
+}
+
+func TestTLSIsAlwaysVerifiedAndModern(t *testing.T) {
+	weak := &tls.Config{MinVersion: tls.VersionTLS10, InsecureSkipVerify: true} //nolint:gosec // the client must override this
+	cl := New(Options{TLS: weak})
+	cfg := cl.transport.TLSClientConfig
+	if cfg.MinVersion < tls.VersionTLS12 || cfg.InsecureSkipVerify {
+		t.Fatalf("TLS config %v / skip %v", cfg.MinVersion, cfg.InsecureSkipVerify)
+	}
+	if !weak.InsecureSkipVerify {
+		t.Fatal("the caller's config must not be changed")
+	}
+	// A server limited to TLS 1.1 is refused.
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv.TLS = &tls.Config{MaxVersion: tls.VersionTLS11}
+	srv.StartTLS()
+	defer srv.Close()
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	old := New(Options{Resolver: resolves("127.0.0.1"), AllowedPorts: []int{atoi(t, port)}, TLS: &tls.Config{RootCAs: pool},
+		allowAddr: func(a netip.Addr) bool { return a.IsLoopback() }})
+	if _, err := old.Post(context.Background(), "https://example.com:"+port+"/", nil, nil); err == nil {
+		t.Fatal("TLS 1.1 accepted")
+	}
+	// A self-signed certificate is refused even if the caller asked to skip verification.
+	srv2 := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer srv2.Close()
+	_, port2, _ := net.SplitHostPort(srv2.Listener.Addr().String())
+	skip := New(Options{Resolver: resolves("127.0.0.1"), AllowedPorts: []int{atoi(t, port2)}, TLS: weak,
+		allowAddr: func(a netip.Addr) bool { return a.IsLoopback() }})
+	if _, err := skip.Post(context.Background(), "https://example.com:"+port2+"/", nil, nil); err == nil || !strings.Contains(err.Error(), "certificate") {
+		t.Fatalf("unverified certificate accepted: %v", err)
+	}
+}
+
+// Every delivery opens its own connection, so a connection checked for one
+// address is never reused after DNS changed.
+func TestNoConnectionReuse(t *testing.T) {
+	var mu sync.Mutex
+	conns := 0
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			mu.Lock()
+			conns++
+			mu.Unlock()
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+	cl := localClient(Options{})
+	if !cl.transport.DisableKeepAlives {
+		t.Fatal("keep-alives must be off")
+	}
+	for i := 0; i < 3; i++ {
+		if res, err := cl.Post(context.Background(), srv.URL, nil, nil); err != nil || res.Status != 204 {
+			t.Fatalf("post %d: %v %v", i, res.Status, err)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if conns != 3 {
+		t.Fatalf("%d connections for 3 deliveries", conns)
+	}
+}
