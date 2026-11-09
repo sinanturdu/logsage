@@ -91,16 +91,36 @@ Keyboard shortcuts (press `?` in the dashboard for the same list):
 | `/` | error groups | focus the search box |
 | `j` / `k` | error groups | select the next / previous group |
 | `Enter` | error groups | open the selected group, or expand a combined row |
+| `j` / `k` | alerts | select the next / previous row |
+| `Enter` | alerts | open the selected rule |
 
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.
 - The dev login is printed once and kept in `.dev/login.txt`. `.dev/` is local-only and git-ignored, like `.env`.
 - `seed` sends about 70,000 events: an hour of history, plus an incident in the last 15 minutes in which payment gateway timeouts in `payments` cascade into `checkout` and `api` errors.
 - `web` runs the dashboard dev server, which proxies `/api` to the API on `:8083`.
-- `status` shows the services and where the dev login is.
-- `down` stops everything and deletes the data, then asks before removing `.dev/`.
+- `alerts` and `alerts-demo` are for trying alerts (below).
+- `status` shows the services, the local alert processes and where the dev login is.
+- `down` stops the alert processes and everything else, deletes the data, then asks before removing `.dev/`.
 
 Every command is safe to run again.
+
+### Try alerts locally
+
+`up` turns alerts on for the dev stack: it adds `ALERTS_ENABLED=true` and a random `ALERTS_SECRET_KEY` to `.env` when the key is missing (never printed). Then:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1 alerts
+```
+
+This builds and starts the evaluator (`cmd/alerts`) and a webhook sink (`cmd/alertsink`) as local background processes (process ids and logs in `.dev\`), and recreates the api with `ALERTS_ALLOW_INSECURE_LOCAL=true` so it accepts the sink's plain http URL (development only; the next `up` turns it off). It prints the sink URL, `http://localhost:9099/hook`.
+
+1. Open http://localhost:8083/projects/demo/alerts, go to Channels and create a Webhook channel with the sink URL. Copy the signing secret, then run `dev.ps1 alerts -AskSecret` and paste it (hidden input) so the sink checks signatures.
+2. On Rules, create an Error rate rule (for example 20% over 2 minutes) and a New error group rule, both notifying the channel.
+3. Run `dev.ps1 alerts-demo`. It sends log messages with new templates (for New error group) and a three-minute burst of `payments` errors (for Error rate).
+4. Watch the header say "Alerts, 2 firing", open a rule for its timeline and deliveries, and read `.dev\alertsink.log`: each delivery says `verified=true`. After the burst the rules resolve.
+
+`dev.ps1 status` shows the processes; `dev.ps1 down` stops them.
 
 On macOS or Linux, or from Git Bash, run the same steps by hand:
 1. Copy `.env.example` to `.env`, replace the `change-me` values and set `COOKIE_SECURE=false`.

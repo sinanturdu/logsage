@@ -284,7 +284,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b to J2.1)
+## As built (I2b to K2)
 
 What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
@@ -336,6 +336,15 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
   - **Group page:** the status appears once, in the Status section; the flags are explained in one plain paragraph.
   - **Combine same message** (`combine=1`, off by default): one parent row per template shared by several loaded groups, as a disclosure button with the template, "N services", summed counts and sparkline, merged levels, the earliest first seen and latest last seen, the status or "Mixed" (◫), and New or Regressed when any child has it. Expanded, one child row per group (a lighter background, indented link to its page). A muted note says "Combined from the N groups loaded so far." Rows of one group look as before.
   - **Error-share strip:** besides an error-only level selection, it gives way to "Error share is not shown while only error and fatal logs are in view." when the facets show no debug, info or warn logs, for example under a group filter.
+- **Alerts** (K2, ADR 0025):
+  - **Placement:** a fourth header link, "Alerts", between Error groups and API keys. While rules fire it reads "Alerts, 2 firing" in bold error red; the words carry the meaning.
+  - **Tabs, not sections:** Rules, Channels and Activity are WAI-ARIA tabs in the API key example's tab style, with the tab in the URL. Each holds one dense table, so three anchored sections would have made a very long page.
+  - **State marks:** ○ ok, ◐ pending, ◉ firing, ✓ resolved, ⊘ disabled, always with the word. Firing is bold in error red and pending is in warn amber. The shapes differ from the level and group status shapes. Deliveries use ◌ pending, ◐ sending, ✓ sent, ✕ failed and – cancelled, with "failed" in bold.
+  - **Enabled switch:** new in the app. It is a `role="switch"` button with a small outlined track and the word On or Off next to it, with no animation. Viewers see only the word.
+  - **The rule form** is a wider dialog (760 px) with the type as radio choices with a one-line description each; number fields sit in a wrapping grid. The live preview is a white box with the pen bar, like the notice style, in plain sentences.
+  - **Failed deliveries** on Activity sit in a white box with an error-red left bar and the heading "Failed deliveries"; the bar repeats the word.
+  - **The rule page** follows the group page: a "All alert rules" link, the name as the heading, the state, the facts line, then Current state, Timeline (a list, newest first) and Deliveries (a table).
+  - **Narrow screens:** below 900 px the tables scroll sideways inside their frame, as on API keys and Error groups; long names and conditions wrap.
 
 ## Frontend plan for I2
 

@@ -338,3 +338,41 @@ func TestTestSendLimitAndLock(t *testing.T) {
 func closer(reason string) Closer {
 	return Closer(alert.FinalNotifications(reason, "", func() time.Time { return time.Now().UTC() }))
 }
+
+func TestRuleSummaryAndNotificationsByRule(t *testing.T) {
+	f, _ := newAlertFixture(t)
+	ctx := context.Background()
+	r := f.rule(t, "errors")
+	quiet := f.rule(t, "quiet")
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	fire := alert.Step(r, nil, []alert.Observation{{Key: alert.RuleKey, Value: 12, Threshold: 5, Fire: true}}, now)
+	notes := []alert.NewNotification{{ChannelID: f.channel.ID, ChannelName: "ops", IdempotencyKey: "sum1", Event: alert.EventFiring, Payload: []byte(`{}`), Transition: 0}}
+	if err := f.st.ApplyOutcome(ctx, r, alert.Window{From: now.Add(-5 * time.Minute), To: now}, fire, notes, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	rules, err := f.st.ListRules(ctx, f.project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]alert.Summary{}
+	for _, rl := range rules {
+		got[rl.Name] = rl.Summary
+	}
+	if s := got["errors"]; s.State != "firing" || s.Firing != 1 || s.LastChangeAt == nil {
+		t.Fatalf("errors: %+v", s)
+	}
+	if s := got["quiet"]; s.State != "ok" || s.Firing != 0 || s.LastChangeAt != nil {
+		t.Fatalf("quiet: %+v", s)
+	}
+	one, err := f.st.Rule(ctx, f.project.ID, r.ID)
+	if err != nil || one.Summary.State != "firing" {
+		t.Fatalf("rule: %+v %v", one.Summary, err)
+	}
+	ns, err := f.st.Notifications(ctx, f.project.ID, "", r.ID, "", 0, 10)
+	if err != nil || len(ns) != 1 || ns[0].RuleID != r.ID || ns[0].RuleName != "errors" {
+		t.Fatalf("by rule: %+v %v", ns, err)
+	}
+	if ns, err := f.st.Notifications(ctx, f.project.ID, "", quiet.ID, "", 0, 10); err != nil || len(ns) != 0 {
+		t.Fatalf("other rule: %+v %v", ns, err)
+	}
+}

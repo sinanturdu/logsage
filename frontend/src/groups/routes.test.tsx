@@ -28,13 +28,14 @@ describe('group routes', () => {
       'GET /api/projects': () => json(200, { projects: [project('shop')] }),
     })
 
-  it('header nav lists Logs, Error groups and API keys', async () => {
+  it('header nav lists Logs, Error groups, Alerts and API keys', async () => {
     setup()
     renderApp('/projects/shop/keys')
     const nav = await screen.findByRole('navigation', { name: 'Project sections' })
     expect([...nav.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Logs', '/projects/shop/logs'],
       ['Error groups', '/projects/shop/groups'],
+      ['Alerts', '/projects/shop/alerts'],
       ['API keys', '/projects/shop/keys'],
     ])
   })

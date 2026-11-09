@@ -47,7 +47,7 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package J1:** error groups backend: fingerprinting in the processor (normalizer with a golden corpus), `template` column, `group_seen` view, groups list and detail, group status with audit rows, `fingerprint` filter and field (ADR 0022)
 - [x] **Package J2:** error groups UI: list and group pages, status actions, explorer group filter and row link, palette commands (ADR 0023)
 - [x] **Package K1:** alerts backend: rule types (error rate, log volume and silence, new group, regression, new groups per hour), evaluator `cmd/alerts` with state machine and single-writer lock, outbox delivery to signed webhooks and Slack, SSRF-safe client, sealed channel secrets, alert API (ADR 0024)
-- [ ] **Package K2:** alerts UI
+- [x] **Package K2:** alerts UI: rules, channels and activity tabs, rule form with a plain-language preview, rule page with timeline and deliveries, one-time signing secret with verify examples, off state, firing count in the nav, palette and shortcuts, `dev.ps1 alerts` and `alerts-demo`; rule state summary and a rule filter on the delivery history in the API (ADR 0025)
 - [ ] **Package L:** incidents
 - [ ] **Package M:** remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`, `INGEST_API_KEY`, `QUERY_API_KEY`), as promised in the v0.2.0 release notes
 

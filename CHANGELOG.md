@@ -32,6 +32,18 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - API under `/api/projects/{slug}/alerts`: rules, channels (create, edit, delete, rotate secret, test send), states, events and delivery history; 503 with the reason when alerts are off or the key is missing.
   - `cmd/alertsink`: a loopback-only webhook receiver that verifies signatures, for trying alerts locally.
 
+- Alerts UI (v0.3 package K2, ADR 0025):
+  - Alerts in the header nav, with "Alerts, N firing" while rules fire (polled every 30 s, not while the tab is hidden).
+  - Rules, Channels and Activity tabs. Rules: a table with a plain-language condition, the state as shape and word, last change, an enabled switch for owners and admins, and the channels.
+  - A rule form that shows only the chosen type's fields, checks the server's limits, shows server errors next to their fields, and previews the rule in two sentences (when it fires and whom it notifies, and how it resolves).
+  - A rule page with the summary, the current state per key (one row per error group, linked to it), the timeline and the delivery history.
+  - Channels: create, edit, send test (the 5 per 10 minutes limit explained), rotate secret, delete (naming the rules that use it). The signing secret is shown once, with Copy and Node and Python examples for checking the signature. SSRF refusals read as plain sentences.
+  - Activity: transitions across the project with a rule filter, and failed deliveries listed in words.
+  - "Alerts are turned off on this server." with the steps to turn them on, instead of errors, when the server answers 503.
+  - Palette: Go to Alerts, Create alert rule, Create channel; `j`, `k` and `Enter` on the alerts tables.
+  - API: rule reads carry `state`, `firing`, `pending` and `last_change_at`; `GET notifications` takes `rule=` and returns `rule_id` and `rule_name`.
+  - `scripts\dev.ps1 up` turns alerts on with a random key; `dev.ps1 alerts` runs the evaluator and a webhook sink locally; `dev.ps1 alerts-demo` makes rules fire.
+
 ### Fixed
 - Error groups (J2.1):
   - The range row on the groups pages started about 24 px right of the content; it now lines up as in the explorer.

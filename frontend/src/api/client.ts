@@ -27,7 +27,7 @@ export class ApiError extends Error {
   readonly status: number
   /** Seconds from Retry-After, for 429. */
   readonly retryAfter: number | undefined
-  /** The server's error text for 400 (fixed, safe strings from the API). */
+  /** The server's error text for 400, 409 and 503 (fixed, safe strings from the API). */
   readonly serverMessage: string | undefined
 
   constructor(kind: ApiErrorKind, status: number, opts: { retryAfter?: number; serverMessage?: string } = {}) {
@@ -81,7 +81,7 @@ type RequestOptions = {
   anonymous?: boolean
 }
 
-export async function request<T>(method: 'GET' | 'POST', path: string, opts: RequestOptions = {}): Promise<T> {
+export async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const init: RequestInit = { method, credentials: 'same-origin', headers }
   if (opts.signal) init.signal = opts.signal
@@ -114,7 +114,7 @@ export function notifySessionEnded(): void {
   sessionEndedListeners.forEach((fn) => fn())
 }
 
-/** The ApiError for a failed response; reads the body for a 400's message. */
+/** The ApiError for a failed response; reads the body for a 400, 409 or 503 message. */
 export async function errorFromResponse(res: Response): Promise<ApiError> {
   let data: unknown
   try {
@@ -124,7 +124,7 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
   }
   const kind = kindFor(res.status)
   const serverMessage =
-    kind === 'invalid' && data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+    (kind === 'invalid' || res.status === 409 || res.status === 503) && data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
       : undefined
   return new ApiError(kind, res.status, {

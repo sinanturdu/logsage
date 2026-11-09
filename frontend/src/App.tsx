@@ -10,6 +10,8 @@ import { ExplorerPage } from './explorer/ExplorerPage'
 import { KeysPage } from './keys/KeysPage'
 import { GroupDetailRoute } from './groups/GroupDetailPage'
 import { GroupsPage } from './groups/GroupsPage'
+import { AlertsPage } from './alerts/AlertsPage'
+import { RuleDetailPage } from './alerts/RuleDetailPage'
 
 export function newQueryClient(opts: { retries?: number } = {}): QueryClient {
   const retries = opts.retries ?? 2
@@ -55,6 +57,8 @@ export function App({ client }: { client: QueryClient }) {
           <Route path="/projects/:slug/logs" element={<ExplorerPage />} />
           <Route path="/projects/:slug/groups" element={<GroupsPage />} />
           <Route path="/projects/:slug/groups/:fingerprint" element={<GroupDetailRoute />} />
+          <Route path="/projects/:slug/alerts" element={<AlertsPage />} />
+          <Route path="/projects/:slug/alerts/rules/:id" element={<RuleDetailPage />} />
           <Route path="/projects/:slug/keys" element={<KeysPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
