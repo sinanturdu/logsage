@@ -381,26 +381,107 @@ func (s *Store) Rule(ctx context.Context, projectID, id string) (alert.Rule, err
 	return r, err
 }
 
-// closeStates ends a rule's pending and firing states with an event that
-// names the reason and no notification, deletes its states and cancels its
-// undelivered notifications (when cancel is set).
-func closeStates(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string, cancel bool) error {
-	if _, err := tx.Exec(ctx, `INSERT INTO alert_events (project_id, rule_id, rule_name, rule_type, dedup_key, from_state, to_state, value, threshold, window_start, window_end, fingerprint, template, reason)
-		SELECT $1, s.rule_id, $3, $4, s.dedup_key, s.state, 'ok', s.last_value, 0, now(), now(), s.fingerprint, s.template, $5
-		FROM alert_states s WHERE s.rule_id::text = $2 AND s.state IN ('pending', 'firing')`,
-		r.ProjectID, r.ID, r.Name, string(r.Type), reason); err != nil {
-		return fmt.Errorf("postgres: close states: %w", err)
+// Closer builds the final notifications of a rule that is disabled or
+// deleted while firing (the payload lives in the alert package).
+type Closer func(r alert.Rule, channels []alert.Channel, notices []alert.Notice) ([]alert.NewNotification, error)
+
+// closeStates ends a rule's pending and firing states with an event naming
+// the reason and deletes its states. With cancel, the rule's other
+// undelivered notifications are cancelled and, when close builds them, a
+// final alert.resolved notification per channel is queued for every firing
+// state (disable and delete; an edit sends nothing).
+func closeStates(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string, cancel bool, close Closer) error {
+	rows, err := tx.Query(ctx, `SELECT dedup_key, state, since, clear_since, last_value, fired_at, last_notified_at, notify_count,
+		coalesce(fingerprint, 0), template, version FROM alert_states WHERE rule_id::text = $1 AND state IN ('pending', 'firing')
+		ORDER BY dedup_key FOR UPDATE`, r.ID)
+	if err != nil {
+		return fmt.Errorf("postgres: read states: %w", err)
+	}
+	var states []alert.State
+	for rows.Next() {
+		var st alert.State
+		var fp int64
+		if err := rows.Scan(&st.DedupKey, &st.State, &st.Since, &st.ClearSince, &st.LastValue, &st.FiredAt, &st.LastNotifiedAt, &st.NotifyCount,
+			&fp, &st.Template, &st.Version); err != nil {
+			rows.Close()
+			return fmt.Errorf("postgres: scan state: %w", err)
+		}
+		st.Fingerprint = fpFromDB(fp)
+		states = append(states, st)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	ids := make([]int64, len(states))
+	for i, st := range states {
+		to := alert.StateOK
+		if st.State == alert.StateFiring {
+			to = alert.StateResolved
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO alert_events (project_id, rule_id, rule_name, rule_type, dedup_key, from_state, to_state, value, threshold, window_start, window_end, fingerprint, template, reason)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, now(), now(), $9, $10, $11) RETURNING id`,
+			r.ProjectID, r.ID, r.Name, string(r.Type), st.DedupKey, string(st.State), string(to), st.LastValue, nullFP(st.Fingerprint), st.Template, reason).Scan(&ids[i]); err != nil {
+			return fmt.Errorf("postgres: close state: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM alert_states WHERE rule_id::text = $1", r.ID); err != nil {
 		return fmt.Errorf("postgres: delete states: %w", err)
 	}
-	if cancel {
-		if _, err := tx.Exec(ctx, `UPDATE alert_notifications n SET status = 'cancelled', last_error = $2
-			FROM alert_events e WHERE n.event_id = e.id AND e.rule_id::text = $1 AND n.status IN ('pending', 'sending')`, r.ID, reason); err != nil {
-			return fmt.Errorf("postgres: cancel deliveries: %w", err)
+	if !cancel {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE alert_notifications n SET status = 'cancelled', last_error = $2
+		FROM alert_events e WHERE n.event_id = e.id AND e.rule_id::text = $1 AND n.status = 'pending'`, r.ID, reason); err != nil {
+		return fmt.Errorf("postgres: cancel deliveries: %w", err)
+	}
+	if close == nil {
+		return nil
+	}
+	notices := alert.CloseNotices(states, time.Now().UTC())
+	if len(notices) == 0 {
+		return nil
+	}
+	channels, err := channelsOfRule(ctx, tx, r.ID)
+	if err != nil {
+		return err
+	}
+	notes, err := close(r, channels, notices)
+	if err != nil {
+		return err
+	}
+	for _, n := range notes {
+		var eventID *int64
+		if n.Transition >= 0 && n.Transition < len(ids) {
+			eventID = &ids[n.Transition]
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO alert_notifications (project_id, event_id, channel_id, channel_name, idempotency_key, event_type, payload)
+			VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (idempotency_key) DO NOTHING`,
+			r.ProjectID, eventID, n.ChannelID, n.ChannelName, n.IdempotencyKey, n.Event, n.Payload); err != nil {
+			return fmt.Errorf("postgres: final notification: %w", err)
 		}
 	}
 	return nil
+}
+
+func channelsOfRule(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, ruleID string) ([]alert.Channel, error) {
+	rows, err := q.Query(ctx, `SELECT `+channelCols+` FROM notification_channels c JOIN alert_rule_channels rc ON rc.channel_id = c.id
+		WHERE rc.rule_id::text = $1 ORDER BY c.name`, ruleID)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: rule channels: %w", err)
+	}
+	defer rows.Close()
+	var out []alert.Channel
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func measures(a, b alert.Rule) bool {
@@ -429,7 +510,7 @@ func (s *Store) UpdateRule(ctx context.Context, r alert.Rule, a AuditEntry) (ale
 		}
 		changed := measures(old, r)
 		if changed {
-			if err := closeStates(ctx, tx, old, "rule changed", false); err != nil {
+			if err := closeStates(ctx, tx, old, "rule_changed", false, nil); err != nil {
 				return err
 			}
 		}
@@ -463,8 +544,10 @@ func b2i(b bool) int {
 }
 
 // SetRuleEnabled enables or disables a rule. Disabling closes its states
-// ("rule disabled", no notification) and cancels undelivered notifications.
-func (s *Store) SetRuleEnabled(ctx context.Context, projectID, id string, enabled bool, a AuditEntry) (alert.Rule, error) {
+// (reason rule_disabled): each firing state gets a final alert.resolved
+// notification per channel, and the rule's other undelivered ones are
+// cancelled.
+func (s *Store) SetRuleEnabled(ctx context.Context, projectID, id string, enabled bool, close Closer, a AuditEntry) (alert.Rule, error) {
 	var out alert.Rule
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		old, err := scanRule(tx.QueryRow(ctx, `SELECT `+ruleCols+` FROM alert_rules r JOIN projects p ON p.id = r.project_id
@@ -473,7 +556,7 @@ func (s *Store) SetRuleEnabled(ctx context.Context, projectID, id string, enable
 			return err
 		}
 		if !enabled && old.Enabled {
-			if err := closeStates(ctx, tx, old, "rule disabled", true); err != nil {
+			if err := closeStates(ctx, tx, old, alert.ReasonRuleDisabled, true, close); err != nil {
 				return err
 			}
 		}
@@ -491,16 +574,17 @@ func (s *Store) SetRuleEnabled(ctx context.Context, projectID, id string, enable
 	return out, err
 }
 
-// DeleteRule closes the rule's states ("rule deleted"), cancels undelivered
-// notifications and deletes it; its events stay (rule_id becomes null).
-func (s *Store) DeleteRule(ctx context.Context, projectID, id string, a AuditEntry) error {
+// DeleteRule closes the rule's states like a disable (reason rule_deleted,
+// final resolved notifications) and deletes it; its events and
+// notifications stay (rule_id becomes null).
+func (s *Store) DeleteRule(ctx context.Context, projectID, id string, close Closer, a AuditEntry) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		old, err := scanRule(tx.QueryRow(ctx, `SELECT `+ruleCols+` FROM alert_rules r JOIN projects p ON p.id = r.project_id
 			WHERE r.project_id = $1 AND r.id::text = $2 FOR UPDATE OF r`, projectID, id))
 		if err != nil {
 			return err
 		}
-		if err := closeStates(ctx, tx, old, "rule deleted", true); err != nil {
+		if err := closeStates(ctx, tx, old, alert.ReasonRuleDeleted, true, close); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, "DELETE FROM alert_rules WHERE id::text = $1", id); err != nil {
@@ -558,26 +642,11 @@ func (s *Store) RuleStates(ctx context.Context, ruleID string) (map[string]alert
 	return out, rows.Err()
 }
 
-// ChannelsForRules returns the channels (with sample opt-in) of a rule, for
-// building payloads.
+// RuleChannels returns the channels of a rule, for building payloads.
 func (s *Store) RuleChannels(ctx context.Context, ruleID string) ([]alert.Channel, error) {
 	ctx, cancel := s.ctx(ctx)
 	defer cancel()
-	rows, err := s.pool.Query(ctx, `SELECT `+channelCols+` FROM notification_channels c JOIN alert_rule_channels rc ON rc.channel_id = c.id
-		WHERE rc.rule_id::text = $1 ORDER BY c.name`, ruleID)
-	if err != nil {
-		return nil, fmt.Errorf("postgres: rule channels: %w", err)
-	}
-	defer rows.Close()
-	var out []alert.Channel
-	for rows.Next() {
-		c, err := scanChannel(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return channelsOfRule(ctx, s.pool, ruleID)
 }
 
 // ResolvedGroups lists a project's resolved groups (the regression rule).

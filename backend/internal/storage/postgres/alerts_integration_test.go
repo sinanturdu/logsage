@@ -159,7 +159,7 @@ func TestApplyOutcomeAndEdits(t *testing.T) {
 	if states, _ := f.st.RuleStates(ctx, r.ID); len(states) != 0 {
 		t.Fatalf("states kept after a change: %v", states)
 	}
-	if n := count("SELECT count(*) FROM alert_events WHERE reason = 'rule changed' AND to_state = 'ok'"); n != 1 {
+	if n := count("SELECT count(*) FROM alert_events WHERE reason = 'rule_changed' AND to_state = 'resolved'"); n != 1 {
 		t.Fatalf("%d change events", n)
 	}
 	// The evaluator still holding version 1 is refused.
@@ -177,19 +177,45 @@ func TestApplyOutcomeAndEdits(t *testing.T) {
 		[]alert.NewNotification{{ChannelID: f.channel.ID, ChannelName: "ops", IdempotencyKey: "k2", Event: alert.EventFiring, Payload: []byte(`{}`), Transition: 0}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.st.SetRuleEnabled(ctx, f.project.ID, r.ID, false, AuditEntry{Action: "alert_rule.disable"}); err != nil {
+	if _, err := f.st.SetRuleEnabled(ctx, f.project.ID, r.ID, false, closer(alert.ReasonRuleDisabled), AuditEntry{Action: "alert_rule.disable"}); err != nil {
 		t.Fatal(err)
 	}
+	// The pending firing delivery is cancelled; a final resolved one with the reason is queued.
 	if n := count("SELECT count(*) FROM alert_notifications WHERE idempotency_key = 'k2' AND status = 'cancelled'"); n != 1 {
 		t.Fatal("pending delivery not cancelled on disable")
+	}
+	if n := count(`SELECT count(*) FROM alert_notifications WHERE status = 'pending' AND event_type = 'alert.resolved'
+		AND payload->>'reason' = 'rule_disabled' AND payload->>'state' = 'resolved' AND channel_name = 'ops' AND event_id IS NOT NULL`); n != 1 {
+		t.Fatalf("final resolved deliveries: %d", n)
+	}
+	if n := count("SELECT count(*) FROM alert_events WHERE reason = 'rule_disabled' AND from_state = 'firing' AND to_state = 'resolved'"); n != 1 {
+		t.Fatalf("disable events: %d", n)
+	}
+	// Disabling again sends nothing more.
+	if _, err := f.st.SetRuleEnabled(ctx, f.project.ID, r.ID, false, closer(alert.ReasonRuleDisabled), AuditEntry{Action: "alert_rule.disable"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count("SELECT count(*) FROM alert_notifications WHERE event_type = 'alert.resolved'"); n != 1 {
+		t.Fatalf("second disable queued more: %d", n)
 	}
 	due, _ := f.st.DueRules(ctx, now.Add(time.Hour), 10)
 	if len(due) != 0 {
 		t.Fatalf("a disabled rule is due: %v", due)
 	}
 	// Delete keeps the events.
-	if err := f.st.DeleteRule(ctx, f.project.ID, r.ID, AuditEntry{Action: "alert_rule.delete"}); err != nil {
+	// Deleting a firing rule queues a final resolved notification too.
+	if _, err := f.st.SetRuleEnabled(ctx, f.project.ID, r.ID, true, nil, AuditEntry{Action: "alert_rule.enable"}); err != nil {
 		t.Fatal(err)
+	}
+	r4, _ := f.st.Rule(ctx, f.project.ID, r.ID)
+	if err := f.st.ApplyOutcome(ctx, r4, win, alert.Step(r4, nil, []alert.Observation{{Key: alert.RuleKey, Fire: true}}, now.Add(time.Minute)), nil, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.DeleteRule(ctx, f.project.ID, r.ID, closer(alert.ReasonRuleDeleted), AuditEntry{Action: "alert_rule.delete"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count("SELECT count(*) FROM alert_notifications WHERE payload->>'reason' = 'rule_deleted' AND status = 'pending'"); n != 1 {
+		t.Fatalf("final delivery on delete: %d", n)
 	}
 	if n := count("SELECT count(*) FROM alert_events WHERE rule_id IS NULL"); n < 3 {
 		t.Fatalf("events lost on delete: %d", n)
@@ -307,4 +333,8 @@ func TestTestSendLimitAndLock(t *testing.T) {
 		t.Fatalf("lock after release: %v", err)
 	}
 	c.Release(ctx)
+}
+
+func closer(reason string) Closer {
+	return Closer(alert.FinalNotifications(reason, "", func() time.Time { return time.Now().UTC() }))
 }
