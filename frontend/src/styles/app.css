@@ -239,8 +239,10 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 
 /* Project nav, dialogs and the API keys screen (ADR 0019) */
 .project-nav { display: flex; gap: var(--space-3); font-size: var(--text-md); }
-.project-nav a { color: var(--pencil); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
-.project-nav a[aria-current='page'] { color: var(--ink); border-bottom-color: var(--pen); }
+.project-nav a, .project-nav a:visited { color: var(--pencil); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
+/* Every nav link has the same states: pencil, ink on hover, ink with the pen underline when current. */
+.project-nav a:hover { color: var(--ink); border-bottom-color: var(--grid); }
+.project-nav a[aria-current='page'], .project-nav a[aria-current='page']:visited { color: var(--ink); border-bottom-color: var(--pen); }
 .dialog-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; padding: var(--space-4); z-index: 20; }
 .dialog { background: var(--paper, var(--white)); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: var(--space-5); width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
 .dialog h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
@@ -415,7 +417,8 @@ table.alerts tr.failed td { background: var(--white); }
 .astate-disabled { color: var(--pencil); }
 .dstatus-failed { color: var(--level-error); font-weight: 700; }
 .dstatus-cancelled { color: var(--pencil); }
-.project-nav a.nav-firing { color: var(--level-error); font-weight: 700; }
+/* The firing count keeps its red in every state; the current page still shows the pen underline. */
+.project-nav a.nav-firing, .project-nav a.nav-firing:visited, .project-nav a.nav-firing:hover { color: var(--level-error); font-weight: 700; }
 .switch { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 2px 0; font: inherit; color: var(--ink); cursor: pointer; }
 .switch-track { display: inline-block; width: 28px; height: 16px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--white); position: relative; }
 .switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--pencil); }
