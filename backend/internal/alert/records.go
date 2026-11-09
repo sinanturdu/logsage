@@ -116,3 +116,12 @@ type Claimed struct {
 // ErrStale means the rule or a state changed under the evaluator (another
 // writer, or an edit): nothing was written; the next cycle starts over.
 var ErrStale = errors.New("alert: rule or state changed concurrently")
+
+// DeliveryResult is how a delivery attempt ended.
+type DeliveryResult struct {
+	Status         string // sent, pending (retry or deferral) or failed
+	ResponseStatus *int
+	LastError      string
+	NextAttemptAt  time.Time
+	CountAttempt   bool // false for a rate-limit deferral
+}

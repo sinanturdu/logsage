@@ -788,14 +788,8 @@ func (s *Store) ClaimNotifications(ctx context.Context, worker string, n int, no
 	return out, err
 }
 
-// DeliveryResult is how an attempt ended.
-type DeliveryResult struct {
-	Status         string // sent, pending (retry), failed or a deferral back to pending
-	ResponseStatus *int
-	LastError      string
-	NextAttemptAt  time.Time
-	CountAttempt   bool // false for a rate-limit deferral
-}
+// DeliveryResult is how an attempt ended (defined by the worker).
+type DeliveryResult = alert.DeliveryResult
 
 // FinishNotification records an attempt of a row this worker holds.
 func (s *Store) FinishNotification(ctx context.Context, id int64, worker string, r DeliveryResult) error {
