@@ -162,6 +162,12 @@ services:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logsage}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      # Alerts (ADR 0024): rules and channels; the key seals channel URLs and secrets.
+      ALERTS_ENABLED: ${ALERTS_ENABLED:-false}
+      ALERTS_SECRET_KEY: ${ALERTS_SECRET_KEY:-}
+      ALERTS_ALLOWED_PORTS: ${ALERTS_ALLOWED_PORTS:-}
+      ALERTS_ALLOW_INSECURE_LOCAL: ${ALERTS_ALLOW_INSECURE_LOCAL:-false}
+      PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-}
     ports: ["127.0.0.1:8083:8083"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -169,6 +175,46 @@ services:
       migrate: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The alert evaluator and delivery worker (ADR 0024). Its own profile:
+  # start it with --profile alerts once ALERTS_ENABLED=true and
+  # ALERTS_SECRET_KEY are set in .env (it refuses to start without them).
+  alerts:
+    <<: *backend
+    profiles: ["alerts"]
+    command: ["/usr/local/bin/alerts"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: "postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-logsage}?sslmode=disable"
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-logsage}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      QUERY_TIMEOUT: ${QUERY_TIMEOUT:-10s}
+      ALERTS_ENABLED: ${ALERTS_ENABLED:-false}
+      ALERTS_SECRET_KEY: ${ALERTS_SECRET_KEY:-}
+      ALERTS_HTTP_ADDR: ":8084"
+      ALERTS_TICK: ${ALERTS_TICK:-5s}
+      ALERTS_LATENESS: ${ALERTS_LATENESS:-60s}
+      ALERTS_QUERIES_PER_CYCLE: ${ALERTS_QUERIES_PER_CYCLE:-200}
+      ALERTS_CONCURRENCY: ${ALERTS_CONCURRENCY:-2}
+      ALERTS_DELIVERY_CONCURRENCY: ${ALERTS_DELIVERY_CONCURRENCY:-4}
+      ALERTS_MAX_ATTEMPTS: ${ALERTS_MAX_ATTEMPTS:-8}
+      ALERTS_CHANNEL_RATE: ${ALERTS_CHANNEL_RATE:-30}
+      ALERTS_RETENTION: ${ALERTS_RETENTION:-720h}
+      ALERTS_ALLOWED_PORTS: ${ALERTS_ALLOWED_PORTS:-}
+      ALERTS_ALLOW_INSECURE_LOCAL: ${ALERTS_ALLOW_INSECURE_LOCAL:-false}
+      PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-}
+    ports: ["127.0.0.1:8084:8084"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/healthz"]
       interval: 5s
       timeout: 3s
       retries: 10
