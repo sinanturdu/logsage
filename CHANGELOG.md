@@ -43,8 +43,15 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - Palette: Go to Alerts, Create alert rule, Create channel; `j`, `k` and `Enter` on the alerts tables.
   - API: rule reads carry `state`, `firing`, `pending` and `last_change_at`; `GET notifications` takes `rule=` and returns `rule_id` and `rule_name`.
   - `scripts\dev.ps1 up` turns alerts on with a random key; `dev.ps1 alerts` runs the evaluator and a webhook sink locally; `dev.ps1 alerts-demo` makes rules fire.
+  - The rule dialog keeps the preview and Cancel and Create in a footer that stays in view; the preview folds behind "Show preview" below 700 px and is announced to screen readers once typing pauses (K2.1).
+  - Without a channel, "Create a channel" in the rule dialog and the empty Rules tab opens the channel dialog; after the first channel, a notice offers Create rule. Create stays disabled until a channel is chosen (K2.1).
 
 ### Fixed
+- Alerts UI (K2.1):
+  - The unit selectors next to Window, For, Clear for and Check every were cut off, and the rule dialog scrolled sideways. The rows now wrap and the number and unit form one compact group.
+  - Labels in a row are short and on one line, so the inputs line up; the explanations moved to the help text.
+  - Radio options (rule type, channel type, API key kind) show the name, then the description on its own line.
+  - Header nav links have explicit visited, hover, current and firing states.
 - Error groups (J2.1):
   - The range row on the groups pages started about 24 px right of the content; it now lines up as in the explorer.
   - The Status column is shown only with the "All" status filter; the summary names the selected status.
