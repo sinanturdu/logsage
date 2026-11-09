@@ -430,15 +430,17 @@ table.alerts tr.failed td { background: var(--white); }
 .timeline { margin: 0; padding-left: var(--space-5); font-size: var(--text-md); }
 .timeline li { margin-bottom: var(--space-1); overflow-wrap: anywhere; }
 .named-list { margin: 0 0 var(--space-3); padding-left: var(--space-5); overflow-wrap: anywhere; }
-.dialog.rule-dialog { width: min(760px, 100%); }
+.dialog.rule-dialog { width: min(760px, 100%); overflow-x: hidden; overflow-y: auto; }
 .afield { margin-top: var(--space-3); }
 .afield label { margin-top: 0; }
 .afield textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; resize: vertical; }
 .afield textarea[aria-invalid='true'] { border: 2px solid var(--danger); }
-.field-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0 var(--space-4); }
-.duration { display: flex; gap: var(--space-1); }
-.dialog .duration input { width: 6rem; flex: 0 0 auto; }
-.dialog .duration select { width: auto; flex: 1; }
+.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 var(--space-4); }
+.field-row > * { min-width: 0; }
+.duration { display: flex; gap: var(--space-1); max-width: 100%; }
+/* As specific as the generic dialog input rule, and after it: the number stays narrow, the unit fits "minutes". */
+.dialog .duration input:not([type='checkbox']):not([type='radio']) { width: 5rem; flex: 0 0 5rem; min-width: 0; }
+.dialog .duration select { width: 7.5rem; flex: 0 1 7.5rem; min-width: 0; }
 .dialog fieldset.choices { margin-top: var(--space-3); }
 .inline-choices { display: flex; flex-wrap: wrap; gap: 0 var(--space-4); }
 .inline-choices legend { width: 100%; }
