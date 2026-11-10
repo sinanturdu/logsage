@@ -31,6 +31,7 @@ import { Ago, Checked, DeliveryMark, ProblemPanel, RuleStateCell, StateMark, Utc
 import { CREATE_A_CHANNEL, RuleFormDialog } from './RuleForm'
 
 export const EMPTY_RULES = 'No alert rules yet. Create a channel first, then a rule that notifies it.'
+export const EMPTY_RULES_WITH_CHANNEL = 'No alert rules yet. Create a rule to be notified.'
 export const FIRST_CHANNEL = 'Channel created. Create a rule that notifies it.'
 export const EMPTY_CHANNELS = 'No channels yet. A channel is where notifications go: a webhook or a Slack incoming webhook.'
 export const EMPTY_ACTIVITY = 'No alert activity yet. State changes of your rules appear here.'
@@ -235,7 +236,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
       </div>
       {rules.length === 0 ? (
         <div className="state-panel">
-          <p>{EMPTY_RULES}</p>
+          <p>{channels.length === 0 ? EMPTY_RULES : EMPTY_RULES_WITH_CHANNEL}</p>
           {canManage && channels.length === 0 && (
             <button type="button" className="button" onClick={onCreateChannel}>
               {CREATE_A_CHANNEL}
@@ -628,7 +629,8 @@ export function AlertsPage() {
       ) : (
         <>
           {project && !canManage && <p className="notice">{VIEWER_ALERTS}</p>}
-          {firstChannel && creating === '' && (
+          {/* Gone once the project has a rule, or when dismissed. */}
+          {firstChannel && creating === '' && sorted.length === 0 && (
             <div className="notice first-channel" role="status">
               <span>{FIRST_CHANNEL}</span>{' '}
               <button
@@ -640,6 +642,9 @@ export function AlertsPage() {
                 }}
               >
                 Create rule
+              </button>
+              <button type="button" className="button button-quiet" onClick={() => setFirstChannel(false)}>
+                Dismiss
               </button>
             </div>
           )}
