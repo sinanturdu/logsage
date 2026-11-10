@@ -105,6 +105,10 @@ Keyboard shortcuts (press `?` in the dashboard for the same list):
 
 Every command is safe to run again.
 
+### Try incidents locally
+
+With alerts running (below), create a rule with `"open_incident": true` (the API; the dashboard gets incidents in L2) and run `dev.ps1 alerts-demo`. The firing alerts open one incident with the error group linked; `GET /api/projects/demo/incidents` lists it, `GET .../incidents/1` shows its alerts, groups, suggested groups and timeline, and the webhook payloads at the sink name it (`"incident": {"number": 1, ...}`). Acknowledge, comment and resolve it with `POST .../incidents/1/acknowledge`, `.../comments` and `.../resolve` (send the `version` from the last read).
+
 ### Try alerts locally
 
 `up` turns alerts on for the dev stack: it adds `ALERTS_ENABLED=true` and a random `ALERTS_SECRET_KEY` to `.env` when the key is missing (never printed). Then:

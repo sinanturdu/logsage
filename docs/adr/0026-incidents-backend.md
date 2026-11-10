@@ -1,6 +1,6 @@
 # ADR 0026: Incidents backend (lifecycle, timeline, comments, opening and grouping from alerts)
 
-Status: **draft** (v0.3 package L1, waiting for the owner's approval; no code yet)
+Status: **accepted** (v0.3 package L1, 2026-11-10). Approved as drafted; the "As built" notes at the end record what the implementation settled.
 
 ## Context
 K1 and K2 (ADR 0024, 0025) turn conditions into alert states and signed notifications. One real problem usually fires several rules at once: an error rate, new error groups, a log volume drop. Responders need one place per problem with a status, an owner, a timeline and the related error groups. L1 adds that backend. The UI comes in L2.
@@ -101,6 +101,16 @@ All under `/api/projects/{slug}/incidents`:
 ### 8. Not in L1
 - Paging, escalation, on-call schedules, SLAs, a status page, postmortem templates, email, and machine-learning grouping.
 - **Deploy events** come with v0.4. A deploy API (`POST /v1/deploys` with an ingest key: service, version, at) would add `deploy` timeline events to non-resolved incidents whose services and window match, and give the root-cause ranking a time anchor. The closed event list grows by one type then.
+
+## As built (L1)
+- **Migration 0007:** the tables above plus `incident_events.alert_key` (rule and key, to find the previous event for the flapping rule) and `event_count`. `incident_alerts` keeps the rule id as text (`rule_key`) so links survive a deleted rule.
+- **Correlation:** runs in `ApplyOutcome` for every evaluation that has transitions or repeats. Linking happens only for rules with `open_incident`; resolves still close links of a rule whose flag was turned off later.
+  - The open incident cap counts the project's non-resolved incidents, under the same lock.
+  - The services of group keys come from `groupUniqArray(5)(service)` in the `new_group` and `regression` queries.
+- **Payload:** the incident is set on firing, repeat and resolved notifications of linked alerts. The final notice of a disabled or deleted rule does not carry it.
+- **Comments:** owners and admins delete any comment. Viewers cannot comment in L1, so "the author" only matters between managers. A refused comment past the event cap is a 409 and is not counted as dropped.
+- **Suggested groups:** the detail returns them without the `sample` field, so an incident response never carries a raw log message. A failure gives `suggested_groups: null` and `suggested_groups_error`.
+- **Members:** `GET /members` returns `user_id`, `email` and `role` of enabled users.
 
 ## Consequences
 - An outage in one service area becomes one incident with its alerts and groups, without merging across services or projects.

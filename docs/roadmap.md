@@ -48,7 +48,8 @@ Found while building and benchmarking v0.1 (see [benchmarks](benchmarks.md) and 
 - [x] **Package J2:** error groups UI: list and group pages, status actions, explorer group filter and row link, palette commands (ADR 0023)
 - [x] **Package K1:** alerts backend: rule types (error rate, log volume and silence, new group, regression, new groups per hour), evaluator `cmd/alerts` with state machine and single-writer lock, outbox delivery to signed webhooks and Slack, SSRF-safe client, sealed channel secrets, alert API (ADR 0024)
 - [x] **Package K2:** alerts UI: rules, channels and activity tabs, rule form with a plain-language preview, rule page with timeline and deliveries, one-time signing secret with verify examples, off state, firing count in the nav, palette and shortcuts, `dev.ps1 alerts` and `alerts-demo`; rule state summary and a rule filter on the delivery history in the API (ADR 0025)
-- [ ] **Package L:** incidents
+- [x] **Package L1:** incidents backend: incidents opened and grouped from alerts in the evaluator's transaction (rule and key, service overlap within a merge window, reopen window, recurrences), a closed timeline with flapping counts, comments, status workflow with optimistic versions, group links and live suggestions, the incident in alert payloads, the members endpoint (ADR 0026)
+- [ ] **Package L2:** incidents UI
 - [ ] **Package M:** remove the legacy static keys (`ALLOW_LEGACY_STATIC_KEYS`, `INGEST_API_KEY`, `QUERY_API_KEY`), as promised in the v0.2.0 release notes
 
 ## v0.4: Anomaly detection and AI root cause
