@@ -42,6 +42,9 @@ type Observation struct {
 	Fingerprint uint64
 	Template    string
 	Sample      string // a raw message, only sent to channels that opted in
+	// Services where a group key was seen in the window (at most 5); the
+	// incident correlation adds them to the rule's service filter.
+	Services []string
 }
 
 // Transition is one state change, recorded as an alert_events row.
@@ -53,6 +56,7 @@ type Transition struct {
 	Fingerprint uint64
 	Template    string
 	Reason      string
+	Services    []string // from the observation (group keys)
 }
 
 // Event names of notifications.
@@ -123,7 +127,7 @@ func Step(r Rule, prev map[string]State, obs []Observation, now time.Time) Outco
 		next, changed := cur, false
 		transition := func(to StateName, reason string) int {
 			out.Transitions = append(out.Transitions, Transition{Key: k, From: cur.State, To: to, Value: o.Value, Threshold: o.Threshold,
-				Fingerprint: o.Fingerprint, Template: o.Template, Reason: reason})
+				Fingerprint: o.Fingerprint, Template: o.Template, Reason: reason, Services: o.Services})
 			next.State, next.Since, changed = to, now, true
 			return len(out.Transitions) - 1
 		}

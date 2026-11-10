@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -45,6 +46,36 @@ type Payload struct {
 	Group          *PayloadGroup `json:"group,omitempty"`
 	Sample         *string       `json:"sample"`
 	URL            string        `json:"url,omitempty"`
+	// Incident (ADR 0026): the incident this alert belongs to, when its rule
+	// opens incidents. Optional within version 1; set before the outbox row
+	// is written, so it is part of the signed body and the same on retries.
+	Incident *PayloadIncident `json:"incident,omitempty"`
+}
+
+// PayloadIncident points at an incident.
+type PayloadIncident struct {
+	ID     string `json:"id"`
+	Number int    `json:"number"`
+	URL    string `json:"url,omitempty"` // PUBLIC_DASHBOARD_URL/projects/{slug}/incidents/{number}, when set
+}
+
+// IncidentLink is the dashboard address of an incident, or "" without a base.
+func IncidentLink(base, slug string, number int) string {
+	if base == "" {
+		return ""
+	}
+	return strings.TrimRight(base, "/") + "/projects/" + url.PathEscape(slug) + "/incidents/" + strconv.Itoa(number)
+}
+
+// WithIncident returns the payload with its incident set. The payload is
+// decoded into Payload and encoded again, so only Payload's fields exist.
+func WithIncident(body []byte, inc PayloadIncident) ([]byte, error) {
+	var p Payload
+	if err := json.Unmarshal(body, &p); err != nil {
+		return nil, fmt.Errorf("alert: payload: %w", err)
+	}
+	p.Incident = &inc
+	return json.Marshal(p)
 }
 
 type PayloadRule struct {
@@ -145,7 +176,7 @@ func Notifications(r Rule, win Window, n Notice, channels []Channel, reason, das
 		if err != nil {
 			return nil, fmt.Errorf("alert: encode payload: %w", err)
 		}
-		out = append(out, NewNotification{ChannelID: ch.ID, ChannelName: ch.Name, IdempotencyKey: key, Event: n.Event, Payload: body, Transition: n.Transition})
+		out = append(out, NewNotification{ChannelID: ch.ID, ChannelName: ch.Name, IdempotencyKey: key, Event: n.Event, Payload: body, Transition: n.Transition, Key: n.Key})
 	}
 	return out, nil
 }

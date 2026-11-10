@@ -231,7 +231,7 @@ func (s *Store) SealedChannel(ctx context.Context, projectID, id string) (alert.
 // --- rules ---
 
 const ruleCols = `r.id::text, r.project_id::text, p.slug, r.name, r.note, r.type, r.params, r.interval_s, r.window_s, r.for_s, r.clear_for_s,
-	r.repeat_s, r.enabled, r.version, r.next_eval_at,
+	r.repeat_s, r.enabled, r.version, r.next_eval_at, r.open_incident, r.incident_severity,
 	coalesce((SELECT array_agg(rc.channel_id::text ORDER BY rc.channel_id) FROM alert_rule_channels rc WHERE rc.rule_id = r.id), '{}')`
 
 func scanRule(row pgx.Row) (alert.Rule, error) {
@@ -239,7 +239,7 @@ func scanRule(row pgx.Row) (alert.Rule, error) {
 	var params []byte
 	var interval, window, forS, clearFor, repeat int
 	err := row.Scan(&r.ID, &r.ProjectID, &r.ProjectSlug, &r.Name, &r.Note, &r.Type, &params, &interval, &window, &forS, &clearFor,
-		&repeat, &r.Enabled, &r.Version, &r.NextEvalAt, &r.Channels)
+		&repeat, &r.Enabled, &r.Version, &r.NextEvalAt, &r.OpenIncident, &r.IncidentSeverity, &r.Channels)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return alert.Rule{}, ErrNotFound
 	}
@@ -252,6 +252,13 @@ func scanRule(row pgx.Row) (alert.Rule, error) {
 	sec := func(n int) time.Duration { return time.Duration(n) * time.Second }
 	r.Interval, r.Window, r.For, r.ClearFor, r.Repeat = sec(interval), sec(window), sec(forS), sec(clearFor), sec(repeat)
 	return r, nil
+}
+
+func severityOr(s string) string {
+	if s == "" {
+		return "high"
+	}
+	return s
 }
 
 func (s *Store) checkChannels(ctx context.Context, tx pgx.Tx, projectID string, ids []string) error {
@@ -325,9 +332,11 @@ func (s *Store) CreateRule(ctx context.Context, r alert.Rule, userID string, a A
 			uid = &userID
 		}
 		var id string
-		err := tx.QueryRow(ctx, `INSERT INTO alert_rules (project_id, name, type, params, interval_s, window_s, for_s, clear_for_s, repeat_s, enabled, note, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::text`,
-			r.ProjectID, r.Name, string(r.Type), params, secs(r.Interval), secs(r.Window), secs(r.For), secs(r.ClearFor), secs(r.Repeat), r.Enabled, r.Note, uid).Scan(&id)
+		err := tx.QueryRow(ctx, `INSERT INTO alert_rules (project_id, name, type, params, interval_s, window_s, for_s, clear_for_s, repeat_s, enabled, note, created_by,
+				open_incident, incident_severity)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id::text`,
+			r.ProjectID, r.Name, string(r.Type), params, secs(r.Interval), secs(r.Window), secs(r.For), secs(r.ClearFor), secs(r.Repeat), r.Enabled, r.Note, uid,
+			r.OpenIncident, severityOr(r.IncidentSeverity)).Scan(&id)
 		if uniqueName(err) {
 			return fmt.Errorf("rule %q: %w", r.Name, ErrConflict)
 		}
@@ -486,6 +495,10 @@ func closeStates(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string, ca
 	if _, err := tx.Exec(ctx, "DELETE FROM alert_states WHERE rule_id::text = $1", r.ID); err != nil {
 		return fmt.Errorf("postgres: delete states: %w", err)
 	}
+	// Linked incident alerts close with the reason (ADR 0026).
+	if err := closeRuleLinks(ctx, tx, r, reason, time.Now().UTC()); err != nil {
+		return err
+	}
 	if !cancel {
 		return nil
 	}
@@ -573,9 +586,11 @@ func (s *Store) UpdateRule(ctx context.Context, r alert.Rule, a AuditEntry) (ale
 			}
 		}
 		_, err = tx.Exec(ctx, `UPDATE alert_rules SET name = $3, type = $4, params = $5, interval_s = $6, window_s = $7, for_s = $8, clear_for_s = $9,
-				repeat_s = $10, note = $11, version = version + $12, updated_at = now(), next_eval_at = least(next_eval_at, now() + make_interval(secs => $6::int))
+				repeat_s = $10, note = $11, version = version + $12, updated_at = now(), next_eval_at = least(next_eval_at, now() + make_interval(secs => $6::int)),
+				open_incident = $13, incident_severity = $14
 			WHERE project_id = $1 AND id::text = $2`,
-			r.ProjectID, r.ID, r.Name, string(r.Type), params, secs(r.Interval), secs(r.Window), secs(r.For), secs(r.ClearFor), secs(r.Repeat), r.Note, b2i(changed))
+			r.ProjectID, r.ID, r.Name, string(r.Type), params, secs(r.Interval), secs(r.Window), secs(r.For), secs(r.ClearFor), secs(r.Repeat), r.Note, b2i(changed),
+			r.OpenIncident, severityOr(r.IncidentSeverity))
 		if uniqueName(err) {
 			return fmt.Errorf("rule %q: %w", r.Name, ErrConflict)
 		}
@@ -776,6 +791,17 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 				return alert.ErrStale
 			}
 		}
+		// Incidents (ADR 0026): in this transaction, so an incident link and
+		// its notifications are written together or not at all.
+		var incidentOf map[int]IncidentRef
+		var incidentOfKey map[string]IncidentRef
+		at := out.EvaluatedAt
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+		if incidentOf, incidentOfKey, err = correlateOutcome(ctx, tx, r, out, s.incidentConfig(), at); err != nil {
+			return err
+		}
 		ids := make([]int64, len(out.Transitions))
 		for i, t := range out.Transitions {
 			if err := tx.QueryRow(ctx, `INSERT INTO alert_events (project_id, rule_id, rule_name, rule_type, dedup_key, from_state, to_state, value, threshold, window_start, window_end, fingerprint, template, reason)
@@ -785,10 +811,24 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 				return fmt.Errorf("postgres: write event: %w", err)
 			}
 		}
+		cfg := s.incidentConfig()
 		for _, n := range notes {
 			var eventID *int64
 			if n.Transition >= 0 && n.Transition < len(ids) {
 				eventID = &ids[n.Transition]
+			}
+			// The incident goes into the payload before the row is written:
+			// it is signed with the rest and the same on every retry.
+			ref, ok := incidentOf[n.Transition]
+			if !ok && n.Transition < 0 {
+				ref, ok = incidentOfKey[n.Key]
+			}
+			if ok {
+				body, err := alert.WithIncident(n.Payload, alert.PayloadIncident{ID: ref.ID, Number: ref.Number, URL: alert.IncidentLink(cfg.DashboardURL, r.ProjectSlug, ref.Number)})
+				if err != nil {
+					return err
+				}
+				n.Payload = body
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO alert_notifications (project_id, event_id, channel_id, channel_name, idempotency_key, event_type, payload)
 				VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (idempotency_key) DO NOTHING`,
@@ -1027,6 +1067,10 @@ func (s *Store) PruneAlerts(ctx context.Context, before time.Time) error {
 		if _, err := s.pool.Exec(ctx, q, before); err != nil {
 			return fmt.Errorf("postgres: prune: %w", err)
 		}
+	}
+	// Resolved incidents have their own, longer retention (INCIDENT_RETENTION).
+	if _, err := s.pool.Exec(ctx, "DELETE FROM incidents WHERE status = 'resolved' AND resolved_at < $1", time.Now().UTC().Add(-s.incidentConfig().Retention)); err != nil {
+		return fmt.Errorf("postgres: prune incidents: %w", err)
 	}
 	return nil
 }

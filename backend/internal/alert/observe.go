@@ -103,7 +103,7 @@ func Observe(ctx context.Context, r Rule, q Querier, resolved ResolvedSource, wi
 		out := make([]Observation, 0, len(groups))
 		for _, g := range groups {
 			out = append(out, Observation{Key: GroupKey(g.Fingerprint), Value: float64(g.Count), Threshold: float64(p.MinEvents), Fire: true,
-				Fingerprint: g.Fingerprint, Template: g.Title, Sample: g.Sample})
+				Fingerprint: g.Fingerprint, Template: g.Title, Sample: g.Sample, Services: g.Services})
 		}
 		return out, nil
 	case Regression:
@@ -131,7 +131,7 @@ func Observe(ctx context.Context, r Rule, q Querier, resolved ResolvedSource, wi
 				continue
 			}
 			out = append(out, Observation{Key: RegressionKey(g.Fingerprint, res), Value: float64(g.Count), Fire: true,
-				Fingerprint: g.Fingerprint, Template: g.Title, Sample: g.Sample})
+				Fingerprint: g.Fingerprint, Template: g.Title, Sample: g.Sample, Services: g.Services})
 		}
 		return out, nil
 	}

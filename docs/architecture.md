@@ -206,6 +206,8 @@ error_groups (project_id uuid FK -> projects ON DELETE CASCADE, fingerprint bigi
 ```
 No row means `open`. A status change upserts the row and writes an `audit_log` row (`group.status`) in one transaction.
 
+Migration 0007 (ADR 0026): `incidents` (per-project `number` from `incident_counters`, status, severity, assignee, services, `version`, `all_alerts_resolved`), `incident_alerts` (rule and state key per incident, closed with a reason), `incident_groups` (auto or manual), `incident_events` (a closed list of types, payloads with ids and templates only, a separate comment `body`, flapping `count`), and `open_incident`/`incident_severity` on `alert_rules`.
+
 Migration 0004 (ADR 0024): `notification_channels` (URL and signing secret sealed with AES-256-GCM, `url_host` for display), `alert_rules` (type, `params` jsonb, interval, window, for, clear_for, repeat, `version`, `next_eval_at`), `alert_rule_channels`, `alert_states` (one row per rule and dedup key, optimistic `version`), `alert_events` (every transition, kept when the rule is deleted) and `alert_notifications` (the outbox: status, attempts, `next_attempt_at`, lease, unique `idempotency_key`, payload without secrets).
 
 Planned: `incidents`, `incident_events`, `deploy_events`.
@@ -318,6 +320,23 @@ Session auth under `/api/projects/{slug}/alerts`; viewers read, owners and admin
 **Evaluation (`cmd/alerts`):** every `ALERTS_TICK` the instance holding the PostgreSQL advisory lock evaluates due rules (at most `ALERTS_QUERIES_PER_CYCLE`, `ALERTS_CONCURRENCY` at a time) over `[now - lateness - window, now - lateness)` in event time (`ALERTS_LATENESS`, default 60 s). Queries go through `query.Service` (project scope, `readonly`, time and row limits, `log_comment = 'alerts'`). States move ok → pending (`for`) → firing → resolved (after `clear_for` outside a hysteresis band); `repeat` re-notifies. A rule disabled or deleted while firing sends a final `alert.resolved` with `reason`. Health on `ALERTS_HTTP_ADDR` (`:8084`): `/healthz`, `/readyz`, `/stats`.
 
 **Delivery:** the outbox is claimed with `FOR UPDATE SKIP LOCKED`; retries back off from 10 s, doubling with jitter, up to `ALERTS_MAX_ATTEMPTS`; at most `ALERTS_CHANNEL_RATE` sends per channel per minute. Webhooks carry `X-LogSage-Event`, `X-LogSage-Delivery` (idempotency key) and `X-LogSage-Signature: t=<unix>,v1=<hex HMAC-SHA256 over "t.body">`; Slack gets an escaped `{"text": ...}`. The client allows only https to public addresses (every DNS answer checked, the checked address dialed, no redirects, proxies, cookies, keep-alive or zones; TLS 1.2+ verified). A failure is kept as the status code and an `error_category` from a closed list; a receiver's response body is read, bounded, and discarded, never stored, logged or shown.
+
+### Incidents (L1, ADR 0026)
+Session auth under `/api/projects/{slug}/incidents`; viewers read, owners and admins write, non-members get 404, every change leaves an audit row without user text. Titles, summaries and comments are plain text.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET` (`status`, `severity`, `assignee=me\|none\|<id>`, `service`, `from`, `to`, `q`, `cursor`, `limit`), `GET summary`, `POST` | List (most recently active first), counts per status, manual create (`title`, `severity`, `summary`, `services`, `assignee`). |
+| `GET {number}`, `GET {number}/events?before=&limit=` | The incident with linked alerts and groups, `suggested_groups` (top 5 error groups of its services and window, never linked automatically, no samples) and the first timeline page; more timeline pages. |
+| `PATCH {number}`, `POST {number}/acknowledge`, `/resolve`, `/reopen` | Title, severity and summary, or the status, each with `version` (409 when stale); a status change may carry a `note` (a comment). |
+| `POST {number}/assign` (`user_id`), `/unassign`, `POST {number}/comments`, `DELETE {number}/comments/{id}`, `POST`/`DELETE {number}/groups/{fingerprint}` | Assignee (a project member), comments (never notify a channel), group links (at most 50). |
+| `GET /api/projects/{slug}/members` | Members' `user_id`, `email` and `role`, for picking an assignee (read only; changes stay in the admin CLI). |
+
+**Opening and grouping:** for a rule with `open_incident`, each transition into firing is correlated in the evaluator's `ApplyOutcome` transaction, under a per-project advisory lock.
+- **Order:** an incident already linked to the rule and key; else an open incident active within `INCIDENT_MERGE_WINDOW` (30 m) that shares a service; project-wide rules only with project-wide incidents; else reopen the rule and key's incident if it was resolved within `INCIDENT_REOPEN_WINDOW` (60 m); else a new incident, marked as a recurrence when there was an earlier one.
+- **Resolving:** there is no automatic resolve. Resolved states close their links and set `all_alerts_resolved`. A disabled, deleted or reset rule closes them with `alert_closed` and the reason.
+- **Payload:** firing, repeat and resolved notifications of linked alerts carry `incident: {id, number, url}`, inside the signed body.
+- **Limits:** 1000 open incidents per project (the automatic path then links nothing), 1000 events per incident. Resolved incidents older than `INCIDENT_RETENTION` (400 days) are deleted.
 
 ## Dashboard (v0.2)
 `frontend/`, ADR 0016.

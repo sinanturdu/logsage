@@ -5,6 +5,13 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Incidents backend (v0.3 package L1, ADR 0026):
+  - Alert rules can open incidents (`open_incident`, `incident_severity`). In the evaluator's transaction, a firing alert joins the incident already linked to its rule and key, or an open incident active in the last 30 minutes that shares a service; otherwise it reopens one resolved within the last hour or opens a new one, a "recurrence of #N" when there was an earlier one. Project-wide rules only join project-wide incidents. No automatic resolve; `all_alerts_resolved` tells when every linked alert has cleared.
+  - A timeline with a closed list of events (opened, alert firing, resolved and closed, all alerts resolved, group linked and unlinked, status, severity, assignment, comments, reopened). Payloads hold ids and templates only, never a raw log message. Flapping alerts count on one event.
+  - Per-project incident numbers that stay unique under concurrency; optimistic versions on edits and status changes; comments (plain text, never notifying a channel); assignees from the project's members; group links, with suggested groups computed live and never linked automatically.
+  - Alert payloads carry an optional `incident` (id, number, dashboard URL) inside the signed body, without a payload version change.
+  - Endpoints under `/api/projects/{slug}/incidents` and `GET /api/projects/{slug}/members`; every change is audited.
+  - Settings `INCIDENT_MERGE_WINDOW`, `INCIDENT_REOPEN_WINDOW` and `INCIDENT_RETENTION` (`cmd/alerts`).
 - Error groups backend (v0.3 package J1, ADR 0022):
   - The processor fingerprints `warn`, `error` and `fatal` rows: a normalized template of the first line plus service and error type. A golden corpus test pins every template and fingerprint.
   - ClickHouse: a `template` column, a `bloom_filter` index on `fingerprint`, and the `group_seen` table with its materialized view for first and last seen.

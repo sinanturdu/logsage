@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"github.com/sinanturdu/logsage/backend/internal/incident"
+
 	"context"
 	"errors"
 	"fmt"
@@ -71,8 +73,9 @@ func ValidateName(s string) error {
 
 // Store reads and writes projects and API keys.
 type Store struct {
-	pool    *pgxpool.Pool
-	timeout time.Duration
+	pool      *pgxpool.Pool
+	timeout   time.Duration
+	incidents incident.Config // correlation windows (ADR 0026)
 }
 
 // NewStore returns a Store; every call is bounded by timeout.
