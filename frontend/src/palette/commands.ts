@@ -26,14 +26,14 @@ export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean
 
 export type AppContext = {
   slug: string | null
-  section: 'logs' | 'groups' | 'alerts' | 'keys' | 'other'
+  section: 'logs' | 'groups' | 'alerts' | 'incidents' | 'keys' | 'other'
   projects: readonly string[]
   explorer: ExplorerContext | null
   /** Set on the error groups list. */
   groups?: GroupsContext | null
   /** Set on an incident's page (ADR 0027). */
   incident?: IncidentContext | null
-  /** Owners and admins of the current project can create alert rules and channels. */
+  /** Owners and admins of the current project: they may create rules, channels and incidents. */
   canManageAlerts?: boolean
 }
 
@@ -71,7 +71,7 @@ const RANGES: { preset: Preset; label: string; keywords: string[] }[] = [
 ]
 
 const ERRORS: Level[] = ['error', 'fatal']
-const path = (slug: string, section: 'logs' | 'groups' | 'alerts' | 'keys', query = '') => `/projects/${encodeURIComponent(slug)}/${section}${query}`
+const path = (slug: string, section: 'logs' | 'groups' | 'alerts' | 'incidents' | 'keys', query = '') => `/projects/${encodeURIComponent(slug)}/${section}${query}`
 
 const STATUS_COMMAND: Record<StatusFilter, string> = {
   open: 'Show open groups',
@@ -94,9 +94,11 @@ export function commandsFor(ctx: AppContext): Command[] {
       add('Navigation', 'create-rule', 'Create alert rule...', { type: 'navigate', to: path(ctx.slug, 'alerts', '?create=rule') }, ['alert', 'rule', 'new', 'notify'])
       add('Navigation', 'create-channel', 'Create channel...', { type: 'navigate', to: path(ctx.slug, 'alerts', '?tab=channels&create=channel') }, ['webhook', 'slack', 'channel', 'new'])
     }
+    if (ctx.section !== 'incidents' || ctx.incident) add('Navigation', 'go-incidents', 'Go to Incidents', { type: 'navigate', to: path(ctx.slug, 'incidents') }, ['incidents', 'outage', 'problems', 'open'])
+    if (ctx.canManageAlerts) add('Navigation', 'create-incident', 'Create incident...', { type: 'navigate', to: path(ctx.slug, 'incidents', '?create=1') }, ['incident', 'new', 'outage', 'declare'])
     if (ctx.section !== 'keys') add('Navigation', 'go-keys', 'Go to API keys', { type: 'navigate', to: path(ctx.slug, 'keys') }, ['tokens', 'ingest', 'credentials'])
   }
-  const section = ctx.section === 'keys' || ctx.section === 'groups' || ctx.section === 'alerts' ? ctx.section : 'logs'
+  const section = ctx.section === 'keys' || ctx.section === 'groups' || ctx.section === 'alerts' || ctx.section === 'incidents' ? ctx.section : 'logs'
   for (const p of ctx.projects) {
     if (p === ctx.slug) continue
     add('Navigation', `project:${p}`, `Switch project: ${p}`, { type: 'navigate', to: path(p, section) }, ['project', 'change'])
@@ -122,6 +124,16 @@ export function commandsFor(ctx: AppContext): Command[] {
     add('View', 'refresh', 'Refresh', { type: 'refresh' }, ['reload', 'now'])
     if (ex.canZoom) add('View', 'zoom:in', 'Zoom to selection', { type: 'zoom', on: true }, ['timeline', 'chart'])
     if (ex.zoom) add('View', 'zoom:out', 'Zoom out', { type: 'zoom', on: false }, ['timeline', 'chart'])
+  }
+  const inc = ctx.incident
+  if (inc) {
+    if (inc.canManage) {
+      if (inc.status === 'open') add('View', 'incident:acknowledge', 'Acknowledge incident...', { type: 'incident-action', action: 'acknowledge' }, ['ack', 'acknowledge', 'on it'])
+      if (inc.status !== 'resolved') add('View', 'incident:resolve', 'Resolve incident...', { type: 'incident-action', action: 'resolve' }, ['resolve', 'close', 'fixed'])
+      if (inc.status === 'resolved') add('View', 'incident:reopen', 'Reopen incident...', { type: 'incident-action', action: 'reopen' }, ['reopen', 'again'])
+      add('View', 'incident:assign-me', 'Assign to me', { type: 'incident-assign-me' }, ['assign', 'mine', 'owner'])
+    }
+    add('View', 'incident:copy-link', 'Copy link to this incident', { type: 'incident-copy-link' }, ['share', 'url', 'clipboard'])
   }
   const gr = ctx.groups
   if (gr) {
@@ -184,6 +196,7 @@ export function defaultCommands(all: readonly Command[], recent: readonly string
   if (explorer) for (const p of NEXT_RANGES[explorer.preset ?? 'absolute']) push(byId.get(`range:${p}`))
   for (const c of all) if (c.id.startsWith('project:')) push(c)
   push(byId.get('go-alerts')) // when there is room left
+  push(byId.get('go-incidents'))
   if (help) out.push(help)
   return out
 }

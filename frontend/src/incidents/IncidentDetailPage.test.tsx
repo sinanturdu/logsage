@@ -243,3 +243,26 @@ describe('incident detail', () => {
     expect(document.body.textContent?.split(XSS).length).toBeGreaterThan(9)
   })
 })
+
+describe('palette on an incident page', () => {
+  it('runs Acknowledge from the palette, only for managers', async () => {
+    setup()
+    renderApp('/projects/shop/incidents/7')
+    await heading()
+    const user = userEvent.setup()
+    await user.keyboard('{Control>}k{/Control}')
+    await user.keyboard('Acknowledge incident')
+    await user.keyboard('{Enter}')
+    expect(await screen.findByRole('dialog', { name: 'Acknowledge this incident?' })).toBeTruthy()
+  })
+  it('viewers get no incident actions in the palette', async () => {
+    setup({ role: 'viewer' })
+    renderApp('/projects/shop/incidents/7')
+    await heading()
+    const user = userEvent.setup()
+    await user.keyboard('{Control>}k{/Control}')
+    const palette = await screen.findByRole('dialog')
+    await user.keyboard('Acknowledge')
+    expect(within(palette).queryByText('Acknowledge incident...')).toBeNull()
+  })
+})
