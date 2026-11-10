@@ -134,7 +134,13 @@ export type RuleBody = {
   repeat: string
   enabled: boolean
   channels: string[]
+  open_incident: boolean
+  incident_severity: IncidentSeverity
 }
+
+/** Incident severities (ADR 0026); a rule's default is high. */
+export const INCIDENT_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const
+export type IncidentSeverity = (typeof INCIDENT_SEVERITIES)[number]
 
 export type RuleForm = {
   name: string
@@ -159,6 +165,9 @@ export type RuleForm = {
   channels: string[]
   /** Kept from the API on edit (the form has no field for it; the default is 10%). */
   hysteresis?: number | undefined
+  /** Opens or joins an incident when it fires (ADR 0026). */
+  openIncident: boolean
+  incidentSeverity: IncidentSeverity
 }
 
 export const emptyRuleForm = (type: RuleType = 'error_rate'): RuleForm => ({
@@ -178,6 +187,8 @@ export const emptyRuleForm = (type: RuleType = 'error_rate'): RuleForm => ({
   for: { amount: '0', unit: 'm' },
   clearFor: { amount: '1', unit: 'm' },
   repeatOn: false,
+  openIncident: false,
+  incidentSeverity: 'high',
   repeat: { amount: '1', unit: 'h' },
   enabled: true,
   channels: [],
@@ -196,6 +207,8 @@ export function formFromRule(r: {
   repeat: string
   enabled: boolean
   channels: string[]
+  open_incident?: boolean
+  incident_severity?: string
 }): RuleForm {
   const base = emptyRuleForm(r.type)
   const d = (v: string, fallback: DurationValue) => {
@@ -225,6 +238,8 @@ export function formFromRule(r: {
     enabled: r.enabled,
     channels: [...r.channels],
     hysteresis: p.hysteresis_percent,
+    openIncident: r.open_incident ?? false,
+    incidentSeverity: (INCIDENT_SEVERITIES as readonly string[]).includes(r.incident_severity ?? '') ? (r.incident_severity as IncidentSeverity) : 'high',
   }
 }
 
@@ -335,6 +350,8 @@ export function ruleBody(f: RuleForm): RuleBody {
     repeat: f.repeatOn ? s(f.repeat) : '0s',
     enabled: f.enabled,
     channels: [...f.channels],
+    open_incident: f.openIncident,
+    incident_severity: f.incidentSeverity,
   }
 }
 
@@ -447,7 +464,8 @@ export function previewSentences(f: RuleForm, channelNames: readonly string[]): 
   const notifies = channelNames.length > 0 ? ` Notifies: ${list(channelNames)}.` : ' Choose a channel to notify.'
   const repeat = durationSeconds(f.repeat)
   const again = f.repeatOn && repeat ? ` While firing, notifies again every ${humanDuration(repeat)}.` : ''
-  return { fires: fires + notifies + again, resolves }
+  const opens = f.openIncident ? ` Opens a ${f.incidentSeverity} severity incident when it fires.` : ''
+  return { fires: fires + notifies + again + opens, resolves }
 }
 
 // --- URL state ---

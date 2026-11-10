@@ -218,3 +218,13 @@ describe('evaluator heartbeat in the rules table', () => {
     expect(cells(4)[3]).toBe('◉ firing ! Not being checked. Is the evaluator running?')
   })
 })
+
+describe('the incident setting in the Rules table', () => {
+  it('says whether each rule opens incidents, as text', async () => {
+    mockAlerts({ [`GET ${B}/rules`]: () => json(200, { rules: [rule('r1', { open_incident: true, incident_severity: 'critical' }), rule('r2')] }) })
+    renderApp('/projects/shop/alerts')
+    const r = await rows()
+    expect(within(r[0] as HTMLElement).getAllByRole('cell')[8]?.textContent).toBe('opens critical')
+    expect(within(r[1] as HTMLElement).getAllByRole('cell')[8]?.textContent).toBe('no')
+  })
+})

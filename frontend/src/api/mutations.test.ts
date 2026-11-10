@@ -12,7 +12,7 @@ afterEach(() => vi.unstubAllGlobals())
 // request without applying the server's CSRF rule. This test records the
 // headers of every mutation the app makes, independently of the mocks.
 describe('every mutation sends Content-Type: application/json', () => {
-  const rule = { name: 'r', note: '', type: 'regression' as const, params: {}, interval: '60s', window: '300s', for: '0s', clear_for: '0s', repeat: '0s', enabled: true, channels: ['c'] }
+  const rule = { name: 'r', note: '', type: 'regression' as const, params: {}, interval: '60s', window: '300s', for: '0s', clear_for: '0s', repeat: '0s', enabled: true, channels: ['c'], open_incident: false, incident_severity: 'high' as const }
   const calls: [string, () => Promise<unknown>][] = [
     ['login', () => api.login('a@example.com', 'x')],
     ['logout', () => api.logout()],

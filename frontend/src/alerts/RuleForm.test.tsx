@@ -183,6 +183,8 @@ describe('rule form', () => {
       repeat: '3600s',
       enabled: true,
       channels: ['c2'],
+      open_incident: false,
+      incident_severity: 'high',
     })
   })
 
@@ -231,5 +233,33 @@ describe('rule form', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement?.textContent).toBe('Create rule')
+  })
+})
+
+describe('the incident switch', () => {
+  it('is off by default, shows the severity only when on, adds a preview sentence and sends both fields', async () => {
+    const { user, dialog, requests } = await openForm({ [`POST ${B}/rules`]: () => json(201, { rule: rule('r9') }) })
+    const sw = within(dialog).getByRole('switch', { name: 'Open an incident when this rule fires' }) as HTMLInputElement
+    expect(sw.checked).toBe(false)
+    expect(within(dialog).queryByLabelText('Incident severity')).toBeNull()
+    expect(within(dialog).getByTestId('rule-preview').textContent).not.toContain('incident')
+    await user.click(sw)
+    await user.selectOptions(within(dialog).getByLabelText('Incident severity'), 'critical')
+    expect(within(dialog).getByTestId('rule-preview').textContent).toContain('Opens a critical severity incident when it fires.')
+    await user.type(within(dialog).getByLabelText('Name'), 'Payments')
+    await user.click(within(dialog).getByRole('checkbox', { name: /pager/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Create rule' }))
+    await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toMatchObject({ open_incident: true, incident_severity: 'critical' }))
+  })
+
+  it('reads the setting back when editing', async () => {
+    const r = rule('r1', { name: 'Errors', open_incident: true, incident_severity: 'low' })
+    mockAlerts({ [`GET ${B}/rules`]: () => json(200, { rules: [r] }), [`GET ${B}/channels`]: () => json(200, { channels: CHANNELS }) })
+    renderApp('/projects/shop/alerts')
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Edit rule Errors' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit alert rule' })
+    expect((within(dialog).getByRole('switch', { name: 'Open an incident when this rule fires' }) as HTMLInputElement).checked).toBe(true)
+    expect((within(dialog).getByLabelText('Incident severity') as HTMLSelectElement).value).toBe('low')
   })
 })

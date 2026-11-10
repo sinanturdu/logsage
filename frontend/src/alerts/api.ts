@@ -29,6 +29,9 @@ export type Rule = {
   firing: number
   pending: number
   last_change_at: string | null
+  /** Incidents (ADR 0026). */
+  open_incident: boolean
+  incident_severity: string
   /** The evaluator's heartbeat (K2.2). */
   last_evaluated_at: string | null
   last_eval_error: EvalError

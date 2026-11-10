@@ -102,6 +102,8 @@ describe('the rule form', () => {
       repeat: '0s',
       enabled: true,
       channels: ['c1'],
+      open_incident: false,
+      incident_severity: 'high',
     })
     expect(ruleBody(form({ type: 'log_volume', op: 'below', count: '1', levels: ['error'] })).params).toEqual({ op: 'below', count: 1, levels: ['error'] })
     expect(ruleBody(form({ type: 'new_group', minEvents: '3' })).params).toEqual({ min_events: 3 })

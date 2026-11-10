@@ -8,6 +8,7 @@ import { useFacets } from '../explorer/api'
 import { alertsKey, createRule, updateRule, writeError, type Channel, type Rule } from './api'
 import {
   DURATION_UNITS,
+  INCIDENT_SEVERITIES,
   LEVELS,
   LIMITS,
   RULE_TYPES,
@@ -23,6 +24,7 @@ import {
   type DurationValue,
   type FieldErrors,
   type FieldName,
+  type IncidentSeverity,
   type RuleForm,
 } from './model'
 
@@ -335,6 +337,25 @@ export function RuleFormDialog({ slug, channels, rule, onClose, onSaved, onCreat
           <Field id={fid('repeat')} label="Repeat every" error={err('repeat')} hint="5 minutes to 7 days.">
             <DurationInput id={fid('repeat')} value={form.repeat} onChange={(v) => set('repeat', v)} error={err('repeat')} hint units={['m', 'h', 'd']} />
           </Field>
+        )}
+        <label className="check">
+          <input type="checkbox" role="switch" checked={form.openIncident} aria-describedby={`${id}-incident-hint`} onChange={(e) => set('openIncident', e.target.checked)} /> Open
+          an incident when this rule fires
+        </label>
+        <p className="field-hint" id={`${id}-incident-hint`}>
+          It joins an open incident of the same services from the last 30 minutes, or opens a new one.
+        </p>
+        {form.openIncident && (
+          <div className="afield">
+            <label htmlFor={`${id}-incident-sev`}>Incident severity</label>
+            <select id={`${id}-incident-sev`} value={form.incidentSeverity} onChange={(e) => set('incidentSeverity', e.target.value as IncidentSeverity)}>
+              {INCIDENT_SEVERITIES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
 
         <fieldset className="choices" aria-describedby={err('channels') ? `${fid('channels')}-error` : undefined}>

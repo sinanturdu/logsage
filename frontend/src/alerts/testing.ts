@@ -30,6 +30,8 @@ export const rule = (id: string, extra: Partial<Rule> = {}): Rule => ({
   // Fresh by default (20 s before the real now), so rules are not overdue.
   last_evaluated_at: new Date(Date.now() - 20_000).toISOString(),
   last_eval_error: '',
+  open_incident: false,
+  incident_severity: 'high',
   ...extra,
 })
 
