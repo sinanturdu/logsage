@@ -43,6 +43,9 @@ LogSage is a log and incident analysis platform. Read `docs/requirements.md` and
 - Public behavior changes require a test. A task is not done until `go vet` and `go test` pass.
 - Every significant technical decision gets an ADR in `docs/adr/` (next number, short, with consequences).
 - Keep modules decoupled: packages communicate through interfaces defined by the consumer.
+- Test fakes must enforce the same validation and constraints as the real component they replace. When a fake cannot, add a contract test against the real component. Assert the result of every call to another component, not only that a response field exists.
+  - In K2.2 the CSRF header bug passed because the frontend fetch mocks answered every request without the API's CSRF rule.
+  - In L1 the suggested-groups bug passed because the handler test only checked that `suggested_groups` was present. The failure turned into `null` plus an error field, and nothing asserted that the query was accepted.
 
 ## Git workflow
 - Never commit to `main` directly. One branch per task: `feat/...`, `fix/...`, `docs/...`.
