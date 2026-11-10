@@ -538,7 +538,8 @@ export function AlertsPage() {
   const rules = useRules(slug)
   const channels = useChannels(slug)
   const id = useId()
-  const [now, setNow] = useState(() => Date.now())
+  // Relative times count from the last refresh of the shared rules query.
+  const now = rules.dataUpdatedAt
   const [creating, setCreating] = useState<'' | 'rule' | 'channel'>('')
   const project = projects.data?.find((p) => p.slug === slug)
   const canManage = project?.role === 'owner' || project?.role === 'admin'
@@ -565,7 +566,6 @@ export function AlertsPage() {
     update({ tab: 'channels', create: 'channel' })
   }
   const refresh = () => {
-    setNow(Date.now())
     void rules.refetch()
     void channels.refetch()
   }

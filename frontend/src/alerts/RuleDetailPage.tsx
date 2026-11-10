@@ -27,7 +27,8 @@ export function RuleDetailPage() {
   const states = useStates(slug)
   const events = useEvents(slug, id)
   const deliveries = useDeliveries(slug, { rule: id })
-  const [now] = useState(() => Date.now())
+  // Relative times count from the rule's last refresh (every 30 s while visible).
+  const now = rule.dataUpdatedAt
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState<'delete' | 'disable' | null>(null)
   const [busy, setBusy] = useState(false)

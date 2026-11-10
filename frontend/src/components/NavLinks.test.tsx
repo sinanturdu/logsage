@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import appCss from '../styles/app.css?raw'
 import { json, renderApp } from '../test/util'
-import { firingState, mockAlerts } from '../alerts/testing'
+import { mockAlerts, rule } from '../alerts/testing'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -25,7 +25,7 @@ describe('header nav links', () => {
   })
 
   it('renders the four links alike, with the class only on a firing Alerts link', async () => {
-    mockAlerts({ 'GET /api/projects/shop/alerts/states': () => json(200, { states: [firingState('r1')] }) })
+    mockAlerts({ 'GET /api/projects/shop/alerts/rules': () => json(200, { rules: [rule('r1', { state: 'firing', firing: 1 })] }) })
     renderApp('/projects/shop/groups')
     const nav = await screen.findByRole('navigation', { name: 'Project sections' })
     await within(nav).findByRole('link', { name: 'Alerts, 1 firing' })
