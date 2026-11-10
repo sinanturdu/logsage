@@ -79,3 +79,32 @@ func TestDashboardLink(t *testing.T) {
 		t.Fatalf("%s", got)
 	}
 }
+
+func TestIncidentFieldIsOptionalAndStable(t *testing.T) {
+	r := Rule{ID: "r1", ProjectSlug: "demo", Name: "x", Type: ErrorRate}
+	ns, err := Notifications(r, Window{From: t0, To: t0}, Notice{Key: RuleKey, Event: EventFiring, FiredAt: t0}, []Channel{{ID: "c1", Name: "ops"}}, "", "", t0)
+	if err != nil || len(ns) != 1 || ns[0].Key != RuleKey {
+		t.Fatal(ns, err)
+	}
+	if strings.Contains(string(ns[0].Payload), "incident") {
+		t.Fatalf("no incident field without an incident: %s", ns[0].Payload)
+	}
+	with, err := WithIncident(ns[0].Payload, PayloadIncident{ID: "i1", Number: 7, URL: IncidentLink("https://logsage.example.com/", "demo", 7)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p Payload
+	if err := json.Unmarshal(with, &p); err != nil || p.Version != 1 || p.Incident == nil || p.Incident.Number != 7 ||
+		p.Incident.URL != "https://logsage.example.com/projects/demo/incidents/7" || p.IdempotencyKey != ns[0].IdempotencyKey {
+		t.Fatalf("%s %v", with, err)
+	}
+	// Everything else is unchanged: the same body without the incident.
+	p.Incident = nil
+	back, _ := json.Marshal(p)
+	if string(back) != string(ns[0].Payload) {
+		t.Fatalf("payload changed:\n%s\n%s", back, ns[0].Payload)
+	}
+	if IncidentLink("", "demo", 7) != "" {
+		t.Fatal("no link without a dashboard URL")
+	}
+}

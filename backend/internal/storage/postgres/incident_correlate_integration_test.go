@@ -123,6 +123,13 @@ func TestAlertsOpenAndGroupOneIncident(t *testing.T) {
 	if got := eventTypes(t, f, in.ID); got != "opened,alert_firing,alert_firing,group_linked,alert_resolved,alert_resolved,all_alerts_resolved" {
 		t.Fatalf("timeline %s", got)
 	}
+	// Every firing and resolved notification carries the incident inside its stored (signed) body.
+	if n := count("SELECT count(*) FROM alert_notifications WHERE payload->'incident'->>'number' = '1' AND payload->'incident'->>'id' = '" + in.ID + "'"); n != 4 {
+		t.Fatalf("%d notifications name the incident, want 4", n)
+	}
+	if n := count("SELECT count(*) FROM alert_notifications WHERE payload->>'version' <> '1'"); n != 0 {
+		t.Fatal("the payload version must not change")
+	}
 }
 
 func TestNoOverlapAndProjectWideRules(t *testing.T) {

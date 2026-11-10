@@ -77,7 +77,7 @@ func run(ctx context.Context, getenv func(string) string, deps *Deps) error {
 	defer pool.Close()
 	store := postgres.NewStore(pool, cfg.Postgres.QueryTimeout)
 	store.SetIncidentConfig(incident.Config{MergeWindow: ac.IncidentMergeWindow, ReopenWindow: ac.IncidentReopenWindow,
-		MaxOpen: incident.MaxOpenIncidents, Retention: ac.IncidentRetention})
+		MaxOpen: incident.MaxOpenIncidents, Retention: ac.IncidentRetention, DashboardURL: ac.DashboardURL})
 	ch, err := clickhouse.New(clickhouse.Options{
 		URL: cfg.ClickHouse.URL, Database: cfg.ClickHouse.Database, User: cfg.ClickHouse.User,
 		Password: cfg.ClickHouse.Password, Timeout: max(cfg.ClickHouse.Timeout, cfg.Query.Timeout+5*time.Second),

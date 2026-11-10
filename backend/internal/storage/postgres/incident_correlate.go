@@ -62,8 +62,12 @@ func correlateOutcome(ctx context.Context, tx pgx.Tx, r alert.Rule, out alert.Ou
 				byKey[t.Key] = ref
 			}
 		case t.To == alert.StateResolved && t.From == alert.StateFiring:
-			if err := closeLink(ctx, tx, r, t.Key, "resolved", &t, now); err != nil {
+			refs, err := closeLink(ctx, tx, r, t.Key, "resolved", &t, now)
+			if err != nil {
 				return nil, nil, err
+			}
+			if len(refs) > 0 {
+				byTransition[i] = refs[0] // the resolved notice names the incident too
 			}
 		}
 	}
@@ -207,36 +211,36 @@ func alertPayload(r alert.Rule, t alert.Transition) incident.AlertPayload {
 
 // closeLink closes the rule and key's open links: "resolved" when the state
 // resolved (an alert_resolved event), else alert_closed with the reason.
-func closeLink(ctx context.Context, tx pgx.Tx, r alert.Rule, key, reason string, t *alert.Transition, now time.Time) error {
-	rows, err := tx.Query(ctx, `UPDATE incident_alerts SET closed_at = $3, close_reason = $4
-		WHERE rule_key = $1 AND state_key = $2 AND closed_at IS NULL RETURNING incident_id::text`, r.ID, key, now, reason)
+func closeLink(ctx context.Context, tx pgx.Tx, r alert.Rule, key, reason string, t *alert.Transition, now time.Time) ([]IncidentRef, error) {
+	rows, err := tx.Query(ctx, `UPDATE incident_alerts a SET closed_at = $3, close_reason = $4 FROM incidents i
+		WHERE i.id = a.incident_id AND a.rule_key = $1 AND a.state_key = $2 AND a.closed_at IS NULL RETURNING i.id::text, i.number`, r.ID, key, now, reason)
 	if err != nil {
-		return fmt.Errorf("postgres: close incident link: %w", err)
+		return nil, fmt.Errorf("postgres: close incident link: %w", err)
 	}
-	var ids []string
+	var refs []IncidentRef
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var ref IncidentRef
+		if err := rows.Scan(&ref.ID, &ref.Number); err != nil {
 			rows.Close()
-			return err
+			return nil, err
 		}
-		ids = append(ids, id)
+		refs = append(refs, ref)
 	}
 	rows.Close()
-	for _, id := range ids {
+	for _, ref := range refs {
 		if t != nil {
-			err = addAlertEvent(ctx, tx, id, incident.EvAlertResolved, now, alertPayload(r, *t))
+			err = addAlertEvent(ctx, tx, ref.ID, incident.EvAlertResolved, now, alertPayload(r, *t))
 		} else {
-			_, err = addEvent(ctx, tx, id, incident.EvAlertClosed, nil, now, incident.AlertClosedPayload{RuleID: r.ID, RuleName: r.Name, Key: key, Reason: reason}, nil, "")
+			_, err = addEvent(ctx, tx, ref.ID, incident.EvAlertClosed, nil, now, incident.AlertClosedPayload{RuleID: r.ID, RuleName: r.Name, Key: key, Reason: reason}, nil, "")
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if err := refreshAllResolved(ctx, tx, id, now); err != nil {
-			return err
+		if err := refreshAllResolved(ctx, tx, ref.ID, now); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+	return refs, nil
 }
 
 // closeRuleLinks closes every open link of a rule (disable, delete, or an
@@ -262,7 +266,7 @@ func closeRuleLinks(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string,
 		}
 	}
 	for _, k := range keys {
-		if err := closeLink(ctx, tx, r, k, reason, nil, now); err != nil {
+		if _, err := closeLink(ctx, tx, r, k, reason, nil, now); err != nil {
 			return err
 		}
 	}

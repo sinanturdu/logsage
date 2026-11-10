@@ -802,7 +802,6 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 		if incidentOf, incidentOfKey, err = correlateOutcome(ctx, tx, r, out, s.incidentConfig(), at); err != nil {
 			return err
 		}
-		_, _ = incidentOf, incidentOfKey
 		ids := make([]int64, len(out.Transitions))
 		for i, t := range out.Transitions {
 			if err := tx.QueryRow(ctx, `INSERT INTO alert_events (project_id, rule_id, rule_name, rule_type, dedup_key, from_state, to_state, value, threshold, window_start, window_end, fingerprint, template, reason)
@@ -812,10 +811,24 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 				return fmt.Errorf("postgres: write event: %w", err)
 			}
 		}
+		cfg := s.incidentConfig()
 		for _, n := range notes {
 			var eventID *int64
 			if n.Transition >= 0 && n.Transition < len(ids) {
 				eventID = &ids[n.Transition]
+			}
+			// The incident goes into the payload before the row is written:
+			// it is signed with the rest and the same on every retry.
+			ref, ok := incidentOf[n.Transition]
+			if !ok && n.Transition < 0 {
+				ref, ok = incidentOfKey[n.Key]
+			}
+			if ok {
+				body, err := alert.WithIncident(n.Payload, alert.PayloadIncident{ID: ref.ID, Number: ref.Number, URL: alert.IncidentLink(cfg.DashboardURL, r.ProjectSlug, ref.Number)})
+				if err != nil {
+					return err
+				}
+				n.Payload = body
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO alert_notifications (project_id, event_id, channel_id, channel_name, idempotency_key, event_type, payload)
 				VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (idempotency_key) DO NOTHING`,

@@ -114,6 +114,7 @@ type NewNotification struct {
 	Event          string
 	Payload        []byte
 	Transition     int
+	Key            string // the state key (to find a repeat's incident)
 }
 
 // Claimed is an outbox row a worker owns until its lease ends.

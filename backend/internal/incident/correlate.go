@@ -48,6 +48,7 @@ type Config struct {
 	ReopenWindow time.Duration
 	MaxOpen      int
 	Retention    time.Duration // resolved incidents older than this are deleted
+	DashboardURL string        // PUBLIC_DASHBOARD_URL, for incident links in payloads
 }
 
 // DefaultConfig is the documented default.
