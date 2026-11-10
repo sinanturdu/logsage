@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/sinanturdu/logsage/backend/internal/alert"
+	"github.com/sinanturdu/logsage/backend/migrations"
 )
 
 type alertFixture struct {
@@ -374,5 +378,110 @@ func TestRuleSummaryAndNotificationsByRule(t *testing.T) {
 	}
 	if ns, err := f.st.Notifications(ctx, f.project.ID, "", quiet.ID, "", 0, 10); err != nil || len(ns) != 0 {
 		t.Fatalf("other rule: %+v %v", ns, err)
+	}
+}
+
+// upTo is the embedded migrations up to and including the named one.
+func upTo(t *testing.T, last string) fs.FS {
+	t.Helper()
+	all := migrations.Postgres()
+	out := fstest.MapFS{}
+	entries, err := fs.ReadDir(all, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() > last+".sql" {
+			continue
+		}
+		b, err := fs.ReadFile(all, e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[e.Name()] = &fstest.MapFile{Data: b}
+	}
+	return out
+}
+
+// Migration 0005 turns the old free-text errors (which could hold part of a
+// receiver's body) into categories and drops the column.
+func TestErrorTextBecomesACategory(t *testing.T) {
+	pool, _ := tempDB(t)
+	ctx := context.Background()
+	if _, err := Migrate(ctx, pool, upTo(t, "0004_alerts")); err != nil {
+		t.Fatal(err)
+	}
+	st := NewStore(pool, 10*time.Second)
+	u, _ := st.CreateUser(ctx, "o@example.com", fakePHC)
+	p, _ := st.CreateProjectWithOwner(ctx, "Shop", "shop", u.ID)
+	for i, r := range []struct {
+		status string
+		code   any
+		text   string
+	}{
+		{"failed", 400, `HTTP 400 <html lang="tr-TR"><title>Internal admin</title>`},
+		{"pending", 503, `HTTP 503 {"token":"lsk_LEAKED"}`},
+		{"pending", 429, "HTTP 429 slow down"},
+		{"failed", nil, "post https://h.example.com: timed out"},
+		{"cancelled", nil, "channel deleted"},
+		{"sent", 204, ""},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO alert_notifications (project_id, channel_name, idempotency_key, event_type, payload, status, response_status, last_error)
+			VALUES ($1, 'ops', $2, 'alert.test', '{}', $3, $4, $5)`, p.ID, fmt.Sprintf("k%d", i), r.status, r.code, r.text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Migrate(ctx, pool, migrations.Postgres()); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := pool.Query(ctx, "SELECT idempotency_key, error_category, row_to_json(n)::text FROM alert_notifications n ORDER BY idempotency_key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string]string{}
+	for rows.Next() {
+		var k, c, raw string
+		if err := rows.Scan(&k, &c, &raw); err != nil {
+			t.Fatal(err)
+		}
+		got[k] = c
+		for _, m := range []string{"Internal admin", "lsk_LEAKED", "slow down", "timed out", "last_error"} {
+			if strings.Contains(raw, m) {
+				t.Errorf("%s still holds %q: %s", k, m, raw)
+			}
+		}
+	}
+	want := map[string]string{"k0": "http_4xx", "k1": "http_5xx", "k2": "rate_limited", "k3": "unknown", "k4": "canceled", "k5": ""}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, err := pool.Exec(ctx, "UPDATE alert_notifications SET error_category = 'HTTP 400 <html>' WHERE idempotency_key = 'k0'"); err == nil {
+		t.Fatal("the closed list must be checked by the database")
+	}
+}
+
+func TestFinishedDeliveryKeepsOnlyCodeAndCategory(t *testing.T) {
+	f, _ := newAlertFixture(t)
+	ctx := context.Background()
+	r := f.rule(t, "errors")
+	now := time.Now().UTC()
+	notes := []alert.NewNotification{{ChannelID: f.channel.ID, ChannelName: "ops", IdempotencyKey: "fin1", Event: alert.EventFiring, Payload: []byte(`{}`), Transition: -1}}
+	if err := f.st.ApplyOutcome(ctx, r, alert.Window{From: now.Add(-time.Minute), To: now}, alert.Outcome{}, notes, now); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := f.st.ClaimNotifications(ctx, "w1", 1, now.Add(time.Second), time.Minute)
+	if err != nil || len(claimed) != 1 {
+		t.Fatal(claimed, err)
+	}
+	code := 400
+	if err := f.st.FinishNotification(ctx, claimed[0].ID, "w1", alert.DeliveryResult{Status: alert.OutFailed, ResponseStatus: &code, ErrorCategory: alert.ErrHTTP4xx, NextAttemptAt: now, CountAttempt: true}); err != nil {
+		t.Fatal(err)
+	}
+	ns, err := f.st.Notifications(ctx, f.project.ID, "", "", "", 0, 10)
+	if err != nil || len(ns) != 1 || ns[0].ErrorCategory != alert.ErrHTTP4xx || ns[0].ResponseStatus == nil || *ns[0].ResponseStatus != 400 {
+		t.Fatalf("%+v %v", ns, err)
 	}
 }

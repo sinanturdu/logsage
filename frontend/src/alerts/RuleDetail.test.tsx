@@ -35,7 +35,7 @@ describe('rule detail', () => {
       [`GET ${B}/notifications`]: (q) =>
         q.params.get('before')
           ? page('notifications', [delivery(1, { status: 'sent' })])
-          : page('notifications', [delivery(2, { status: 'failed', attempts: 8, response_status: 500, last_error: 'post https://hooks.example.com: status 500' })], 2),
+          : page('notifications', [delivery(2, { status: 'failed', attempts: 8, response_status: 500, error_category: 'http_5xx' })], 2),
     })
     renderApp('/projects/shop/alerts/rules/r1')
     expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('New groups')
@@ -63,7 +63,7 @@ describe('rule detail', () => {
     const deliveries = screen.getByRole('table', { name: 'Notifications of this rule, newest first' })
     const head = within(deliveries).getAllByRole('columnheader').map((h) => h.textContent)
     expect(head).toEqual(['Created (UTC)', 'Channel', 'Event', 'Status', 'Attempts', 'Last HTTP status', 'Next attempt (UTC)'])
-    expect(within(deliveries).getAllByRole('row')[1]?.textContent).toContain('✕ failed: post https://hooks.example.com: status 500')
+    expect(within(deliveries).getAllByRole('row')[1]?.textContent).toContain('✕ failed: The receiver answered with HTTP 500.')
     await user.click(screen.getByRole('button', { name: 'Load more deliveries' }))
     await waitFor(() => expect(within(deliveries).getAllByRole('row').length).toBe(3))
     expect(screen.queryByRole('button', { name: 'Load more deliveries' })).toBeNull()
@@ -110,14 +110,14 @@ describe('activity', () => {
       [`GET ${B}/rules`]: () => json(200, { rules: [rule('r1', { name: 'Errors' }), rule('r2', { name: 'Volume' })] }),
       [`GET ${B}/events`]: (q) => (q.params.get('before') ? page('events', [event(1, { from: 'firing', to: 'resolved', reason: 'rule_disabled' })]) : page('events', [event(2)], 2)),
       [`GET ${B}/notifications`]: (q) =>
-        q.params.get('status') === 'failed' ? page('notifications', [delivery(4, { status: 'failed', attempts: 8, response_status: 503, rule_name: 'Errors' })]) : page('notifications', []),
+        q.params.get('status') === 'failed' ? page('notifications', [delivery(4, { status: 'failed', attempts: 8, response_status: 503, error_category: 'http_5xx', rule_name: 'Errors' })]) : page('notifications', []),
     })
     renderApp('/projects/shop/alerts?tab=activity')
     const table = await screen.findByRole('table', { name: 'State changes of the alert rules, newest first' })
     expect(within(table).getAllByRole('row')[1]?.textContent).toContain('2026-11-09 12:00:00 UTC')
     expect(within(table).getAllByRole('row')[1]?.textContent).toContain('56.52% (threshold 20%)')
     const failed = screen.getByRole('region', { name: /Failed deliveries/ })
-    expect(failed.textContent).toContain('✕ failed Errors to ops c1, alert.firing, after 8 attempts, HTTP 503')
+    expect(failed.textContent).toContain('✕ failed Errors to ops c1, alert.firing, after 8 attempts. The receiver answered with HTTP 503. (2026-11-09 12:00:01 UTC)')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Load more' }))
     await waitFor(() => expect(within(table).getAllByRole('row').length).toBe(3))
@@ -206,5 +206,21 @@ describe('palette commands for alerts', () => {
     await user.keyboard('Create alert rule')
     await user.keyboard('{Enter}')
     expect(await screen.findByRole('dialog', { name: 'Create an alert rule' })).toBeTruthy()
+  })
+})
+
+describe('receiver answers are never shown', () => {
+  it('ignores any text field an older server still sends', async () => {
+    const leak = '<html lang="tr-TR"><title>Internal admin</title> lsk_LEAKED'
+    mockAlerts({
+      [`GET ${B}/rules/r1`]: () => json(200, { rule: rule('r1') }),
+      [`GET ${B}/notifications`]: () =>
+        page('notifications', [{ ...delivery(2, { status: 'failed', response_status: 400, error_category: 'http_4xx' }), last_error: `HTTP 400 ${leak}` }]),
+    })
+    renderApp('/projects/shop/alerts/rules/r1')
+    const table = await screen.findByRole('table', { name: 'Notifications of this rule, newest first' })
+    expect(within(table).getAllByRole('row')[1]?.textContent).toContain('✕ failed: The receiver answered with HTTP 400.')
+    expect(document.body.textContent).not.toContain('Internal admin')
+    expect(document.body.textContent).not.toContain('lsk_LEAKED')
   })
 })

@@ -19,6 +19,7 @@ import {
   useLastDeliveries,
   useRules,
   writeError,
+  failureSentence,
   TEST_LIMIT,
   type Channel,
   type Rule,
@@ -382,6 +383,7 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
                         <>
                           <DeliveryMark status={d.status} />
                           {d.response_status !== null && <> (HTTP {d.response_status})</>}, <Ago iso={d.created_at} now={now} />
+                          {d.status !== 'sent' && failureSentence(d) && <span className="muted"> {failureSentence(d)}</span>}
                           {d.test && ' (test)'}
                         </>
                       ) : last[i]?.isPending ? (
@@ -458,13 +460,7 @@ function ActivityTab({ slug, rules, rule, onRule }: { slug: string; rules: Rule[
               <li key={d.id}>
                 <DeliveryMark status="failed" /> <LogText text={d.rule_name || 'test'} mono={false} /> to <LogText text={d.channel_name} mono={false} />, {d.event}, after{' '}
                 {d.attempts} {d.attempts === 1 ? 'attempt' : 'attempts'}
-                {d.response_status !== null && <>, HTTP {d.response_status}</>}
-                {d.last_error && (
-                  <>
-                    : <LogText text={d.last_error} />
-                  </>
-                )}{' '}
-                (<Utc iso={d.created_at} />)
+                .{failureSentence(d) && ` ${failureSentence(d)}`} (<Utc iso={d.created_at} />)
               </li>
             ))}
           </ul>

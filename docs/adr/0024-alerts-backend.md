@@ -88,7 +88,7 @@ pending --cond false--> ok (no notification)
   - `id`, `project_id`, `event_id`, `channel_id`, `idempotency_key` (unique);
   - `payload jsonb`, which holds no secrets;
   - `status` (`pending`, `sending`, `sent`, `failed` or `cancelled`), `attempts`, `next_attempt_at`, `claimed_by`, `claimed_until`;
-  - `last_error` (short, no URL), `sent_at`, `response_status`, `test bool`.
+  - `error_category` (a closed list since K2.2, see the addendum), `sent_at`, `response_status`, `test bool`.
 - **`audit_log`:** rows for `alert_rule.create/update/delete/enable/disable` and `channel.create/update/delete/test`, with no secrets or URLs in `detail`.
 - **Retention:** events and sent or failed outbox rows older than `ALERTS_RETENTION` (30 days) are deleted by the evaluator once an hour.
 
@@ -106,7 +106,7 @@ pending --cond false--> ok (no notification)
   - The webhook URL is encrypted the same way, since it often holds a token (Slack).
 - **The key:** `ALERTS_SECRET_KEY` is 32 bytes, base64. It is required by `cmd/api` and `cmd/alerts` when alerts are enabled (`ALERTS_ENABLED=true`), and startup fails without it.
   - **Rotation:** ciphertexts carry a 1-byte key id. `ALERTS_SECRET_KEY_PREVIOUS` would be accepted for decryption, and an admin command would re-encrypt. In K1 only key id 1 exists and there is no re-encryption command; the format leaves room for it.
-- **Never logged:** secrets, URLs (only scheme and host are logged, never path, query or userinfo), and response bodies (only the status code and a capped, sanitized first 200 bytes go into `last_error`).
+- **Never logged:** secrets, URLs (only scheme and host are logged, never path, query or userinfo), and response bodies (since K2.2 nothing of a body is kept: only the status code and a category, see the addendum).
 
 ### 5. SSRF protection (`internal/alert/outbound`)
 - **URL rules:**
@@ -185,7 +185,7 @@ Viewers read; owners and admins write; non-members get 404. POSTs need the JSON 
 | `POST …/channels/{id}/test` | Send a test notification (`"test": true`, event `alert.test`), at most 5 per channel per 10 min (429 with `Retry-After`). It goes through the outbox and returns the notification id. |
 | `GET …/alerts/states` | The current states that are pending or firing. |
 | `GET …/alerts/events?rule=&from=&to=&cursor=` | The transitions, newest first. |
-| `GET …/alerts/notifications?channel=&status=&cursor=` | The delivery history: status, attempts, response status and the short `last_error`. |
+| `GET …/alerts/notifications?channel=&status=&cursor=` | The delivery history: status, attempts, response status and `error_category`. |
 
 **`docs/architecture.md` changes:**
 - An "Alerts (K1)" section: rule types, evaluation, state machine, delivery and SSRF.
@@ -213,6 +213,16 @@ Viewers read; owners and admins write; non-members get 404. POSTs need the JSON 
 - `ALERTS_ENABLED` (default false). With it true, `ALERTS_SECRET_KEY` must be 32 bytes, base64. If the key is missing or malformed, `cmd/alerts` refuses to start, and the alert endpoints of `cmd/api` answer 503 with "alerts are not configured: ALERTS_SECRET_KEY is missing or not 32 bytes base64…". The key is never logged. With alerts off they answer 503 "alerts are disabled…".
 - `README.md` and `.env.example` show how to make a key in PowerShell (`System.Security.Cryptography.RandomNumberGenerator`, then base64) and say that losing or changing it makes the stored channel URLs and secrets unreadable: channels must then be recreated.
 - `cmd/alerts` is its own compose profile (`alerts`), so the default stack does not start it without a key.
+
+## Addendum: receiver answers are never kept (K2.2)
+
+The first version stored a cleaned first part of a failed response's body in `last_error` and showed it in the dashboard. That turns blind SSRF into visible SSRF: a public host the SSRF rules allow can proxy to an internal service, and its page would come back through the delivery history. It was also noise ("HTTP 400 <html lang=...").
+
+- `outbound.Response` holds the status code only. The body is still read, at most `MaxResponse` bytes so the connection ends cleanly, and discarded.
+- A failure is recorded as the status code (when there is one) and `error_category`, from a closed list the database checks: `http_4xx`, `http_5xx`, `timeout`, `connect_error`, `tls_error`, `blocked_address`, `rate_limited`, `canceled` and `unknown`. `alert.Classify` looks only at error types, never at error text.
+- No text from a delivery attempt reaches a log line, an API response or a row. A decryption failure is logged without detail and recorded as `unknown`.
+- Migration 0005 converts existing `last_error` rows to a category, from the status code where there is one, and drops the column.
+- Tests use receivers that answer HTML, JSON with a secret-looking value and multi-megabyte bodies, for 4xx, 5xx, 429 and a redirect, on both webhook and Slack channels. They check that none of it reaches the result, its JSON or the logs.
 
 ## Consequences
 - Alerts need a second long-running binary (`cmd/alerts`) and a secret key; the default stack runs without them.

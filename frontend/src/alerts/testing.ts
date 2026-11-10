@@ -71,7 +71,7 @@ export const delivery = (id: number, extra: Partial<Delivery> = {}): Delivery =>
   status: 'sent',
   attempts: 1,
   response_status: 204,
-  last_error: '',
+  error_category: '',
   test: false,
   idempotency_key: `k${id}`,
   created_at: '2026-11-09T12:00:01Z',

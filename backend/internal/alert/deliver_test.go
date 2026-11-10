@@ -146,9 +146,7 @@ func TestRetriesBackoffAndFinalFailure(t *testing.T) {
 		reply  func(string) (outbound.Response, error)
 		status string
 	}{
-		{"500 retries", func(string) (outbound.Response, error) {
-			return outbound.Response{Status: 500, Body: []byte("oops\n\x00")}, nil
-		}, OutPending},
+		{"500 retries", func(string) (outbound.Response, error) { return outbound.Response{Status: 500}, nil }, OutPending},
 		{"429 retries", func(string) (outbound.Response, error) { return outbound.Response{Status: 429}, nil }, OutPending},
 		{"408 retries", func(string) (outbound.Response, error) { return outbound.Response{Status: 408}, nil }, OutPending},
 		{"timeout retries", func(string) (outbound.Response, error) { return outbound.Response{}, errors.New("timed out") }, OutPending},
@@ -171,11 +169,8 @@ func TestRetriesBackoffAndFinalFailure(t *testing.T) {
 	row := Claimed{ID: 1, ProjectID: "p1", Attempts: 7, Payload: payloadBytes(t), Channel: sealedChannel(t, KindWebhook, "https://h.example.com", "s")}
 	d, store, _, _ := newDeliverer(t, []Claimed{row}, func(string) (outbound.Response, error) { return outbound.Response{Status: 503}, nil }, DeliverOptions{MaxAttempts: 8})
 	_, _ = d.RunOnce(context.Background())
-	if r := store.results[1]; r.Status != OutFailed || !strings.Contains(r.LastError, "HTTP 503") || !strings.Contains(r.LastError, "no attempts left") {
+	if r := store.results[1]; r.Status != OutFailed || r.ErrorCategory != ErrHTTP5xx || r.ResponseStatus == nil || *r.ResponseStatus != 503 {
 		t.Fatalf("final %+v", r)
-	}
-	if got := responseError(500, []byte("a\x00b\nc"+strings.Repeat("x", 300))); len(got) > 140 || strings.ContainsAny(got, "\x00\n") {
-		t.Fatalf("error text %q", got)
 	}
 }
 
@@ -222,7 +217,7 @@ func TestDecryptFailureFails(t *testing.T) {
 	ch.URL[len(ch.URL)-1] ^= 1
 	d, store, post, _ := newDeliverer(t, []Claimed{{ID: 1, ProjectID: "p1", Payload: payloadBytes(t), Channel: ch}}, ok204, DeliverOptions{})
 	_, _ = d.RunOnce(context.Background())
-	if r := store.results[1]; r.Status != OutFailed || !strings.Contains(r.LastError, "ALERTS_SECRET_KEY") || len(post.got) != 0 {
+	if r := store.results[1]; r.Status != OutFailed || r.ErrorCategory != ErrUnknown || len(post.got) != 0 {
 		t.Fatalf("%+v", r)
 	}
 }

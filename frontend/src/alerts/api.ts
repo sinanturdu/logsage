@@ -79,12 +79,42 @@ export type Delivery = {
   status: DeliveryStatus
   attempts: number
   response_status: number | null
-  last_error: string
+  /** A closed category, never text from the receiver (ADR 0024 addendum). */
+  error_category: ErrorCategory | ''
   test: boolean
   idempotency_key: string
   created_at: string
   next_attempt_at: string
   sent_at: string | null
+}
+
+export const ERROR_CATEGORIES = ['http_4xx', 'http_5xx', 'timeout', 'connect_error', 'tls_error', 'blocked_address', 'rate_limited', 'canceled', 'unknown'] as const
+export type ErrorCategory = (typeof ERROR_CATEGORIES)[number]
+
+/**
+ * A delivery failure in one plain sentence, from the status code and the
+ * category only: LogSage never stores or shows what a receiver answered.
+ */
+export function failureSentence(d: Pick<Delivery, 'response_status' | 'error_category'>): string {
+  const code = d.response_status
+  switch (d.error_category) {
+    case '':
+      return ''
+    case 'timeout':
+      return code ? `The receiver answered with HTTP ${code} (request timeout).` : 'The receiver did not answer in time.'
+    case 'connect_error':
+      return 'LogSage could not connect to the receiver.'
+    case 'tls_error':
+      return "The receiver's TLS certificate could not be verified."
+    case 'blocked_address':
+      return 'This address is not allowed any more.'
+    case 'rate_limited':
+      return code ? `The receiver answered with HTTP ${code} (too many requests).` : "Waiting: the channel's limit of sends per minute was reached."
+    case 'canceled':
+      return 'Cancelled: the rule or the channel changed.'
+    default:
+      return code ? `The receiver answered with HTTP ${code}.` : 'The delivery failed.'
+  }
 }
 
 export const HISTORY_PAGE = 50

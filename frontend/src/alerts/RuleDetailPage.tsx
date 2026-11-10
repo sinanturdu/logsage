@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
 import { TemplateText } from '../groups/parts'
-import { alertsKey, alertsProblem, mergePages, setRuleEnabled, useChannels, useDeliveries, useEvents, useRule, useStates, writeError } from './api'
+import { alertsKey, alertsProblem, failureSentence, mergePages, setRuleEnabled, useChannels, useDeliveries, useEvents, useRule, useStates, writeError } from './api'
 import { RuleConfirmDialog, shownState } from './AlertsPage'
 import { TYPE_LABEL, alertsPath, conditionSummary, humanDuration, isGroupType, parseGoDuration } from './model'
 import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
@@ -253,11 +253,7 @@ export function RuleDetailPage() {
                   <td>{d.event}</td>
                   <td className="wrap">
                     <DeliveryMark status={d.status} />
-                    {d.last_error && (
-                      <>
-                        : <LogText text={d.last_error} />
-                      </>
-                    )}
+                    {failureSentence(d) && <>: {failureSentence(d)}</>}
                   </td>
                   <td>{d.attempts}</td>
                   <td>{d.response_status ?? '–'}</td>
