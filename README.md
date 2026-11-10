@@ -93,6 +93,9 @@ Keyboard shortcuts (press `?` in the dashboard for the same list):
 | `Enter` | error groups | open the selected group, or expand a combined row |
 | `j` / `k` | alerts | select the next / previous row |
 | `Enter` | alerts | open the selected rule |
+| `/` | incidents | focus the title search |
+| `j` / `k` | incidents | select the next / previous incident |
+| `Enter` | incidents | open the selected incident |
 
 - `up` creates `.env` if it is missing (random secrets, `COOKIE_SECURE=false`) and starts the stack.
 - It then runs the migrations and creates a dev user, the project `demo` and an ingest key, unless they already exist.
@@ -107,7 +110,7 @@ Every command is safe to run again.
 
 ### Try incidents locally
 
-With alerts running (below), create a rule with `"open_incident": true` (the API; the dashboard gets incidents in L2) and run `dev.ps1 alerts-demo`. The firing alerts open one incident with the error group linked; `GET /api/projects/demo/incidents` lists it, `GET .../incidents/1` shows its alerts, groups, suggested groups and timeline, and the webhook payloads at the sink name it (`"incident": {"number": 1, ...}`). Acknowledge, comment and resolve it with `POST .../incidents/1/acknowledge`, `.../comments` and `.../resolve` (send the `version` from the last read).
+With alerts running (below), turn on "Open an incident when this rule fires" in a rule (or send `"open_incident": true` to the API) and run `dev.ps1 alerts-demo`. Open **Incidents** in the header: the list shows the new incident, and its page shows the linked alerts and groups, suggested groups (biggest groups in the same services and time, not confirmed causes) and the timeline, with Acknowledge, Resolve, Assign and comments for owners and admins. Through the API: The firing alerts open one incident with the error group linked; `GET /api/projects/demo/incidents` lists it, `GET .../incidents/1` shows its alerts, groups, suggested groups and timeline, and the webhook payloads at the sink name it (`"incident": {"number": 1, ...}`). Acknowledge, comment and resolve it with `POST .../incidents/1/acknowledge`, `.../comments` and `.../resolve` (send the `version` from the last read).
 
 ### Try alerts locally
 
