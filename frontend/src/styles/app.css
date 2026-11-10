@@ -441,6 +441,30 @@ table.alerts tr.failed td { background: var(--white); }
 table.alerts .num, table.alerts th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .counter-over { color: var(--danger); font-weight: 500; }
 .incidents-page, .incident-page { max-width: 1240px; }
+.incident-title { font-size: var(--text-lg); margin: 0 0 var(--space-1); overflow-wrap: anywhere; }
+.incident-marks { margin: 0 0 var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: baseline; }
+.status-actions select { padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; max-width: 18rem; }
+.status-actions { flex-wrap: wrap; align-items: center; }
+.notice.calm { border-left-color: var(--pen); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.notice.stale { border-left-color: var(--level-warn); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-3); }
+.incident-sections { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--space-6); }
+.incident-sections > section { min-width: 0; }
+.incident-sections h2 { font-size: var(--text-base); font-weight: 700; margin: var(--space-5) 0 var(--space-2); }
+.suggestions { margin: 0; padding-left: var(--space-5); font-size: var(--text-md); }
+.suggestions li { margin-bottom: var(--space-2); overflow-wrap: anywhere; }
+.suggestions .button { padding: 0 6px; margin-left: var(--space-2); }
+.incident-timeline { list-style: none; padding: 0; }
+.incident-timeline .tl { border-left: 2px solid var(--grid); padding: 2px 0 var(--space-2) var(--space-3); }
+.incident-timeline .tl-comment { border-left-color: var(--pen); }
+.tl-line { margin: 0; }
+.comment-body { background: var(--white); border: 1px solid var(--grid); border-radius: var(--radius); padding: var(--space-2) var(--space-3); margin-top: var(--space-1); white-space: pre-wrap; overflow-wrap: anywhere; display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+.comment-form textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--white); color: var(--ink); font: inherit; }
+.comment-form textarea[aria-invalid='true'] { border: 2px solid var(--danger); }
+.skeleton .sk-line { height: 14px; background: var(--grid); border-radius: var(--radius); margin: var(--space-3) 0; width: 60%; }
+.skeleton .sk-wide { height: 22px; width: 80%; }
+@media (max-width: 900px) {
+  .incident-sections { grid-template-columns: minmax(0, 1fr); }
+}
 .project-nav a.nav-open, .project-nav a.nav-open:visited, .project-nav a.nav-open:hover { color: var(--ink); font-weight: 700; }
 /* The firing count keeps its red in every state; the current page still shows the pen underline. */
 .project-nav a.nav-firing, .project-nav a.nav-firing:visited, .project-nav a.nav-firing:hover { color: var(--level-error); font-weight: 700; }

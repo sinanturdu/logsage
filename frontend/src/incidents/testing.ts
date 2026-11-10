@@ -14,7 +14,7 @@ import type { Detail, Incident, LinkedAlert, LinkedGroup, Member, Severity, Sugg
 export const XSS = '<img src=x onerror="window.__xss=1"><script>window.__xss=1</script>'
 export const SLUG = 'shop'
 export const B = `/api/projects/${SLUG}/incidents`
-export const ME = 'u-alice'
+export const ME = 'u1' // the signed-in user of test/util (alice)
 export const MEMBERS: Member[] = [
   { user_id: ME, email: 'alice@example.com', role: 'owner' },
   { user_id: 'u-bob', email: 'bob@example.com', role: 'admin' },

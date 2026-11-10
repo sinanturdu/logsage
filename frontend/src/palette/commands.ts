@@ -18,6 +18,9 @@ export type ExplorerContext = {
   hasFilters: boolean
 }
 
+/** An incident's page: who may act and its status. */
+export type IncidentContext = { canManage: boolean; status: 'open' | 'acknowledged' | 'resolved' }
+
 /** The error groups list (ADR 0023). */
 export type GroupsContext = { status: StatusFilter; sort: Sort; newOnly: boolean; combine: boolean }
 
@@ -28,6 +31,8 @@ export type AppContext = {
   explorer: ExplorerContext | null
   /** Set on the error groups list. */
   groups?: GroupsContext | null
+  /** Set on an incident's page (ADR 0027). */
+  incident?: IncidentContext | null
   /** Owners and admins of the current project can create alert rules and channels. */
   canManageAlerts?: boolean
 }
@@ -50,6 +55,9 @@ export type Action =
   | { type: 'group-sort'; sort: Sort }
   | { type: 'group-new'; on: boolean }
   | { type: 'group-combine'; on: boolean }
+  | { type: 'incident-action'; action: 'acknowledge' | 'resolve' | 'reopen' }
+  | { type: 'incident-assign-me' }
+  | { type: 'incident-copy-link' }
 
 export type Group = 'Navigation' | 'Time range' | 'Filters' | 'View' | 'Account' | 'Help'
 export type Command = { id: string; label: string; keywords: readonly string[]; group: Group; action: Action }
