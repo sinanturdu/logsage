@@ -7,7 +7,7 @@ import { TemplateText } from '../groups/parts'
 import { alertsKey, alertsProblem, failureSentence, mergePages, setRuleEnabled, useChannels, useDeliveries, useEvents, useRule, useStates, writeError } from './api'
 import { RuleConfirmDialog, shownState } from './AlertsPage'
 import { TYPE_LABEL, alertsPath, conditionSummary, humanDuration, isGroupType, parseGoDuration } from './model'
-import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
+import { Ago, Checked, DeliveryMark, ProblemPanel, RuleStateCell, StateMark, Utc, formatValue, type ShownState } from './parts'
 import { RuleFormDialog } from './RuleForm'
 
 const groupHref = (slug: string, fp: string) => `/projects/${encodeURIComponent(slug)}/groups/${encodeURIComponent(fp)}`
@@ -79,7 +79,10 @@ export function RuleDetailPage() {
         <LogText text={r.name} mono={false} />
       </h1>
       <p>
-        <StateMark state={shownState(r) as ShownState} /> <span className="muted">since</span> <Ago iso={r.last_change_at} now={now} none="created, no changes yet" />
+        <RuleStateCell rule={r} state={shownState(r) as ShownState} now={now} /> <span className="muted">since</span> <Ago iso={r.last_change_at} now={now} none="created, no changes yet" />
+      </p>
+      <p className="checked-line">
+        <Checked rule={r} now={now} />
       </p>
       <dl className="facts">
         <div>

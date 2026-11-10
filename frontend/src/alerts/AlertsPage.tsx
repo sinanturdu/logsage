@@ -27,7 +27,7 @@ import {
 import { ApiError } from '../api/client'
 import { ChannelFormDialog, DeleteChannelDialog, RotateDialog, kindLabel } from './ChannelDialogs'
 import { TABS, TAB_LABEL, TYPE_LABEL, conditionSummary, parseAlertsState, parseGoDuration, rulePath, serializeAlertsState, type AlertsState, type Tab } from './model'
-import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
+import { Ago, Checked, DeliveryMark, ProblemPanel, RuleStateCell, StateMark, Utc, formatValue, type ShownState } from './parts'
 import { CREATE_A_CHANNEL, RuleFormDialog } from './RuleForm'
 
 export const EMPTY_RULES = 'No alert rules yet. Create a channel first, then a rule that notifies it.'
@@ -252,6 +252,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                 <th scope="col">Type</th>
                 <th scope="col">Condition</th>
                 <th scope="col">State</th>
+                <th scope="col">Checked</th>
                 <th scope="col">Last change</th>
                 <th scope="col">Enabled</th>
                 <th scope="col">Channels</th>
@@ -275,8 +276,11 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                     <LogText text={conditionSummary(r.type, r.params, parseGoDuration(r.window) ?? 0)} mono={false} />
                   </td>
                   <td>
-                    <StateMark state={shownState(r)} />
+                    <RuleStateCell rule={r} state={shownState(r)} now={now} />
                     {r.enabled && r.firing + r.pending > 1 && <span className="muted"> ({r.firing} firing, {r.pending} pending)</span>}
+                  </td>
+                  <td className="wrap">
+                    <Checked rule={r} now={now} />
                   </td>
                   <td>
                     <Ago iso={r.last_change_at} now={now} none="no changes yet" />

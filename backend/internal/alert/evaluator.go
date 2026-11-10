@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/query"
 )
 
 // RuleStore is what the evaluator needs from storage.
@@ -107,14 +110,16 @@ func (e *Evaluator) Evaluate(ctx context.Context, r Rule, now time.Time) error {
 	obs, err := Observe(ctx, r, e.q, e.store, win)
 	if err != nil {
 		e.errs.Add(1)
-		e.log.Warn("alert rule evaluation failed", "rule", r.ID, "project", r.ProjectSlug, "err", err)
-		return e.apply(ctx, r, win, Outcome{}, nil, next)
+		category := EvalErrorCategory(err)
+		e.log.Warn("alert rule evaluation failed", "rule", r.ID, "project", r.ProjectSlug, "category", category)
+		return e.apply(ctx, r, win, Outcome{EvalError: category}, nil, next)
 	}
 	prev, err := e.store.RuleStates(ctx, r.ID)
 	if err != nil {
 		return err
 	}
 	out := Step(r, prev, obs, now)
+	out.EvaluatedAt = now
 	var notes []NewNotification
 	if len(out.Notices) > 0 {
 		channels, err := e.store.RuleChannels(ctx, r.ID)
@@ -144,6 +149,28 @@ func (e *Evaluator) apply(ctx context.Context, r Rule, win Window, out Outcome, 
 		return nil
 	}
 	return err
+}
+
+// Categories of a failed evaluation (the heartbeat's last_eval_error).
+const (
+	EvalQueryTimeout     = "query_timeout"
+	EvalQueryRejected    = "query_rejected"
+	EvalStoreUnavailable = "store_unavailable"
+	EvalUnknown          = "unknown"
+)
+
+// EvalErrorCategory is the category of a query error, from the query
+// service's own classification; the error text is never kept.
+func EvalErrorCategory(err error) string {
+	switch status, _ := query.Classify(err); status {
+	case http.StatusGatewayTimeout:
+		return EvalQueryTimeout
+	case http.StatusInternalServerError:
+		return EvalQueryRejected
+	case http.StatusServiceUnavailable:
+		return EvalStoreUnavailable
+	}
+	return EvalUnknown
 }
 
 // Cycle evaluates the due rules (at most QueriesPerCycle, Concurrency at a

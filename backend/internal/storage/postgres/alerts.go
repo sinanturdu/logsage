@@ -389,7 +389,7 @@ func (s *Store) summarize(ctx context.Context, projectID string, rules []alert.R
 	rows, err := s.pool.Query(ctx, `SELECT r.id::text,
 			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'firing'),
 			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'pending'),
-			coalesce(le.to_state, 'ok'), le.at
+			coalesce(le.to_state, 'ok'), le.at, r.last_evaluated_at, r.last_eval_error
 		FROM alert_rules r
 		LEFT JOIN LATERAL (SELECT e.to_state, e.at FROM alert_events e WHERE e.rule_id = r.id ORDER BY e.at DESC, e.id DESC LIMIT 1) le ON true
 		WHERE r.project_id = $1 AND r.id::text = ANY($2)`, projectID, ids)
@@ -401,7 +401,7 @@ func (s *Store) summarize(ctx context.Context, projectID string, rules []alert.R
 	for rows.Next() {
 		var id string
 		var sum alert.Summary
-		if err := rows.Scan(&id, &sum.Firing, &sum.Pending, &sum.State, &sum.LastChangeAt); err != nil {
+		if err := rows.Scan(&id, &sum.Firing, &sum.Pending, &sum.State, &sum.LastChangeAt, &sum.LastEvaluatedAt, &sum.LastEvalError); err != nil {
 			return fmt.Errorf("postgres: scan rule summary: %w", err)
 		}
 		switch {
@@ -745,7 +745,12 @@ func nullFP(fp uint64) *int64 {
 // under it returns ErrStale and writes nothing.
 func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window, out alert.Outcome, notes []alert.NewNotification, next time.Time) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, "UPDATE alert_rules SET next_eval_at = $3 WHERE id::text = $1 AND version = $2 AND enabled", r.ID, r.Version, next)
+		var evaluated *time.Time
+		if !out.EvaluatedAt.IsZero() {
+			evaluated = &out.EvaluatedAt
+		}
+		tag, err := tx.Exec(ctx, `UPDATE alert_rules SET next_eval_at = $3, last_evaluated_at = coalesce($4, last_evaluated_at), last_eval_error = $5
+			WHERE id::text = $1 AND version = $2 AND enabled`, r.ID, r.Version, next, evaluated, out.EvalError)
 		if err != nil {
 			return fmt.Errorf("postgres: advance rule: %w", err)
 		}

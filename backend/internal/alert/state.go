@@ -85,6 +85,10 @@ type Outcome struct {
 	States      []State
 	Transitions []Transition
 	Notices     []Notice
+	// The heartbeat: EvaluatedAt is set after a successful evaluation;
+	// EvalError is the category of a failed one (EvalQueryTimeout and so on).
+	EvaluatedAt time.Time
+	EvalError   string
 }
 
 // Step advances every dedup key of a rule from its previous states and this

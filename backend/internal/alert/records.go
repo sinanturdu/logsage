@@ -71,6 +71,9 @@ type Summary struct {
 	Firing       int
 	Pending      int
 	LastChangeAt *time.Time
+	// The evaluator's heartbeat (K2.2).
+	LastEvaluatedAt *time.Time
+	LastEvalError   string
 }
 
 // NotificationRecord is one delivery in the outbox history.

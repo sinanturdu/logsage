@@ -350,6 +350,7 @@ func TestRuleSummaryAndNotificationsByRule(t *testing.T) {
 	quiet := f.rule(t, "quiet")
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	fire := alert.Step(r, nil, []alert.Observation{{Key: alert.RuleKey, Value: 12, Threshold: 5, Fire: true}}, now)
+	fire.EvaluatedAt = now
 	notes := []alert.NewNotification{{ChannelID: f.channel.ID, ChannelName: "ops", IdempotencyKey: "sum1", Event: alert.EventFiring, Payload: []byte(`{}`), Transition: 0}}
 	if err := f.st.ApplyOutcome(ctx, r, alert.Window{From: now.Add(-5 * time.Minute), To: now}, fire, notes, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
@@ -362,11 +363,19 @@ func TestRuleSummaryAndNotificationsByRule(t *testing.T) {
 	for _, rl := range rules {
 		got[rl.Name] = rl.Summary
 	}
-	if s := got["errors"]; s.State != "firing" || s.Firing != 1 || s.LastChangeAt == nil {
+	if s := got["errors"]; s.State != "firing" || s.Firing != 1 || s.LastChangeAt == nil || s.LastEvaluatedAt == nil || !s.LastEvaluatedAt.Equal(now) || s.LastEvalError != "" {
 		t.Fatalf("errors: %+v", s)
 	}
-	if s := got["quiet"]; s.State != "ok" || s.Firing != 0 || s.LastChangeAt != nil {
+	if s := got["quiet"]; s.State != "ok" || s.Firing != 0 || s.LastChangeAt != nil || s.LastEvaluatedAt != nil {
 		t.Fatalf("quiet: %+v", s)
+	}
+	// A failed attempt keeps the last success and records only the category.
+	r.Version = 1
+	if err := f.st.ApplyOutcome(ctx, r, alert.Window{From: now, To: now}, alert.Outcome{EvalError: alert.EvalQueryTimeout}, nil, now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if one, err := f.st.Rule(ctx, f.project.ID, r.ID); err != nil || one.Summary.LastEvalError != alert.EvalQueryTimeout || !one.Summary.LastEvaluatedAt.Equal(now) {
+		t.Fatalf("after a failure: %+v %v", one.Summary, err)
 	}
 	one, err := f.st.Rule(ctx, f.project.ID, r.ID)
 	if err != nil || one.Summary.State != "firing" {

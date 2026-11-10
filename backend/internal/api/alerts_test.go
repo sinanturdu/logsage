@@ -481,3 +481,18 @@ func TestHistoryValidation(t *testing.T) {
 		t.Errorf("%d %s", status, body)
 	}
 }
+
+func TestRuleJSONCarriesTheHeartbeat(t *testing.T) {
+	at := time.Date(2026, 11, 10, 9, 0, 20, 0, time.FixedZone("x", 3*3600))
+	r := alert.Rule{ID: "r1", Summary: alert.Summary{State: "ok", LastEvaluatedAt: &at, LastEvalError: alert.EvalQueryTimeout}}
+	b, _ := json.Marshal(toRuleJSON(r))
+	for _, want := range []string{`"last_evaluated_at":"2026-11-10T06:00:20Z"`, `"last_eval_error":"query_timeout"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s missing in %s", want, b)
+		}
+	}
+	b, _ = json.Marshal(toRuleJSON(alert.Rule{ID: "r2"}))
+	if !strings.Contains(string(b), `"last_evaluated_at":null`) || !strings.Contains(string(b), `"last_eval_error":""`) {
+		t.Errorf("never evaluated: %s", b)
+	}
+}

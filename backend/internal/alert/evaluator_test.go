@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sinanturdu/logsage/backend/internal/query"
+	"github.com/sinanturdu/logsage/backend/internal/storage/clickhouse"
 )
 
 // memStore is an in-memory RuleStore with ApplyOutcome's checks.
@@ -72,6 +75,11 @@ func (m *memStore) ApplyOutcome(_ context.Context, r Rule, _ Window, out Outcome
 		m.states[r.ID][s.DedupKey] = s
 	}
 	cur.NextEvalAt = next
+	if !out.EvaluatedAt.IsZero() {
+		t := out.EvaluatedAt
+		cur.Summary.LastEvaluatedAt = &t
+	}
+	cur.Summary.LastEvalError = out.EvalError
 	m.rules[r.ID] = cur
 	m.events = append(m.events, out.Transitions...)
 	m.notes = append(m.notes, notes...)
@@ -151,6 +159,48 @@ func TestQueryErrorOnlyAdvancesTheSchedule(t *testing.T) {
 	e.Tick(context.Background())
 	if len(store.events) != 0 || len(store.notes) != 0 || e.Stats().EvalErrors != 1 || store.rules["r1"].NextEvalAt != t0.Add(time.Minute) {
 		t.Fatalf("events %d notes %d stats %+v", len(store.events), len(store.notes), e.Stats())
+	}
+	// The heartbeat: no successful evaluation yet, and the failure's category (never its text).
+	if s := store.rules["r1"].Summary; s.LastEvaluatedAt != nil || s.LastEvalError != EvalStoreUnavailable {
+		t.Fatalf("heartbeat %+v", s)
+	}
+}
+
+func TestHeartbeatRecordsTheLastSuccessfulEvaluation(t *testing.T) {
+	store := newMem(errorRule("r1"))
+	q := &fakeQ{total: 1000, errs: 1}
+	clock := &fakeClock{now: t0}
+	e := NewEvaluator(store, q, clock, sharedLock(), EvalOptions{}, nil)
+	e.Tick(context.Background())
+	if s := store.rules["r1"].Summary; s.LastEvaluatedAt == nil || !s.LastEvaluatedAt.Equal(t0) || s.LastEvalError != "" {
+		t.Fatalf("heartbeat %+v", s)
+	}
+	// A failed attempt keeps the last success and records the category.
+	q.err = context.DeadlineExceeded
+	clock.add(time.Minute)
+	e.Tick(context.Background())
+	if s := store.rules["r1"].Summary; !s.LastEvaluatedAt.Equal(t0) || s.LastEvalError != EvalQueryTimeout {
+		t.Fatalf("after a timeout %+v", s)
+	}
+	q.err = nil
+	clock.add(time.Minute)
+	e.Tick(context.Background())
+	if s := store.rules["r1"].Summary; !s.LastEvaluatedAt.Equal(t0.Add(2*time.Minute)) || s.LastEvalError != "" {
+		t.Fatalf("after recovery %+v", s)
+	}
+}
+
+func TestEvalErrorCategories(t *testing.T) {
+	for err, want := range map[error]string{
+		context.DeadlineExceeded:                    EvalQueryTimeout,
+		&clickhouse.Error{Status: 500, Code: "159"}: EvalQueryTimeout,
+		&clickhouse.Error{Status: 400, Code: "62"}:  EvalQueryRejected,
+		errors.New("dial tcp: connection refused"):  EvalStoreUnavailable,
+		query.ErrGroupNotFound:                      EvalUnknown,
+	} {
+		if got := EvalErrorCategory(err); got != want {
+			t.Errorf("EvalErrorCategory(%v) = %s, want %s", err, got, want)
+		}
 	}
 }
 

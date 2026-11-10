@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query'
 import { ApiError, errorMessage, request } from '../api/client'
+import type { EvalError } from './heartbeat'
 import type { RuleBody, RuleParams, RuleType } from './model'
 
 // The alert endpoints of cmd/api (ADR 0024, contract in docs/architecture.md).
@@ -27,6 +28,9 @@ export type Rule = {
   firing: number
   pending: number
   last_change_at: string | null
+  /** The evaluator's heartbeat (K2.2). */
+  last_evaluated_at: string | null
+  last_eval_error: EvalError
 }
 export type ChannelKind = 'webhook' | 'slack'
 export type Channel = {

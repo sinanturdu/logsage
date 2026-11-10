@@ -32,7 +32,7 @@ describe('alerts page: rules', () => {
     expect(r[0]?.textContent).toContain('Errors ≥ 20% of logs over 5 minutes, at least 50 logs')
     expect(r[1]?.textContent).toContain('No logs over 10 minutes')
     expect(r[3]?.textContent).toContain('2: Slack ops, pager')
-    const time = r[0]?.querySelector('time')
+    const time = r[0]?.querySelectorAll('time')[1] // [0] is Checked, [1] is Last change
     expect(time?.getAttribute('title')).toBe('2026-11-09 12:00:00 UTC')
     expect(r[4]?.textContent).toContain('no changes yet')
     expect(within(r[0] as HTMLElement).getByRole('link', { name: 'High error rate' }).getAttribute('href')).toBe('/projects/shop/alerts/rules/r1')
@@ -111,7 +111,7 @@ describe('alerts page: rules', () => {
     expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Create rule' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Edit|^Delete/ })).toBeNull()
-    expect(within(r[3] as HTMLElement).getAllByRole('cell')[5]?.textContent).toBe('Off')
+    expect(within(r[3] as HTMLElement).getAllByRole('cell')[6]?.textContent).toBe('Off')
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Channels' }))
     await screen.findByRole('table', { name: 'Notification channels of this project' })
     expect(screen.queryByRole('button', { name: /Send a test|Rotate|Edit|Delete/ })).toBeNull()
@@ -186,5 +186,35 @@ describe('alerts page: rules', () => {
     renderApp('/projects/shop/alerts?tab=channels&create=channel')
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/projects/shop/alerts?tab=channels'))
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('evaluator heartbeat in the rules table', () => {
+  it('says when each rule was checked, and warns instead of a calm ok when one is overdue', async () => {
+    const now = Date.now()
+    const ago = (ms: number) => new Date(now - ms).toISOString()
+    mockAlerts({
+      [`GET ${B}/rules`]: () =>
+        json(200, {
+          rules: [
+            rule('r1', { name: 'Fresh', last_evaluated_at: ago(20_000) }),
+            rule('r2', { name: 'Overdue', last_evaluated_at: ago(10 * 60_000) }),
+            rule('r3', { name: 'Never', last_evaluated_at: null }),
+            rule('r4', { name: 'Failing', last_evaluated_at: ago(30_000), last_eval_error: 'query_timeout' }),
+            rule('r5', { name: 'Overdue firing', state: 'firing', firing: 1, last_evaluated_at: ago(10 * 60_000) }),
+          ],
+        }),
+    })
+    renderApp('/projects/shop/alerts')
+    const r = await rows()
+    const cells = (i: number) => within(r[i] as HTMLElement).getAllByRole('cell').map((c) => c.textContent)
+    expect(cells(0)[3]).toBe('○ ok')
+    expect(cells(0)[4]).toMatch(/^Checked \d+ s ago$/)
+    expect(cells(1)[3]).toBe('! Not being checked. Is the evaluator running?')
+    expect(cells(1)[4]).toBe('Overdue')
+    expect(cells(2)[3]).toBe('○ ok')
+    expect(cells(2)[4]).toBe('Not checked yet')
+    expect(cells(3)[4]).toMatch(/^Checked \d+ s ago The last check failed: the query timed out\.$/)
+    expect(cells(4)[3]).toBe('◉ firing ! Not being checked. Is the evaluator running?')
   })
 })

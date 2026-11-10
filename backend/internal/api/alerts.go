@@ -133,6 +133,10 @@ type ruleJSON struct {
 	Firing       int        `json:"firing"`
 	Pending      int        `json:"pending"`
 	LastChangeAt *time.Time `json:"last_change_at"`
+	// The evaluator's heartbeat (K2.2): the last successful evaluation, and
+	// the category of the last attempt when it failed ("" after a success).
+	LastEvaluatedAt *time.Time `json:"last_evaluated_at"`
+	LastEvalError   string     `json:"last_eval_error"`
 }
 
 func toRuleJSON(r alert.Rule) ruleJSON {
@@ -150,6 +154,11 @@ func toRuleJSON(r alert.Rule) ruleJSON {
 		t := r.Summary.LastChangeAt.UTC()
 		out.LastChangeAt = &t
 	}
+	if r.Summary.LastEvaluatedAt != nil {
+		t := r.Summary.LastEvaluatedAt.UTC()
+		out.LastEvaluatedAt = &t
+	}
+	out.LastEvalError = r.Summary.LastEvalError
 	return out
 }
 

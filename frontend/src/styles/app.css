@@ -415,6 +415,10 @@ table.alerts tr.failed td { background: var(--white); }
 .astate-pending { color: var(--level-warn); font-weight: 500; }
 .astate-ok, .astate-resolved { color: var(--ink); }
 .astate-disabled { color: var(--pencil); }
+/* Overdue heartbeat: a word and a shape, warn amber repeats it. */
+.check-stale { color: var(--level-warn); font-weight: 700; }
+.check-stale .shape { display: inline-block; width: 1em; text-align: center; }
+.checked-line { margin: 0 0 var(--space-3); font-size: var(--text-md); }
 .dstatus-failed { color: var(--level-error); font-weight: 700; }
 .dstatus-cancelled { color: var(--pencil); }
 /* The firing count keeps its red in every state; the current page still shows the pen underline. */
