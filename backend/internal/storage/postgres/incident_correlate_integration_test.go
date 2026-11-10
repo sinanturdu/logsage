@@ -104,6 +104,10 @@ func TestAlertsOpenAndGroupOneIncident(t *testing.T) {
 	if len(d.Alerts) != 2 || len(d.Groups) != 1 || d.Groups[0].Fingerprint != "0000000000000abc" || d.Groups[0].Source != "auto" {
 		t.Fatalf("alerts %+v groups %+v", d.Alerts, d.Groups)
 	}
+	// The list rows carry the link counts.
+	if list, err := f.st.ListIncidents(ctx, f.project.ID, incident.Filter{}, nil, 10); err != nil || len(list) != 1 || list[0].AlertCount != 2 || list[0].GroupCount != 1 {
+		t.Fatalf("list counts %+v %v", list, err)
+	}
 	if got := eventTypes(t, f, in.ID); got != "opened,alert_firing,alert_firing,group_linked" {
 		t.Fatalf("timeline %s", got)
 	}

@@ -326,7 +326,7 @@ Session auth under `/api/projects/{slug}/incidents`; viewers read, owners and ad
 
 | Endpoint | Purpose |
 |---|---|
-| `GET` (`status`, `severity`, `assignee=me\|none\|<id>`, `service`, `from`, `to`, `q`, `cursor`, `limit`), `GET summary`, `POST` | List (most recently active first), counts per status, manual create (`title`, `severity`, `summary`, `services`, `assignee`). |
+| `GET` (`status`, `severity`, `assignee=me|none|<id>`, `service`, `from`, `to`, `q`, `cursor`, `limit`), `GET summary`, `POST` | List (most recently active first; each row with `alert_count` and `group_count`), counts per status, manual create\|none\|<id>`, `service`, `from`, `to`, `q`, `cursor`, `limit`), `GET summary`, `POST` | List (most recently active first), counts per status, manual create (`title`, `severity`, `summary`, `services`, `assignee`). |
 | `GET {number}`, `GET {number}/events?before=&limit=` | The incident with linked alerts and groups, `suggested_groups` (top 5 error groups of its services and window, never linked automatically, no samples) and the first timeline page; more timeline pages. |
 | `PATCH {number}`, `POST {number}/acknowledge`, `/resolve`, `/reopen` | Title, severity and summary, or the status, each with `version` (409 when stale); a status change may carry a `note` (a comment). |
 | `POST {number}/assign` (`user_id`), `/unassign`, `POST {number}/comments`, `DELETE {number}/comments/{id}`, `POST`/`DELETE {number}/groups/{fingerprint}` | Assignee (a project member), comments (never notify a channel), group links (at most 50). |

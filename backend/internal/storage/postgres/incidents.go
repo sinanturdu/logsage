@@ -31,7 +31,8 @@ var (
 
 const incidentCols = `i.id::text, i.project_id::text, i.number, i.title, i.severity, i.status, i.source, i.assignee::text, coalesce(u.email, ''), i.summary, i.services,
 	i.opened_at, i.acknowledged_at, i.acknowledged_by::text, i.resolved_at, i.resolved_by::text, i.last_activity_at, r.number, i.all_alerts_resolved,
-	i.events_dropped, i.version`
+	i.events_dropped, i.version,
+	(SELECT count(*) FROM incident_alerts a WHERE a.incident_id = i.id), (SELECT count(*) FROM incident_groups g WHERE g.incident_id = i.id)`
 
 const incidentFrom = ` FROM incidents i LEFT JOIN users u ON u.id = i.assignee LEFT JOIN incidents r ON r.id = i.recurrence_of`
 
@@ -40,7 +41,7 @@ func scanIncident(row pgx.Row) (incident.Incident, error) {
 	var sev, status string
 	err := row.Scan(&in.ID, &in.ProjectID, &in.Number, &in.Title, &sev, &status, &in.Source, &in.Assignee, &in.AssigneeEmail, &in.Summary, &in.Services,
 		&in.OpenedAt, &in.AcknowledgedAt, &in.AcknowledgedBy, &in.ResolvedAt, &in.ResolvedBy, &in.LastActivityAt, &in.RecurrenceOf, &in.AllAlertsResolved,
-		&in.EventsDropped, &in.Version)
+		&in.EventsDropped, &in.Version, &in.AlertCount, &in.GroupCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return incident.Incident{}, ErrNotFound
 	}
