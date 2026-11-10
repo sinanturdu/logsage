@@ -35,7 +35,7 @@ describe('rule detail', () => {
       [`GET ${B}/notifications`]: (q) =>
         q.params.get('before')
           ? page('notifications', [delivery(1, { status: 'sent' })])
-          : page('notifications', [delivery(2, { status: 'failed', attempts: 8, response_status: 500, last_error: 'post https://hooks.example.com: status 500' })], 2),
+          : page('notifications', [delivery(2, { status: 'failed', attempts: 8, response_status: 500, error_category: 'http_5xx' })], 2),
     })
     renderApp('/projects/shop/alerts/rules/r1')
     expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('New groups')
@@ -63,7 +63,7 @@ describe('rule detail', () => {
     const deliveries = screen.getByRole('table', { name: 'Notifications of this rule, newest first' })
     const head = within(deliveries).getAllByRole('columnheader').map((h) => h.textContent)
     expect(head).toEqual(['Created (UTC)', 'Channel', 'Event', 'Status', 'Attempts', 'Last HTTP status', 'Next attempt (UTC)'])
-    expect(within(deliveries).getAllByRole('row')[1]?.textContent).toContain('✕ failed: post https://hooks.example.com: status 500')
+    expect(within(deliveries).getAllByRole('row')[1]?.textContent).toContain('✕ failed: The receiver answered with HTTP 500.')
     await user.click(screen.getByRole('button', { name: 'Load more deliveries' }))
     await waitFor(() => expect(within(deliveries).getAllByRole('row').length).toBe(3))
     expect(screen.queryByRole('button', { name: 'Load more deliveries' })).toBeNull()
@@ -110,14 +110,14 @@ describe('activity', () => {
       [`GET ${B}/rules`]: () => json(200, { rules: [rule('r1', { name: 'Errors' }), rule('r2', { name: 'Volume' })] }),
       [`GET ${B}/events`]: (q) => (q.params.get('before') ? page('events', [event(1, { from: 'firing', to: 'resolved', reason: 'rule_disabled' })]) : page('events', [event(2)], 2)),
       [`GET ${B}/notifications`]: (q) =>
-        q.params.get('status') === 'failed' ? page('notifications', [delivery(4, { status: 'failed', attempts: 8, response_status: 503, rule_name: 'Errors' })]) : page('notifications', []),
+        q.params.get('status') === 'failed' ? page('notifications', [delivery(4, { status: 'failed', attempts: 8, response_status: 503, error_category: 'http_5xx', rule_name: 'Errors' })]) : page('notifications', []),
     })
     renderApp('/projects/shop/alerts?tab=activity')
     const table = await screen.findByRole('table', { name: 'State changes of the alert rules, newest first' })
     expect(within(table).getAllByRole('row')[1]?.textContent).toContain('2026-11-09 12:00:00 UTC')
     expect(within(table).getAllByRole('row')[1]?.textContent).toContain('56.52% (threshold 20%)')
     const failed = screen.getByRole('region', { name: /Failed deliveries/ })
-    expect(failed.textContent).toContain('✕ failed Errors to ops c1, alert.firing, after 8 attempts, HTTP 503')
+    expect(failed.textContent).toContain('✕ failed Errors to ops c1, alert.firing, after 8 attempts. The receiver answered with HTTP 503. (2026-11-09 12:00:01 UTC)')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Load more' }))
     await waitFor(() => expect(within(table).getAllByRole('row').length).toBe(3))
@@ -134,19 +134,21 @@ describe('activity', () => {
   })
 })
 
-describe('nav firing count', () => {
+describe('nav firing count and the rules table: one shared query', () => {
+  const firing = (id: string, n = 1) => rule(id, { state: 'firing', firing: n })
+
   it('says "Alerts, 2 firing", polls every 30 s while visible, pauses while hidden and respects 429', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    let states = [firingState('a'), firingState('a', { dedup_key: 'fp:1' }), firingState('b'), { ...firingState('c'), state: 'pending' as const }]
+    let rules = [firing('a', 2), firing('b'), rule('c', { state: 'pending', pending: 1 }), rule('d', { enabled: false, firing: 1, state: 'firing' })]
     let limited = false
     const { requests } = mockAlerts({
-      [`GET ${B}/states`]: () => (limited ? json(429, { error: 'slow' }, { 'Retry-After': '90' }) : json(200, { states })),
+      [`GET ${B}/rules`]: () => (limited ? json(429, { error: 'slow' }, { 'Retry-After': '90' }) : json(200, { rules })),
     })
     renderApp('/projects/shop/logs')
     expect(await screen.findByRole('link', { name: 'Alerts, 2 firing' })).toBeTruthy()
-    const polls = () => requests.filter((q) => q.path === `${B}/states`).length
+    const polls = () => requests.filter((q) => q.path === `${B}/rules`).length
     expect(polls()).toBe(1)
-    states = [firingState('a')]
+    rules = [firing('a')]
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
     expect(await screen.findByRole('link', { name: 'Alerts, 1 firing' })).toBeTruthy()
     expect(polls()).toBe(2)
@@ -156,9 +158,9 @@ describe('nav firing count', () => {
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS * 4))
     expect(polls()).toBe(2)
 
-    states = []
+    rules = []
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
-    document.dispatchEvent(new Event('visibilitychange', { bubbles: true })) // as browsers do: it reaches window
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
     expect(await screen.findByRole('link', { name: 'Alerts' })).toBeTruthy()
     expect(polls()).toBe(3)
 
@@ -173,12 +175,39 @@ describe('nav firing count', () => {
 
   it('stays "Alerts" and stops polling when alerts are off', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    const { requests } = mockAlerts({ [`GET ${B}/states`]: () => json(503, { error: 'alerts are disabled: set ALERTS_ENABLED=true and ALERTS_SECRET_KEY' }) })
+    const { requests } = mockAlerts({ [`GET ${B}/rules`]: () => json(503, { error: 'alerts are disabled: set ALERTS_ENABLED=true and ALERTS_SECRET_KEY' }) })
     renderApp('/projects/shop/logs')
-    await waitFor(() => expect(requests.filter((q) => q.path === `${B}/states`).length).toBe(1))
+    await waitFor(() => expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(1))
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS * 3))
-    expect(requests.filter((q) => q.path === `${B}/states`).length).toBe(1)
+    expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(1)
     expect(screen.getByRole('link', { name: 'Alerts' })).toBeTruthy()
+  })
+
+  it('the Rules table refreshes itself with the nav, so they never disagree', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let rules = [rule('a', { name: 'A' }), rule('b', { name: 'B' }), rule('c', { name: 'C' })]
+    const { requests } = mockAlerts({ [`GET ${B}/rules`]: () => json(200, { rules }) })
+    renderApp('/projects/shop/alerts')
+    expect(await screen.findByText('3 rules, 0 firing.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Alerts' })).toBeTruthy()
+    rules = [firing('a'), firing('b'), firing('c')].map((r, i) => ({ ...r, name: ['A', 'B', 'C'][i] as string }))
+    await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
+    expect(await screen.findByText('3 rules, 3 firing.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Alerts, 3 firing' })).toBeTruthy()
+    // One request per refresh serves both: the table and the nav share the query.
+    expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(2)
+  })
+
+  it('the rule page refreshes itself too', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let r = rule('r1', { name: 'Errors' })
+    mockAlerts({ [`GET ${B}/rules/r1`]: () => json(200, { rule: r }) })
+    renderApp('/projects/shop/alerts/rules/r1')
+    await screen.findByRole('heading', { level: 1 })
+    expect(document.querySelector('.astate')?.textContent).toBe('○ ok')
+    r = { ...r, state: 'firing', firing: 1 }
+    await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
+    await waitFor(() => expect(document.querySelector('.astate')?.textContent).toBe('◉ firing'))
   })
 })
 
@@ -206,5 +235,21 @@ describe('palette commands for alerts', () => {
     await user.keyboard('Create alert rule')
     await user.keyboard('{Enter}')
     expect(await screen.findByRole('dialog', { name: 'Create an alert rule' })).toBeTruthy()
+  })
+})
+
+describe('receiver answers are never shown', () => {
+  it('ignores any text field an older server still sends', async () => {
+    const leak = '<html lang="tr-TR"><title>Internal admin</title> lsk_LEAKED'
+    mockAlerts({
+      [`GET ${B}/rules/r1`]: () => json(200, { rule: rule('r1') }),
+      [`GET ${B}/notifications`]: () =>
+        page('notifications', [{ ...delivery(2, { status: 'failed', response_status: 400, error_category: 'http_4xx' }), last_error: `HTTP 400 ${leak}` }]),
+    })
+    renderApp('/projects/shop/alerts/rules/r1')
+    const table = await screen.findByRole('table', { name: 'Notifications of this rule, newest first' })
+    expect(within(table).getAllByRole('row')[1]?.textContent).toContain('✕ failed: The receiver answered with HTTP 400.')
+    expect(document.body.textContent).not.toContain('Internal admin')
+    expect(document.body.textContent).not.toContain('lsk_LEAKED')
   })
 })

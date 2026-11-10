@@ -1,5 +1,6 @@
 import { fullUtc, relativeTime } from '../groups/time'
 import type { DeliveryStatus, Problem, RuleState } from './api'
+import { checkStatus, type Heartbeat } from './heartbeat'
 
 /** A rule's state as shape plus word; disabled wins over the evaluated state. */
 export type ShownState = RuleState | 'disabled'
@@ -27,6 +28,45 @@ export function DeliveryMark({ status }: { status: DeliveryStatus }) {
       </span>{' '}
       {status}
     </span>
+  )
+}
+
+/** The rule's state, or the overdue warning in place of a calm "ok". */
+export function RuleStateCell({ rule, state, now }: { rule: Heartbeat; state: ShownState; now: number }) {
+  const c = checkStatus(rule, now)
+  if (c.kind === 'stale') {
+    return (
+      <>
+        {state !== 'ok' && (
+          <>
+            <StateMark state={state} />{' '}
+          </>
+        )}
+        <span className="check-stale">
+          <span className="shape" aria-hidden="true">
+            !
+          </span>{' '}
+          {c.text}
+        </span>
+      </>
+    )
+  }
+  return <StateMark state={state} />
+}
+
+/** "Checked 20 s ago", "Not checked yet" or nothing for a disabled rule; the full time in the title. */
+export function Checked({ rule, now }: { rule: Heartbeat; now: number }) {
+  const c = checkStatus(rule, now)
+  if (c.kind === 'disabled') return <span className="muted">–</span>
+  if (c.kind !== 'checked') return <span className={c.kind === 'stale' ? 'check-stale' : 'muted'}>{c.kind === 'never' ? c.text : 'Overdue'}</span>
+  const ms = Date.parse(rule.last_evaluated_at ?? '')
+  return (
+    <>
+      <time dateTime={rule.last_evaluated_at ?? ''} title={fullUtc(ms)}>
+        {c.text}
+      </time>
+      {c.failed && <span className="muted"> {c.failed}</span>}
+    </>
   )
 }
 

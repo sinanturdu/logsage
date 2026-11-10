@@ -4,10 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useProjects } from '../api/projects'
 import { LogText } from '../components/LogText'
 import { TemplateText } from '../groups/parts'
-import { alertsKey, alertsProblem, mergePages, setRuleEnabled, useChannels, useDeliveries, useEvents, useRule, useStates, writeError } from './api'
+import { alertsKey, alertsProblem, failureSentence, mergePages, setRuleEnabled, useChannels, useDeliveries, useEvents, useRule, useStates, writeError } from './api'
 import { RuleConfirmDialog, shownState } from './AlertsPage'
 import { TYPE_LABEL, alertsPath, conditionSummary, humanDuration, isGroupType, parseGoDuration } from './model'
-import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
+import { Ago, Checked, DeliveryMark, ProblemPanel, RuleStateCell, StateMark, Utc, formatValue, type ShownState } from './parts'
 import { RuleFormDialog } from './RuleForm'
 
 const groupHref = (slug: string, fp: string) => `/projects/${encodeURIComponent(slug)}/groups/${encodeURIComponent(fp)}`
@@ -27,7 +27,8 @@ export function RuleDetailPage() {
   const states = useStates(slug)
   const events = useEvents(slug, id)
   const deliveries = useDeliveries(slug, { rule: id })
-  const [now] = useState(() => Date.now())
+  // Relative times count from the rule's last refresh (every 30 s while visible).
+  const now = rule.dataUpdatedAt
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState<'delete' | 'disable' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -79,7 +80,10 @@ export function RuleDetailPage() {
         <LogText text={r.name} mono={false} />
       </h1>
       <p>
-        <StateMark state={shownState(r) as ShownState} /> <span className="muted">since</span> <Ago iso={r.last_change_at} now={now} none="created, no changes yet" />
+        <RuleStateCell rule={r} state={shownState(r) as ShownState} now={now} /> <span className="muted">since</span> <Ago iso={r.last_change_at} now={now} none="created, no changes yet" />
+      </p>
+      <p className="checked-line">
+        <Checked rule={r} now={now} />
       </p>
       <dl className="facts">
         <div>
@@ -253,11 +257,7 @@ export function RuleDetailPage() {
                   <td>{d.event}</td>
                   <td className="wrap">
                     <DeliveryMark status={d.status} />
-                    {d.last_error && (
-                      <>
-                        : <LogText text={d.last_error} />
-                      </>
-                    )}
+                    {failureSentence(d) && <>: {failureSentence(d)}</>}
                   </td>
                   <td>{d.attempts}</td>
                   <td>{d.response_status ?? '–'}</td>

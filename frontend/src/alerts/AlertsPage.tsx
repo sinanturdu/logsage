@@ -19,6 +19,7 @@ import {
   useLastDeliveries,
   useRules,
   writeError,
+  failureSentence,
   TEST_LIMIT,
   type Channel,
   type Rule,
@@ -26,10 +27,11 @@ import {
 import { ApiError } from '../api/client'
 import { ChannelFormDialog, DeleteChannelDialog, RotateDialog, kindLabel } from './ChannelDialogs'
 import { TABS, TAB_LABEL, TYPE_LABEL, conditionSummary, parseAlertsState, parseGoDuration, rulePath, serializeAlertsState, type AlertsState, type Tab } from './model'
-import { Ago, DeliveryMark, ProblemPanel, StateMark, Utc, formatValue, type ShownState } from './parts'
+import { Ago, Checked, DeliveryMark, ProblemPanel, RuleStateCell, StateMark, Utc, formatValue, type ShownState } from './parts'
 import { CREATE_A_CHANNEL, RuleFormDialog } from './RuleForm'
 
 export const EMPTY_RULES = 'No alert rules yet. Create a channel first, then a rule that notifies it.'
+export const EMPTY_RULES_WITH_CHANNEL = 'No alert rules yet. Create a rule to be notified.'
 export const FIRST_CHANNEL = 'Channel created. Create a rule that notifies it.'
 export const EMPTY_CHANNELS = 'No channels yet. A channel is where notifications go: a webhook or a Slack incoming webhook.'
 export const EMPTY_ACTIVITY = 'No alert activity yet. State changes of your rules appear here.'
@@ -234,7 +236,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
       </div>
       {rules.length === 0 ? (
         <div className="state-panel">
-          <p>{EMPTY_RULES}</p>
+          <p>{channels.length === 0 ? EMPTY_RULES : EMPTY_RULES_WITH_CHANNEL}</p>
           {canManage && channels.length === 0 && (
             <button type="button" className="button" onClick={onCreateChannel}>
               {CREATE_A_CHANNEL}
@@ -251,6 +253,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                 <th scope="col">Type</th>
                 <th scope="col">Condition</th>
                 <th scope="col">State</th>
+                <th scope="col">Checked</th>
                 <th scope="col">Last change</th>
                 <th scope="col">Enabled</th>
                 <th scope="col">Channels</th>
@@ -274,8 +277,11 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                     <LogText text={conditionSummary(r.type, r.params, parseGoDuration(r.window) ?? 0)} mono={false} />
                   </td>
                   <td>
-                    <StateMark state={shownState(r)} />
+                    <RuleStateCell rule={r} state={shownState(r)} now={now} />
                     {r.enabled && r.firing + r.pending > 1 && <span className="muted"> ({r.firing} firing, {r.pending} pending)</span>}
+                  </td>
+                  <td className="wrap">
+                    <Checked rule={r} now={now} />
                   </td>
                   <td>
                     <Ago iso={r.last_change_at} now={now} none="no changes yet" />
@@ -321,6 +327,14 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
   const noop = useCallback(() => {}, [])
   const [selected, setSelected] = useRowKeys(channels.length, noop, table)
 
+  // After a 429 the channel's Send test waits for the Retry-After: one
+  // click is one request, never a burst of refused ones. Never retried.
+  const [limited, setLimited] = useState<ReadonlySet<string>>(new Set())
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  useEffect(() => {
+    const all = timers.current
+    return () => all.forEach((t) => clearTimeout(t))
+  }, [])
   const sendTest = async (c: Channel) => {
     setTesting(c.id)
     setResult(null)
@@ -328,8 +342,24 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
       await testChannel(slug, c.id)
       setResult({ id: c.id, text: 'Test queued. It is marked as a test ("test": true, event alert.test) and appears in the delivery history.' })
     } catch (err) {
-      const text = err instanceof ApiError && err.kind === 'rate_limited' ? TEST_LIMIT(err.retryAfter ?? 600) : writeError(err)
-      setResult({ id: c.id, text })
+      const rateLimited = err instanceof ApiError && err.kind === 'rate_limited'
+      const wait = rateLimited ? (err.retryAfter ?? 600) : 0
+      setResult({ id: c.id, text: rateLimited ? TEST_LIMIT(wait) : writeError(err) })
+      if (rateLimited) {
+        setLimited((s) => new Set(s).add(c.id))
+        clearTimeout(timers.current.get(c.id))
+        timers.current.set(
+          c.id,
+          setTimeout(() => {
+            timers.current.delete(c.id)
+            setLimited((s) => {
+              const next = new Set(s)
+              next.delete(c.id)
+              return next
+            })
+          }, wait * 1000),
+        )
+      }
     } finally {
       setTesting('')
     }
@@ -382,6 +412,7 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
                         <>
                           <DeliveryMark status={d.status} />
                           {d.response_status !== null && <> (HTTP {d.response_status})</>}, <Ago iso={d.created_at} now={now} />
+                          {d.status !== 'sent' && failureSentence(d) && <span className="muted"> {failureSentence(d)}</span>}
                           {d.test && ' (test)'}
                         </>
                       ) : last[i]?.isPending ? (
@@ -393,7 +424,13 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
                     <td>{c.include_sample ? 'Included' : 'Not included'}</td>
                     {canManage && (
                       <td className="actions">
-                        <button type="button" className="button button-quiet" disabled={testing === c.id} aria-label={`Send a test to ${c.name}`} onClick={() => void sendTest(c)}>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          disabled={testing === c.id || limited.has(c.id)}
+                          aria-label={`Send a test to ${c.name}`}
+                          onClick={() => void sendTest(c)}
+                        >
                           {testing === c.id ? 'Sending…' : 'Send test'}
                         </button>
                         {c.kind === 'webhook' && (
@@ -458,13 +495,7 @@ function ActivityTab({ slug, rules, rule, onRule }: { slug: string; rules: Rule[
               <li key={d.id}>
                 <DeliveryMark status="failed" /> <LogText text={d.rule_name || 'test'} mono={false} /> to <LogText text={d.channel_name} mono={false} />, {d.event}, after{' '}
                 {d.attempts} {d.attempts === 1 ? 'attempt' : 'attempts'}
-                {d.response_status !== null && <>, HTTP {d.response_status}</>}
-                {d.last_error && (
-                  <>
-                    : <LogText text={d.last_error} />
-                  </>
-                )}{' '}
-                (<Utc iso={d.created_at} />)
+                .{failureSentence(d) && ` ${failureSentence(d)}`} (<Utc iso={d.created_at} />)
               </li>
             ))}
           </ul>
@@ -538,7 +569,8 @@ export function AlertsPage() {
   const rules = useRules(slug)
   const channels = useChannels(slug)
   const id = useId()
-  const [now, setNow] = useState(() => Date.now())
+  // Relative times count from the last refresh of the shared rules query.
+  const now = rules.dataUpdatedAt
   const [creating, setCreating] = useState<'' | 'rule' | 'channel'>('')
   const project = projects.data?.find((p) => p.slug === slug)
   const canManage = project?.role === 'owner' || project?.role === 'admin'
@@ -565,7 +597,6 @@ export function AlertsPage() {
     update({ tab: 'channels', create: 'channel' })
   }
   const refresh = () => {
-    setNow(Date.now())
     void rules.refetch()
     void channels.refetch()
   }
@@ -598,7 +629,8 @@ export function AlertsPage() {
       ) : (
         <>
           {project && !canManage && <p className="notice">{VIEWER_ALERTS}</p>}
-          {firstChannel && creating === '' && (
+          {/* Gone once the project has a rule, or when dismissed. */}
+          {firstChannel && creating === '' && sorted.length === 0 && (
             <div className="notice first-channel" role="status">
               <span>{FIRST_CHANNEL}</span>{' '}
               <button
@@ -610,6 +642,9 @@ export function AlertsPage() {
                 }}
               >
                 Create rule
+              </button>
+              <button type="button" className="button button-quiet" onClick={() => setFirstChannel(false)}>
+                Dismiss
               </button>
             </div>
           )}

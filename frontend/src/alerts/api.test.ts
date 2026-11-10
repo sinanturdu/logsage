@@ -105,3 +105,22 @@ describe('signature examples', () => {
     expect(r.stdout.trim()).toBe('ok')
   })
 })
+
+describe('delivery failures in plain sentences', () => {
+  it('uses only the status code and the category', async () => {
+    const { failureSentence } = await import('./api')
+    const s = (error_category: Parameters<typeof failureSentence>[0]['error_category'], response_status: number | null = null) => failureSentence({ error_category, response_status })
+    expect(s('http_4xx', 400)).toBe('The receiver answered with HTTP 400.')
+    expect(s('http_5xx', 503)).toBe('The receiver answered with HTTP 503.')
+    expect(s('unknown', 302)).toBe('The receiver answered with HTTP 302.')
+    expect(s('timeout')).toBe('The receiver did not answer in time.')
+    expect(s('connect_error')).toBe('LogSage could not connect to the receiver.')
+    expect(s('tls_error')).toBe("The receiver's TLS certificate could not be verified.")
+    expect(s('blocked_address')).toBe('This address is not allowed any more.')
+    expect(s('rate_limited', 429)).toBe('The receiver answered with HTTP 429 (too many requests).')
+    expect(s('rate_limited')).toContain('limit of sends per minute')
+    expect(s('canceled')).toBe('Cancelled: the rule or the channel changed.')
+    expect(s('unknown')).toBe('The delivery failed.')
+    expect(s('')).toBe('')
+  })
+})

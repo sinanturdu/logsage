@@ -270,11 +270,13 @@ func (c *Client) dialContext(ctx context.Context, network, addr string) (net.Con
 	return d.DialContext(ctx, network, target)
 }
 
-// Response is what a delivery attempt learned.
+// Response is what a delivery attempt learned: the status code only. The
+// body is read (at most MaxResponse bytes, so the connection ends cleanly)
+// and discarded: a receiver's answer is never stored, logged or shown, so a
+// public host that proxies to an internal one cannot turn blind SSRF into
+// visible SSRF (ADR 0024 addendum).
 type Response struct {
 	Status int
-	// Body is at most MaxResponse bytes of the response.
-	Body []byte
 }
 
 // forbidden headers are never sent, whatever the caller passes.
@@ -305,8 +307,8 @@ func (c *Client) Post(ctx context.Context, raw string, header http.Header, body 
 		return Response{}, redact(err, u)
 	}
 	defer res.Body.Close()
-	kept, _ := io.ReadAll(io.LimitReader(res.Body, c.opts.MaxResponse))
-	return Response{Status: res.StatusCode, Body: kept}, nil
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, c.opts.MaxResponse))
+	return Response{Status: res.StatusCode}, nil
 }
 
 // Redacted is a delivery error that names only the scheme and host.

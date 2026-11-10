@@ -45,8 +45,16 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
   - `scripts\dev.ps1 up` turns alerts on with a random key; `dev.ps1 alerts` runs the evaluator and a webhook sink locally; `dev.ps1 alerts-demo` makes rules fire.
   - The rule dialog keeps the preview and Cancel and Create in a footer that stays in view; the preview folds behind "Show preview" below 700 px and is announced to screen readers once typing pauses (K2.1).
   - Without a channel, "Create a channel" in the rule dialog and the empty Rules tab opens the channel dialog; after the first channel, a notice offers Create rule. Create stays disabled until a channel is chosen (K2.1).
+  - Evaluator heartbeat (K2.2): rule reads return `last_evaluated_at` and `last_eval_error` (a category), from migration 0006. The dashboard says "Checked 20 s ago", "Not checked yet", or "Not being checked. Is the evaluator running?" for an enabled rule overdue by three intervals.
 
 ### Fixed
+- Alerts (K2.2):
+  - Deleting a rule or a channel answered "You do not have permission" for owners. DELETE requests did not send `Content-Type: application/json`, so the API's CSRF check refused them. Every mutation now sends it. A CSRF refusal has its own message in the API ("csrf: ...") and in the dashboard, separate from a missing role.
+  - **Security:** a receiver's response body is no longer stored or shown. Before, a cleaned first part of it reached the delivery history, so a public host proxying to an internal one could expose internal pages. Failures are now the status code plus a category (`http_4xx`, `http_5xx`, `timeout`, `connect_error`, `tls_error`, `blocked_address`, `rate_limited`, `canceled`, `unknown`). Migration 0005 converts old rows and drops `last_error`, and the API returns `error_category`.
+  - The Rules table, the nav count and the rule page refresh themselves every 30 s while the tab is visible. The table and the nav share one query, so "3 rules, 0 firing" next to "Alerts, 3 firing" can no longer happen.
+  - Send test after a 429 waits for the Retry-After instead of sending again; writes are never retried.
+  - Header nav labels no longer wrap at 768 px.
+  - The first-channel notice goes away with the first rule or on Dismiss. The empty Rules state no longer asks for a channel when one exists.
 - Alerts UI (K2.1):
   - The unit selectors next to Window, For, Clear for and Check every were cut off, and the rule dialog scrolled sideways. The rows now wrap and the number and unit form one compact group.
   - Labels in a row are short and on one line, so the inputs line up; the explanations moved to the help text.

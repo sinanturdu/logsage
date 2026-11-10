@@ -2,12 +2,15 @@ package alert
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -173,46 +176,102 @@ func (d *Deliverer) Run(ctx context.Context, every <-chan time.Time) {
 func (d *Deliverer) deliver(ctx context.Context, c Claimed) DeliveryResult {
 	now := d.clock.Now()
 	attempt := c.Attempts + 1
-	retry := func(msg string, code *int) DeliveryResult {
+	retry := func(category string, code *int) DeliveryResult {
 		if attempt >= d.opts.MaxAttempts {
-			return DeliveryResult{Status: OutFailed, ResponseStatus: code, LastError: msg + " (no attempts left)", NextAttemptAt: now, CountAttempt: true}
+			return DeliveryResult{Status: OutFailed, ResponseStatus: code, ErrorCategory: category, NextAttemptAt: now, CountAttempt: true}
 		}
-		return DeliveryResult{Status: OutPending, ResponseStatus: code, LastError: msg, NextAttemptAt: now.Add(Backoff(c.Attempts, d.jitter())), CountAttempt: true}
+		return DeliveryResult{Status: OutPending, ResponseStatus: code, ErrorCategory: category, NextAttemptAt: now.Add(Backoff(c.Attempts, d.jitter())), CountAttempt: true}
 	}
 	if wait, ok := d.take(c.Channel.ID, now); !ok {
-		return DeliveryResult{Status: OutPending, LastError: "channel rate limit, deferred", NextAttemptAt: now.Add(wait)}
+		return DeliveryResult{Status: OutPending, ErrorCategory: ErrRateLimited, NextAttemptAt: now.Add(wait)}
 	}
 	url, err := d.sealer.Open(c.Channel.URL, secret.AD(c.ProjectID, c.Channel.ID, "url"))
 	if err != nil {
-		return DeliveryResult{Status: OutFailed, LastError: "cannot decrypt the channel URL (was ALERTS_SECRET_KEY changed?)", NextAttemptAt: now, CountAttempt: true}
+		d.log.Warn("alert delivery: cannot decrypt the channel URL (was ALERTS_SECRET_KEY changed?)", "notification", c.ID)
+		return DeliveryResult{Status: OutFailed, ErrorCategory: ErrUnknown, NextAttemptAt: now, CountAttempt: true}
 	}
 	body, header, err := d.request(c, now)
 	if err != nil {
-		return DeliveryResult{Status: OutFailed, LastError: err.Error(), NextAttemptAt: now, CountAttempt: true}
+		d.log.Warn("alert delivery: cannot build the request", "notification", c.ID, "err", err)
+		return DeliveryResult{Status: OutFailed, ErrorCategory: ErrUnknown, NextAttemptAt: now, CountAttempt: true}
 	}
 	res, err := d.post.Post(ctx, string(url), header, body)
 	if err != nil {
-		var r *outbound.Redacted
-		msg := "request failed"
-		if errors.As(err, &r) || errors.Is(err, outbound.ErrAddress) || errors.Is(err, outbound.ErrScheme) {
-			msg = err.Error()
+		category := Classify(err)
+		if category == ErrBlockedAddress {
+			return DeliveryResult{Status: OutFailed, ErrorCategory: category, NextAttemptAt: now, CountAttempt: true}
 		}
-		for _, permanent := range []error{outbound.ErrAddress, outbound.ErrScheme, outbound.ErrUser, outbound.ErrFrag, outbound.ErrPort, outbound.ErrHost, outbound.ErrURL} {
-			if errors.Is(err, permanent) {
-				return DeliveryResult{Status: OutFailed, LastError: msg, NextAttemptAt: now, CountAttempt: true}
-			}
-		}
-		return retry(msg, nil)
+		return retry(category, nil)
 	}
 	code := res.Status
 	switch {
 	case code >= 200 && code < 300:
 		return DeliveryResult{Status: OutSent, ResponseStatus: &code, NextAttemptAt: now, CountAttempt: true}
 	case code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500:
-		return retry(responseError(code, res.Body), &code)
+		return retry(StatusCategory(code), &code)
 	default: // 3xx (redirects are never followed) and other 4xx will not change
-		return DeliveryResult{Status: OutFailed, ResponseStatus: &code, LastError: responseError(code, res.Body), NextAttemptAt: now, CountAttempt: true}
+		return DeliveryResult{Status: OutFailed, ResponseStatus: &code, ErrorCategory: StatusCategory(code), NextAttemptAt: now, CountAttempt: true}
 	}
+}
+
+// Delivery failure categories (ADR 0024 addendum): the only failure
+// information stored, logged or shown besides the HTTP status code.
+const (
+	ErrHTTP4xx        = "http_4xx"
+	ErrHTTP5xx        = "http_5xx"
+	ErrTimeout        = "timeout"
+	ErrConnect        = "connect_error"
+	ErrTLS            = "tls_error"
+	ErrBlockedAddress = "blocked_address"
+	ErrRateLimited    = "rate_limited"
+	ErrCanceled       = "canceled"
+	ErrUnknown        = "unknown"
+)
+
+// ErrorCategories is the closed list (the database checks it too).
+var ErrorCategories = []string{ErrHTTP4xx, ErrHTTP5xx, ErrTimeout, ErrConnect, ErrTLS, ErrBlockedAddress, ErrRateLimited, ErrCanceled, ErrUnknown}
+
+// StatusCategory is the category of a non-2xx answer.
+func StatusCategory(code int) string {
+	switch {
+	case code == http.StatusTooManyRequests:
+		return ErrRateLimited
+	case code == http.StatusRequestTimeout:
+		return ErrTimeout
+	case code >= 400 && code < 500:
+		return ErrHTTP4xx
+	case code >= 500 && code < 600:
+		return ErrHTTP5xx
+	}
+	return ErrUnknown // 1xx or 3xx: redirects are never followed
+}
+
+// Classify is the category of a failed request. It looks only at the
+// error's type, never at its text.
+func Classify(err error) string {
+	for _, blocked := range []error{outbound.ErrAddress, outbound.ErrScheme, outbound.ErrUser, outbound.ErrFrag, outbound.ErrPort, outbound.ErrHost, outbound.ErrURL} {
+		if errors.Is(err, blocked) {
+			return ErrBlockedAddress
+		}
+	}
+	var ne net.Error
+	var tlsErr *tls.CertificateVerificationError
+	var unknownAuth x509.UnknownAuthorityError
+	var hostErr x509.HostnameError
+	var certErr x509.CertificateInvalidError
+	var recErr tls.RecordHeaderError
+	var opErr *net.OpError
+	switch {
+	case errors.Is(err, context.Canceled):
+		return ErrCanceled
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+		return ErrTimeout
+	case errors.As(err, &tlsErr), errors.As(err, &unknownAuth), errors.As(err, &hostErr), errors.As(err, &certErr), errors.As(err, &recErr):
+		return ErrTLS
+	case errors.Is(err, outbound.ErrResolve), errors.As(err, &opErr):
+		return ErrConnect
+	}
+	return ErrUnknown
 }
 
 // request builds the body and headers for the channel kind.
@@ -239,17 +298,6 @@ func (d *Deliverer) request(c Claimed, now time.Time) ([]byte, http.Header, erro
 		return c.Payload, h, nil
 	}
 	return nil, nil, fmt.Errorf("unknown channel kind %q", c.Channel.Kind)
-}
-
-// responseError is a short, printable summary of a failed response.
-func responseError(code int, body []byte) string {
-	snippet := strings.Map(func(r rune) rune {
-		if r < 0x20 || r > 0x7e {
-			return ' '
-		}
-		return r
-	}, string(body[:min(len(body), 120)]))
-	return strings.TrimSpace(fmt.Sprintf("HTTP %d %s", code, strings.Join(strings.Fields(snippet), " ")))
 }
 
 // slackEscape follows Slack's rules: &, < and > are entities.

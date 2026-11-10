@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { csrfGate } from '../test/csrf'
 import { facets } from '../explorer/testing'
 import { alice, json, project } from '../test/util'
 import type { AlertEvent, Channel, Delivery, Rule, StateRecord } from './api'
@@ -26,6 +27,9 @@ export const rule = (id: string, extra: Partial<Rule> = {}): Rule => ({
   firing: 0,
   pending: 0,
   last_change_at: null,
+  // Fresh by default (20 s before the real now), so rules are not overdue.
+  last_evaluated_at: new Date(Date.now() - 20_000).toISOString(),
+  last_eval_error: '',
   ...extra,
 })
 
@@ -70,7 +74,7 @@ export const delivery = (id: number, extra: Partial<Delivery> = {}): Delivery =>
   status: 'sent',
   attempts: 1,
   response_status: 204,
-  last_error: '',
+  error_category: '',
   test: false,
   idempotency_key: `k${id}`,
   created_at: '2026-11-09T12:00:01Z',
@@ -122,6 +126,8 @@ export function mockAlerts(routes: Record<string, AHandler>, role: 'owner' | 'ad
       const method = init?.method ?? 'GET'
       const r = { path: u.pathname, params: u.searchParams, method, body: init?.body ? JSON.parse(String(init.body)) : undefined }
       requests.push(r)
+      const blocked = csrfGate(url, init)
+      if (blocked) return blocked
       const h = all[`${method} ${u.pathname}`]
       return h ? h(r) : json(404, { error: 'not found' })
     }),

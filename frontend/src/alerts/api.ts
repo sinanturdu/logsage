@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query'
 import { ApiError, errorMessage, request } from '../api/client'
+import type { EvalError } from './heartbeat'
 import type { RuleBody, RuleParams, RuleType } from './model'
 
 // The alert endpoints of cmd/api (ADR 0024, contract in docs/architecture.md).
@@ -27,6 +28,9 @@ export type Rule = {
   firing: number
   pending: number
   last_change_at: string | null
+  /** The evaluator's heartbeat (K2.2). */
+  last_evaluated_at: string | null
+  last_eval_error: EvalError
 }
 export type ChannelKind = 'webhook' | 'slack'
 export type Channel = {
@@ -79,12 +83,42 @@ export type Delivery = {
   status: DeliveryStatus
   attempts: number
   response_status: number | null
-  last_error: string
+  /** A closed category, never text from the receiver (ADR 0024 addendum). */
+  error_category: ErrorCategory | ''
   test: boolean
   idempotency_key: string
   created_at: string
   next_attempt_at: string
   sent_at: string | null
+}
+
+export const ERROR_CATEGORIES = ['http_4xx', 'http_5xx', 'timeout', 'connect_error', 'tls_error', 'blocked_address', 'rate_limited', 'canceled', 'unknown'] as const
+export type ErrorCategory = (typeof ERROR_CATEGORIES)[number]
+
+/**
+ * A delivery failure in one plain sentence, from the status code and the
+ * category only: LogSage never stores or shows what a receiver answered.
+ */
+export function failureSentence(d: Pick<Delivery, 'response_status' | 'error_category'>): string {
+  const code = d.response_status
+  switch (d.error_category) {
+    case '':
+      return ''
+    case 'timeout':
+      return code ? `The receiver answered with HTTP ${code} (request timeout).` : 'The receiver did not answer in time.'
+    case 'connect_error':
+      return 'LogSage could not connect to the receiver.'
+    case 'tls_error':
+      return "The receiver's TLS certificate could not be verified."
+    case 'blocked_address':
+      return 'This address is not allowed any more.'
+    case 'rate_limited':
+      return code ? `The receiver answered with HTTP ${code} (too many requests).` : "Waiting: the channel's limit of sends per minute was reached."
+    case 'canceled':
+      return 'Cancelled: the rule or the channel changed.'
+    default:
+      return code ? `The receiver answered with HTTP ${code}.` : 'The delivery failed.'
+  }
 }
 
 export const HISTORY_PAGE = 50
@@ -105,12 +139,33 @@ export function isAlertsOff(err: unknown): boolean {
 const retry = (count: number, err: unknown) =>
   count < 2 && err instanceof ApiError && (err.kind === 'network' || err.kind === 'server') && !isAlertsOff(err)
 
+/**
+ * Every 30 s while the tab is visible: React Query does not poll a hidden
+ * tab (refetchIntervalInBackground is off) and refetches when it is shown
+ * again. A 429 waits for its Retry-After; the off state stops polling.
+ */
+export function pollInterval(q: { state: { error: unknown } }): number | false {
+  const err = q.state.error
+  if (isAlertsOff(err)) return false
+  if (err instanceof ApiError && err.kind === 'rate_limited') return Math.max(NAV_POLL_MS, (err.retryAfter ?? 1) * 1000)
+  return NAV_POLL_MS
+}
+// staleTime: a second observer mounting (the nav and the table) reuses fresh data instead of fetching again.
+const POLL = { refetchOnWindowFocus: true, refetchIntervalInBackground: false, refetchInterval: pollInterval, staleTime: 10_000 } as const
+
+const fetchRules = (slug: string, signal: AbortSignal) => request<{ rules: Rule[] }>('GET', `${base(slug)}/rules`, { signal })
+
+/**
+ * The rules, shared by the Rules table and the nav count (one query, one
+ * cache entry, polled every 30 s), so the two never disagree.
+ */
 export function useRules(slug: string) {
   return useQuery({
     queryKey: rulesKey(slug),
-    queryFn: ({ signal }) => request<{ rules: Rule[] }>('GET', `${base(slug)}/rules`, { signal }),
+    queryFn: ({ signal }) => fetchRules(slug, signal),
     select: (d) => d.rules,
     retry,
+    ...POLL,
   })
 }
 
@@ -120,6 +175,7 @@ export function useRule(slug: string, id: string) {
     queryFn: ({ signal }) => request<{ rule: Rule }>('GET', `${base(slug)}/rules/${encodeURIComponent(id)}`, { signal }),
     select: (d) => d.rule,
     retry,
+    ...POLL,
   })
 }
 
@@ -138,32 +194,25 @@ export function useStates(slug: string) {
     queryFn: ({ signal }) => request<{ states: StateRecord[] }>('GET', `${base(slug)}/states`, { signal }),
     select: (d) => d.states,
     retry,
+    ...POLL,
   })
 }
 
 /** The number of rules with at least one firing state. */
 export const firingRules = (states: readonly StateRecord[]) => new Set(states.filter((s) => s.state === 'firing').map((s) => s.rule_id)).size
 
-/**
- * The firing count for the nav, polled every 30 s. React Query does not
- * poll while the tab is hidden (refetchIntervalInBackground is off) and
- * refetches when it is shown again; a 429 waits for its Retry-After.
- */
+/** Enabled rules with at least one firing key, from the shared rules query. */
+export const firingCount = (rules: readonly Pick<Rule, 'enabled' | 'firing'>[]) => rules.filter((r) => r.enabled && r.firing > 0).length
+
+/** The nav's firing count: the same query (and cache entry) as the Rules table. */
 export function useFiringCount(slug: string, enabled: boolean) {
   return useQuery({
-    queryKey: statesKey(slug),
+    queryKey: rulesKey(slug),
     enabled,
-    queryFn: ({ signal }) => request<{ states: StateRecord[] }>('GET', `${base(slug)}/states`, { signal }),
-    select: (d) => firingRules(d.states),
-    retry: false,
-    refetchOnWindowFocus: true,
-    refetchIntervalInBackground: false,
-    refetchInterval: (q) => {
-      const err = q.state.error
-      if (isAlertsOff(err)) return false
-      if (err instanceof ApiError && err.kind === 'rate_limited') return Math.max(NAV_POLL_MS, (err.retryAfter ?? 1) * 1000)
-      return NAV_POLL_MS
-    },
+    queryFn: ({ signal }) => fetchRules(slug, signal),
+    select: (d) => firingCount(d.rules),
+    retry,
+    ...POLL,
   })
 }
 

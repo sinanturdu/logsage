@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import appCss from '../styles/app.css?raw'
 import { json, renderApp } from '../test/util'
-import { firingState, mockAlerts } from '../alerts/testing'
+import { mockAlerts, rule } from '../alerts/testing'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -25,7 +25,7 @@ describe('header nav links', () => {
   })
 
   it('renders the four links alike, with the class only on a firing Alerts link', async () => {
-    mockAlerts({ 'GET /api/projects/shop/alerts/states': () => json(200, { states: [firingState('r1')] }) })
+    mockAlerts({ 'GET /api/projects/shop/alerts/rules': () => json(200, { rules: [rule('r1', { state: 'firing', firing: 1 })] }) })
     renderApp('/projects/shop/groups')
     const nav = await screen.findByRole('navigation', { name: 'Project sections' })
     await within(nav).findByRole('link', { name: 'Alerts, 1 firing' })
@@ -34,5 +34,15 @@ describe('header nav links', () => {
     expect(links.map((a) => a.getAttribute('style'))).toEqual([null, null, null, null])
     expect(links.map((a) => a.className.replace('active', '').trim())).toEqual(['', '', 'nav-firing', ''])
     expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null])
+  })
+})
+
+describe('header nav at narrow widths', () => {
+  it('keeps every label on one line and lets the nav scroll inside itself', () => {
+    expect(block('.project-nav a')).toContain('white-space: nowrap')
+    const nav = block('.project-nav')
+    for (const d of ['overflow-x: auto', 'min-width: 0', 'flex: 0 1 auto']) expect(nav).toContain(d)
+    // No rule hides a nav link.
+    expect(css.split('\n').filter((l) => l.includes('.project-nav') && /display: none|visibility: hidden/.test(l))).toEqual([])
   })
 })

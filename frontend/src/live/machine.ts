@@ -95,6 +95,7 @@ export function next(s: LiveState, e: LiveEvent, base = BASE_RETRY_MS): LiveStat
         case 'not_found':
           return { kind: 'stopped', reason: STOP.notFound }
         case 'forbidden':
+        case 'csrf': // never for this GET; stop as for forbidden
           return { kind: 'stopped', reason: STOP.forbidden }
         case 'invalid':
         case 'conflict':

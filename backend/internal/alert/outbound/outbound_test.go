@@ -281,8 +281,9 @@ func TestHugeResponseIsCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != 200 || len(res.Body) != 4<<10 {
-		t.Fatalf("status %d, kept %d bytes", res.Status, len(res.Body))
+	// Read up to MaxResponse and discarded: only the status is kept.
+	if res != (Response{Status: 200}) {
+		t.Fatalf("response %+v", res)
 	}
 }
 

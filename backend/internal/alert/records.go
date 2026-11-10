@@ -71,6 +71,9 @@ type Summary struct {
 	Firing       int
 	Pending      int
 	LastChangeAt *time.Time
+	// The evaluator's heartbeat (K2.2).
+	LastEvaluatedAt *time.Time
+	LastEvalError   string
 }
 
 // NotificationRecord is one delivery in the outbox history.
@@ -85,7 +88,7 @@ type NotificationRecord struct {
 	Status         string     `json:"status"`
 	Attempts       int        `json:"attempts"`
 	ResponseStatus *int       `json:"response_status"`
-	LastError      string     `json:"last_error"`
+	ErrorCategory  string     `json:"error_category"` // one of the Err* categories, or empty
 	Test           bool       `json:"test"`
 	IdempotencyKey string     `json:"idempotency_key"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -133,7 +136,7 @@ var ErrStale = errors.New("alert: rule or state changed concurrently")
 type DeliveryResult struct {
 	Status         string // sent, pending (retry or deferral) or failed
 	ResponseStatus *int
-	LastError      string
+	ErrorCategory  string // a closed category, never text from the receiver
 	NextAttemptAt  time.Time
 	CountAttempt   bool // false for a rate-limit deferral
 }

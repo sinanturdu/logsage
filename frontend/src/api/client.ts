@@ -15,6 +15,7 @@ export type Project = {
 export type ApiErrorKind =
   | 'unauthorized'
   | 'forbidden'
+  | 'csrf'
   | 'not_found'
   | 'conflict'
   | 'invalid'
@@ -85,10 +86,10 @@ export async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path
   const headers: Record<string, string> = { Accept: 'application/json' }
   const init: RequestInit = { method, credentials: 'same-origin', headers }
   if (opts.signal) init.signal = opts.signal
-  if (opts.body !== undefined) {
-    headers['Content-Type'] = 'application/json'
-    init.body = JSON.stringify(opts.body)
-  }
+  // The API's CSRF rule: every method but GET and HEAD needs this header,
+  // with or without a body (a DELETE without it is a 403).
+  if (method !== 'GET') headers['Content-Type'] = 'application/json'
+  if (opts.body !== undefined) init.body = JSON.stringify(opts.body)
   let res: Response
   try {
     res = await fetch(path, init)
@@ -122,7 +123,9 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
   } catch {
     data = undefined
   }
-  const kind = kindFor(res.status)
+  const errorText = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : ''
+  // The API's CSRF check answers 403 "csrf: ..."; a missing role answers 403 "forbidden".
+  const kind = res.status === 403 && errorText.startsWith('csrf:') ? 'csrf' : kindFor(res.status)
   const serverMessage =
     (kind === 'invalid' || res.status === 409 || res.status === 503) && data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
@@ -143,6 +146,8 @@ export const api = {
     request<{ project: Project }>('POST', '/api/projects', { body: { name, slug } }),
 }
 
+export const CSRF_MESSAGE = 'The request was rejected by the browser security check. Reload the page and try again.'
+
 /** The server's slug rule (postgres.ValidateSlug). */
 export const SLUG_PATTERN = /^[a-z0-9-]{3,40}$/
 
@@ -160,6 +165,8 @@ export function errorMessage(err: unknown): string {
       return 'Your session ended. Sign in again to continue.'
     case 'forbidden':
       return 'You do not have permission to do this. Ask a project owner for access.'
+    case 'csrf':
+      return CSRF_MESSAGE
     case 'not_found':
       return 'This was not found. It may have been removed, or you are not a member of the project.'
     case 'conflict':

@@ -238,7 +238,13 @@ code, .mono { font-family: var(--font-mono); font-size: var(--text-md); }
 }
 
 /* Project nav, dialogs and the API keys screen (ADR 0019) */
-.project-nav { display: flex; gap: var(--space-3); font-size: var(--text-md); }
+.project-nav { display: flex; gap: var(--space-3); font-size: var(--text-md); min-width: 0; flex: 0 1 auto; overflow-x: auto; scrollbar-width: thin; padding: 4px; margin: -4px; }
+/* A label never breaks onto two lines; when the header is narrow the nav scrolls inside itself (K2.2). The padding keeps the focus ring inside the scroll box. */
+.project-nav a { white-space: nowrap; flex: none; }
+@media (max-width: 900px) {
+  .shell-header { gap: var(--space-3); }
+  .project-nav { gap: var(--space-2); }
+}
 .project-nav a, .project-nav a:visited { color: var(--pencil); text-decoration: none; padding: 2px 0; border-bottom: 2px solid transparent; }
 /* Every nav link has the same states: pencil, ink on hover, ink with the pen underline when current. */
 .project-nav a:hover { color: var(--ink); border-bottom-color: var(--grid); }
@@ -415,6 +421,10 @@ table.alerts tr.failed td { background: var(--white); }
 .astate-pending { color: var(--level-warn); font-weight: 500; }
 .astate-ok, .astate-resolved { color: var(--ink); }
 .astate-disabled { color: var(--pencil); }
+/* Overdue heartbeat: a word and a shape, warn amber repeats it. */
+.check-stale { color: var(--level-warn); font-weight: 700; }
+.check-stale .shape { display: inline-block; width: 1em; text-align: center; }
+.checked-line { margin: 0 0 var(--space-3); font-size: var(--text-md); }
 .dstatus-failed { color: var(--level-error); font-weight: 700; }
 .dstatus-cancelled { color: var(--pencil); }
 /* The firing count keeps its red in every state; the current page still shows the pen underline. */

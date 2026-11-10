@@ -195,7 +195,7 @@ func (s *Store) UpdateChannel(ctx context.Context, projectID, id string, u Chann
 // DeleteChannel removes a channel; its pending deliveries are cancelled.
 func (s *Store) DeleteChannel(ctx context.Context, projectID, id string, a AuditEntry) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `UPDATE alert_notifications SET status = 'cancelled', last_error = 'channel deleted'
+		if _, err := tx.Exec(ctx, `UPDATE alert_notifications SET status = 'cancelled', error_category = 'canceled'
 			WHERE project_id = $1 AND channel_id::text = $2 AND status IN ('pending', 'sending')`, projectID, id); err != nil {
 			return fmt.Errorf("postgres: cancel deliveries: %w", err)
 		}
@@ -389,7 +389,7 @@ func (s *Store) summarize(ctx context.Context, projectID string, rules []alert.R
 	rows, err := s.pool.Query(ctx, `SELECT r.id::text,
 			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'firing'),
 			(SELECT count(*) FROM alert_states st WHERE st.rule_id = r.id AND st.state = 'pending'),
-			coalesce(le.to_state, 'ok'), le.at
+			coalesce(le.to_state, 'ok'), le.at, r.last_evaluated_at, r.last_eval_error
 		FROM alert_rules r
 		LEFT JOIN LATERAL (SELECT e.to_state, e.at FROM alert_events e WHERE e.rule_id = r.id ORDER BY e.at DESC, e.id DESC LIMIT 1) le ON true
 		WHERE r.project_id = $1 AND r.id::text = ANY($2)`, projectID, ids)
@@ -401,7 +401,7 @@ func (s *Store) summarize(ctx context.Context, projectID string, rules []alert.R
 	for rows.Next() {
 		var id string
 		var sum alert.Summary
-		if err := rows.Scan(&id, &sum.Firing, &sum.Pending, &sum.State, &sum.LastChangeAt); err != nil {
+		if err := rows.Scan(&id, &sum.Firing, &sum.Pending, &sum.State, &sum.LastChangeAt, &sum.LastEvaluatedAt, &sum.LastEvalError); err != nil {
 			return fmt.Errorf("postgres: scan rule summary: %w", err)
 		}
 		switch {
@@ -489,8 +489,8 @@ func closeStates(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string, ca
 	if !cancel {
 		return nil
 	}
-	if _, err := tx.Exec(ctx, `UPDATE alert_notifications n SET status = 'cancelled', last_error = $2
-		FROM alert_events e WHERE n.event_id = e.id AND e.rule_id::text = $1 AND n.status = 'pending'`, r.ID, reason); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE alert_notifications n SET status = 'cancelled', error_category = 'canceled'
+		FROM alert_events e WHERE n.event_id = e.id AND e.rule_id::text = $1 AND n.status = 'pending'`, r.ID); err != nil {
 		return fmt.Errorf("postgres: cancel deliveries: %w", err)
 	}
 	if close == nil {
@@ -745,7 +745,12 @@ func nullFP(fp uint64) *int64 {
 // under it returns ErrStale and writes nothing.
 func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window, out alert.Outcome, notes []alert.NewNotification, next time.Time) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, "UPDATE alert_rules SET next_eval_at = $3 WHERE id::text = $1 AND version = $2 AND enabled", r.ID, r.Version, next)
+		var evaluated *time.Time
+		if !out.EvaluatedAt.IsZero() {
+			evaluated = &out.EvaluatedAt
+		}
+		tag, err := tx.Exec(ctx, `UPDATE alert_rules SET next_eval_at = $3, last_evaluated_at = coalesce($4, last_evaluated_at), last_eval_error = $5
+			WHERE id::text = $1 AND version = $2 AND enabled`, r.ID, r.Version, next, evaluated, out.EvalError)
 		if err != nil {
 			return fmt.Errorf("postgres: advance rule: %w", err)
 		}
@@ -802,7 +807,7 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 func (s *Store) ClaimNotifications(ctx context.Context, worker string, n int, now time.Time, lease time.Duration) ([]alert.Claimed, error) {
 	var out []alert.Claimed
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `UPDATE alert_notifications SET status = 'cancelled', last_error = 'channel deleted'
+		if _, err := tx.Exec(ctx, `UPDATE alert_notifications SET status = 'cancelled', error_category = 'canceled'
 			WHERE status = 'pending' AND channel_id IS NULL`); err != nil {
 			return fmt.Errorf("postgres: cancel orphans: %w", err)
 		}
@@ -853,10 +858,10 @@ type DeliveryResult = alert.DeliveryResult
 func (s *Store) FinishNotification(ctx context.Context, id int64, worker string, r DeliveryResult) error {
 	ctx, cancel := s.ctx(ctx)
 	defer cancel()
-	_, err := s.pool.Exec(ctx, `UPDATE alert_notifications SET status = $3, response_status = $4, last_error = $5, next_attempt_at = $6,
+	_, err := s.pool.Exec(ctx, `UPDATE alert_notifications SET status = $3, response_status = $4, error_category = $5, next_attempt_at = $6,
 			attempts = attempts + $7, claimed_by = NULL, claimed_until = NULL, sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE sent_at END
 		WHERE id = $1 AND claimed_by = $2 AND status = 'sending'`,
-		id, worker, r.Status, r.ResponseStatus, clip(r.LastError, 300), r.NextAttemptAt, b2i(r.CountAttempt))
+		id, worker, r.Status, r.ResponseStatus, r.ErrorCategory, r.NextAttemptAt, b2i(r.CountAttempt))
 	if err != nil {
 		return fmt.Errorf("postgres: finish notification: %w", err)
 	}
@@ -987,7 +992,7 @@ func (s *Store) Notifications(ctx context.Context, projectID, channelID, ruleID,
 		before = 1<<63 - 1
 	}
 	rows, err := s.pool.Query(ctx, `SELECT n.id, n.channel_id::text, n.channel_name, coalesce(e.rule_id::text, ''), coalesce(e.rule_name, ''),
-			n.event_id, n.event_type, n.status, n.attempts, n.response_status, n.last_error, n.test,
+			n.event_id, n.event_type, n.status, n.attempts, n.response_status, n.error_category, n.test,
 			n.idempotency_key, n.created_at, n.next_attempt_at, n.sent_at
 		FROM alert_notifications n LEFT JOIN alert_events e ON e.id = n.event_id
 		WHERE n.project_id = $1 AND n.id < $2 AND ($3 = '' OR n.channel_id::text = $3) AND ($4 = '' OR n.status = $4)
@@ -1000,7 +1005,7 @@ func (s *Store) Notifications(ctx context.Context, projectID, channelID, ruleID,
 	out := []alert.NotificationRecord{}
 	for rows.Next() {
 		var n alert.NotificationRecord
-		if err := rows.Scan(&n.ID, &n.ChannelID, &n.ChannelName, &n.RuleID, &n.RuleName, &n.EventID, &n.Event, &n.Status, &n.Attempts, &n.ResponseStatus, &n.LastError, &n.Test,
+		if err := rows.Scan(&n.ID, &n.ChannelID, &n.ChannelName, &n.RuleID, &n.RuleName, &n.EventID, &n.Event, &n.Status, &n.Attempts, &n.ResponseStatus, &n.ErrorCategory, &n.Test,
 			&n.IdempotencyKey, &n.CreatedAt, &n.NextAttemptAt, &n.SentAt); err != nil {
 			return nil, err
 		}

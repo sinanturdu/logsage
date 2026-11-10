@@ -288,6 +288,10 @@ func TestAlertsRoleMatrix(t *testing.T) {
 		if status != c.want {
 			t.Errorf("create channel as %s: %d %s", c.token, status, body)
 		}
+		// A missing role is "forbidden", never the CSRF message (the dashboard tells them apart).
+		if status == 403 && strings.TrimSpace(body) != `{"error":"forbidden"}` {
+			t.Errorf("viewer 403 body = %q", body)
+		}
 	}
 }
 
@@ -475,5 +479,20 @@ func TestHistoryValidation(t *testing.T) {
 	}
 	if status, body, _ := f.get(t, base+"/notifications?status=failed&limit=10", "tok-viewer"); status != 200 || !strings.Contains(body, `"next_before":null`) {
 		t.Errorf("%d %s", status, body)
+	}
+}
+
+func TestRuleJSONCarriesTheHeartbeat(t *testing.T) {
+	at := time.Date(2026, 11, 10, 9, 0, 20, 0, time.FixedZone("x", 3*3600))
+	r := alert.Rule{ID: "r1", Summary: alert.Summary{State: "ok", LastEvaluatedAt: &at, LastEvalError: alert.EvalQueryTimeout}}
+	b, _ := json.Marshal(toRuleJSON(r))
+	for _, want := range []string{`"last_evaluated_at":"2026-11-10T06:00:20Z"`, `"last_eval_error":"query_timeout"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s missing in %s", want, b)
+		}
+	}
+	b, _ = json.Marshal(toRuleJSON(alert.Rule{ID: "r2"}))
+	if !strings.Contains(string(b), `"last_evaluated_at":null`) || !strings.Contains(string(b), `"last_eval_error":""`) {
+		t.Errorf("never evaluated: %s", b)
 	}
 }
