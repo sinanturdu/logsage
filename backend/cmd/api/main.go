@@ -171,6 +171,7 @@ func run(ctx context.Context, getenv func(string) string, ready chan<- string) e
 		Tail:                 logs,
 		TailOptions:          tailOptions(cfg.Tail),
 		Alerts:               alerts,
+		Incidents:            store,
 	}, log)
 	if err != nil {
 		return err

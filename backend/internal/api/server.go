@@ -80,6 +80,8 @@ type Options struct {
 	MaxConcurrentQueries int
 	// Alerts turns the alert endpoints on (ADR 0024); nil answers 503.
 	Alerts *AlertsOptions
+	// Incidents serves the incident and members endpoints (ADR 0026); nil leaves them answering 404.
+	Incidents IncidentStore
 	Now    func() time.Time // default time.Now
 }
 
@@ -165,6 +167,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	m.HandleFunc("GET "+a+"/states", s.authed(s.handleAlertStates))
 	m.HandleFunc("GET "+a+"/events", s.authed(s.handleAlertEvents))
 	m.HandleFunc("GET "+a+"/notifications", s.authed(s.handleNotifications))
+	s.routeIncidents(m)
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeError(w, http.StatusNotFound) })
 	mux.Handle("/api/", s.secure(m))
 }
