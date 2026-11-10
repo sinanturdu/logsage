@@ -30,6 +30,10 @@ type AlertsConfig struct {
 	MaxAttempts         int           // ALERTS_MAX_ATTEMPTS (8)
 	PerChannelPerMinute int           // ALERTS_CHANNEL_RATE (30)
 	Retention           time.Duration // ALERTS_RETENTION (720h)
+	// Incidents (ADR 0026).
+	IncidentMergeWindow  time.Duration // INCIDENT_MERGE_WINDOW (30m)
+	IncidentReopenWindow time.Duration // INCIDENT_REOPEN_WINDOW (60m)
+	IncidentRetention    time.Duration // INCIDENT_RETENTION (9600h, 400 days)
 	// AllowInsecureLocal (ALERTS_ALLOW_INSECURE_LOCAL) permits plain http to
 	// localhost webhooks: development and tests only.
 	AllowInsecureLocal bool
@@ -45,6 +49,7 @@ func DefaultAlertsConfig() AlertsConfig {
 	return AlertsConfig{
 		HTTPAddr: ":8084", Tick: 5 * time.Second, Lateness: time.Minute, QueriesPerCycle: 200, Concurrency: 2,
 		DeliveryConcurrency: 4, MaxAttempts: 8, PerChannelPerMinute: 30, Retention: 30 * 24 * time.Hour,
+		IncidentMergeWindow: 30 * time.Minute, IncidentReopenWindow: time.Hour, IncidentRetention: 400 * 24 * time.Hour,
 	}
 }
 
@@ -83,6 +88,9 @@ func LoadAlerts(getenv func(string) string) (AlertsConfig, error) {
 		{"ALERTS_TICK", time.Second, time.Minute, &c.Tick},
 		{"ALERTS_LATENESS", 0, 10 * time.Minute, &c.Lateness},
 		{"ALERTS_RETENTION", 24 * time.Hour, 365 * 24 * time.Hour, &c.Retention},
+		{"INCIDENT_MERGE_WINDOW", time.Minute, 24 * time.Hour, &c.IncidentMergeWindow},
+		{"INCIDENT_REOPEN_WINDOW", 0, 7 * 24 * time.Hour, &c.IncidentReopenWindow},
+		{"INCIDENT_RETENTION", 24 * time.Hour, 10 * 365 * 24 * time.Hour, &c.IncidentRetention},
 	} {
 		if err := boundedDuration(getenv, d.name, d.lo, d.hi, d.dst); err != nil {
 			return c, err

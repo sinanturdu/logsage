@@ -495,6 +495,10 @@ func closeStates(ctx context.Context, tx pgx.Tx, r alert.Rule, reason string, ca
 	if _, err := tx.Exec(ctx, "DELETE FROM alert_states WHERE rule_id::text = $1", r.ID); err != nil {
 		return fmt.Errorf("postgres: delete states: %w", err)
 	}
+	// Linked incident alerts close with the reason (ADR 0026).
+	if err := closeRuleLinks(ctx, tx, r, reason, time.Now().UTC()); err != nil {
+		return err
+	}
 	if !cancel {
 		return nil
 	}
@@ -787,6 +791,18 @@ func (s *Store) ApplyOutcome(ctx context.Context, r alert.Rule, win alert.Window
 				return alert.ErrStale
 			}
 		}
+		// Incidents (ADR 0026): in this transaction, so an incident link and
+		// its notifications are written together or not at all.
+		var incidentOf map[int]IncidentRef
+		var incidentOfKey map[string]IncidentRef
+		at := out.EvaluatedAt
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+		if incidentOf, incidentOfKey, err = correlateOutcome(ctx, tx, r, out, s.incidentConfig(), at); err != nil {
+			return err
+		}
+		_, _ = incidentOf, incidentOfKey
 		ids := make([]int64, len(out.Transitions))
 		for i, t := range out.Transitions {
 			if err := tx.QueryRow(ctx, `INSERT INTO alert_events (project_id, rule_id, rule_name, rule_type, dedup_key, from_state, to_state, value, threshold, window_start, window_end, fingerprint, template, reason)
@@ -1038,6 +1054,10 @@ func (s *Store) PruneAlerts(ctx context.Context, before time.Time) error {
 		if _, err := s.pool.Exec(ctx, q, before); err != nil {
 			return fmt.Errorf("postgres: prune: %w", err)
 		}
+	}
+	// Resolved incidents have their own, longer retention (INCIDENT_RETENTION).
+	if _, err := s.pool.Exec(ctx, "DELETE FROM incidents WHERE status = 'resolved' AND resolved_at < $1", time.Now().UTC().Add(-s.incidentConfig().Retention)); err != nil {
+		return fmt.Errorf("postgres: prune incidents: %w", err)
 	}
 	return nil
 }

@@ -47,10 +47,11 @@ type Config struct {
 	MergeWindow  time.Duration
 	ReopenWindow time.Duration
 	MaxOpen      int
+	Retention    time.Duration // resolved incidents older than this are deleted
 }
 
 // DefaultConfig is the documented default.
-var DefaultConfig = Config{MergeWindow: 30 * time.Minute, ReopenWindow: 60 * time.Minute, MaxOpen: MaxOpenIncidents}
+var DefaultConfig = Config{MergeWindow: 30 * time.Minute, ReopenWindow: 60 * time.Minute, MaxOpen: MaxOpenIncidents, Retention: 400 * 24 * time.Hour}
 
 // Alert is one alert state entering firing, for a rule with open_incident.
 type Alert struct {
@@ -180,7 +181,7 @@ func Clip(s string, n int) string {
 // MergeServices adds the alert's services to the incident's, sorted, without
 // duplicates, at most MaxServices.
 func MergeServices(have, add []string) []string {
-	out := slices.Clone(have)
+	out := append([]string{}, have...)
 	for _, s := range add {
 		if s != "" && !slices.Contains(out, s) {
 			out = append(out, s)

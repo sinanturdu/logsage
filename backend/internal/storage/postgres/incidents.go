@@ -637,11 +637,3 @@ func (s *Store) ProjectMembers(ctx context.Context, projectID string) ([]Project
 	}
 	return out, rows.Err()
 }
-
-// PruneIncidents deletes resolved incidents older than before (retention).
-func (s *Store) PruneIncidents(ctx context.Context, before time.Time) error {
-	ctx, cancel := s.ctx(ctx)
-	defer cancel()
-	_, err := s.pool.Exec(ctx, "DELETE FROM incidents WHERE status = 'resolved' AND resolved_at < $1", before)
-	return err
-}
