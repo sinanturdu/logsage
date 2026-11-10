@@ -36,3 +36,13 @@ describe('header nav links', () => {
     expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null])
   })
 })
+
+describe('header nav at narrow widths', () => {
+  it('keeps every label on one line and lets the nav scroll inside itself', () => {
+    expect(block('.project-nav a')).toContain('white-space: nowrap')
+    const nav = block('.project-nav')
+    for (const d of ['overflow-x: auto', 'min-width: 0', 'flex: 0 1 auto']) expect(nav).toContain(d)
+    // No rule hides a nav link.
+    expect(css.split('\n').filter((l) => l.includes('.project-nav') && /display: none|visibility: hidden/.test(l))).toEqual([])
+  })
+})
