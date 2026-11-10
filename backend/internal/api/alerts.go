@@ -127,6 +127,9 @@ type ruleJSON struct {
 	Channels   []string     `json:"channels"`
 	Version    int          `json:"version"`
 	NextEvalAt time.Time    `json:"next_eval_at"`
+	// Incidents (ADR 0026).
+	OpenIncident     bool   `json:"open_incident"`
+	IncidentSeverity string `json:"incident_severity"`
 	// Current state summary (ADR 0024 section 8): ok, pending, firing or
 	// resolved; the dashboard shows disabled rules from enabled.
 	State        string     `json:"state"`
@@ -146,7 +149,7 @@ func toRuleJSON(r alert.Rule) ruleJSON {
 	}
 	out := ruleJSON{ID: r.ID, Name: r.Name, Note: r.Note, Type: r.Type, Params: r.Params, Interval: r.Interval.String(), Window: r.Window.String(),
 		For: r.For.String(), ClearFor: r.ClearFor.String(), Repeat: r.Repeat.String(), Enabled: r.Enabled, Channels: ch, Version: r.Version,
-		NextEvalAt: r.NextEvalAt.UTC(), State: r.Summary.State, Firing: r.Summary.Firing, Pending: r.Summary.Pending}
+		NextEvalAt: r.NextEvalAt.UTC(), OpenIncident: r.OpenIncident, IncidentSeverity: severityOr(r.IncidentSeverity), State: r.Summary.State, Firing: r.Summary.Firing, Pending: r.Summary.Pending}
 	if out.State == "" {
 		out.State = string(alert.StateOK)
 	}
@@ -174,6 +177,9 @@ type ruleInput struct {
 	Repeat   string       `json:"repeat"`
 	Enabled  *bool        `json:"enabled"`
 	Channels []string     `json:"channels"`
+	// Incidents (ADR 0026): a firing state opens or joins an incident.
+	OpenIncident     bool   `json:"open_incident"`
+	IncidentSeverity string `json:"incident_severity"`
 }
 
 func duration(name, v string, dst *time.Duration) error {
@@ -191,7 +197,7 @@ func duration(name, v string, dst *time.Duration) error {
 // rule turns the input into a validated rule.
 func (in ruleInput) rule(projectID string) (alert.Rule, error) {
 	r := alert.Rule{ProjectID: projectID, Name: in.Name, Note: in.Note, Type: in.Type, Params: in.Params, Enabled: true, Channels: in.Channels,
-		Interval: time.Minute, Window: 5 * time.Minute}
+		Interval: time.Minute, Window: 5 * time.Minute, OpenIncident: in.OpenIncident, IncidentSeverity: in.IncidentSeverity}
 	if in.Enabled != nil {
 		r.Enabled = *in.Enabled
 	}
@@ -687,4 +693,11 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request, ses
 		next = &ns[len(ns)-1].ID
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": ns, "next_before": next})
+}
+
+func severityOr(s string) string {
+	if s == "" {
+		return "high"
+	}
+	return s
 }

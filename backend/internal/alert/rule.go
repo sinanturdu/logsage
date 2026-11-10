@@ -77,6 +77,10 @@ type Rule struct {
 	// window): states of an older version are reset.
 	Version    int
 	NextEvalAt time.Time
+	// OpenIncident: a firing state opens or joins an incident (ADR 0026),
+	// with IncidentSeverity for a new one. Neither changes Version.
+	OpenIncident     bool
+	IncidentSeverity string
 	// Summary is filled by the rule reads for the dashboard only.
 	Summary Summary
 }
@@ -119,6 +123,10 @@ func (r *Rule) Normalize() {
 	if r.Type == NewGroupsPerHour {
 		r.Window = time.Hour
 	}
+	r.IncidentSeverity = strings.ToLower(strings.TrimSpace(r.IncidentSeverity))
+	if r.IncidentSeverity == "" {
+		r.IncidentSeverity = "high"
+	}
 	r.Params.Op = strings.ToLower(r.Params.Op)
 }
 
@@ -145,6 +153,9 @@ func Validate(r Rule) error {
 	}
 	if utf8.RuneCountInString(r.Note) > MaxNote {
 		return invalid("note: at most %d characters", MaxNote)
+	}
+	if !slices.Contains([]string{"critical", "high", "medium", "low"}, r.IncidentSeverity) {
+		return invalid("incident_severity: must be critical, high, medium or low")
 	}
 	if !slices.Contains(Types, r.Type) {
 		return invalid("type: must be one of error_rate, log_volume, new_group, regression, new_groups_per_hour")
