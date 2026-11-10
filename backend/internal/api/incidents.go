@@ -382,7 +382,7 @@ func (s *Server) suggest(ctx context.Context, m postgres.Membership, d postgres.
 	v.Set("from", from.UTC().Format(time.RFC3339))
 	v.Set("to", to.UTC().Add(time.Second).Format(time.RFC3339))
 	v.Set("level", "error,fatal")
-	v.Set("status", "all")
+	// No status: every group, whatever its status (the API has no "all" value).
 	v.Set("sort", "count")
 	v.Set("limit", strconv.Itoa(suggestedGroups+len(d.Groups)))
 	if len(in.Services) > 0 {

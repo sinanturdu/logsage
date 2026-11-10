@@ -334,10 +334,14 @@ func TestIncidentVersionsTransitionsAndComments(t *testing.T) {
 	}
 	// The detail returns the incident, links and timeline; suggestions are a list or null with a reason.
 	_, out, _ = f.get(t, ib+"/1", "tok-viewer")
-	for _, k := range []string{`"incident":`, `"alerts":[]`, `"groups":[]`, `"suggested_groups":`, `"events":[`} {
+	for _, k := range []string{`"incident":`, `"alerts":[]`, `"groups":[]`, `"suggested_groups":[`, `"events":[`} {
 		if !strings.Contains(out, k) {
 			t.Errorf("detail lacks %s: %.300s", k, out)
 		}
+	}
+	// The suggestion query is a valid groups query (the real parser runs here).
+	if strings.Contains(out, "suggested_groups_error") {
+		t.Fatalf("suggestions failed: %.400s", out)
 	}
 }
 
