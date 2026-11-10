@@ -248,7 +248,7 @@ principal.project_id ──> ingest: stream entry project_id ──> processor �
 
 Non-members get `404` on every project endpoint (never `403`); members without the right get `403`. Unauthenticated, expired, revoked or disabled-user sessions get `401`; PostgreSQL errors `503`. `/healthz`, `/readyz` (PostgreSQL and ClickHouse).
 
-Request checks, in order: CORS (only listed `ALLOWED_ORIGINS`, with credentials; preflight GET/POST), CSRF for every non-GET (JSON content type and a trusted `Origin`/`Referer`, else `403`), body limit, session, membership, role.
+Request checks, in order: CORS (only listed `ALLOWED_ORIGINS`, with credentials; preflight GET/POST), CSRF for every non-GET (JSON content type, also without a body, and a trusted `Origin`/`Referer`, else `403 {"error":"csrf: rejected by the browser security check"}`; a missing role is `403 {"error":"forbidden"}`), body limit, session, membership, role.
 
 ```
 login ──> limiter(IP, sha256(email)) ──429──> Retry-After
@@ -311,7 +311,7 @@ Session auth under `/api/projects/{slug}/alerts`; viewers read, owners and admin
 | `GET`/`POST rules`, `GET`/`PUT`/`DELETE rules/{id}`, `POST rules/{id}/enable` and `/disable` | Rules. Body: `name`, `note`, `type`, `params`, `interval`, `window`, `for`, `clear_for`, `repeat` (durations such as `30s`, `5m`), `enabled`, `channels` (1–10 ids). |
 | `GET`/`POST channels`, `GET`/`PUT`/`DELETE channels/{id}`, `POST channels/{id}/rotate-secret` | Channels: `name`, `kind` (`webhook` or `slack`), `url` (checked by the SSRF rules), `include_sample`. The webhook signing secret appears only in the create and rotate responses. |
 | `POST channels/{id}/test` | A test delivery (`alert.test`, `"test": true`), at most 5 per channel per 10 minutes (429 with `Retry-After`). |
-| `GET states`, `GET events?rule=&before=&limit=`, `GET notifications?channel=&rule=&status=&before=&limit=` | Pending and firing states, transitions and the delivery history (each delivery with its `rule_id` and `rule_name`), newest first (`next_before` pages). Rule reads carry a state summary: `state` (ok, pending, firing or resolved), `firing`, `pending` and `last_change_at`. |
+| `GET states`, `GET events?rule=&before=&limit=`, `GET notifications?channel=&rule=&status=&before=&limit=` | Pending and firing states, transitions and the delivery history (each delivery with its `rule_id` and `rule_name`), newest first (`next_before` pages). Rule reads carry a state summary: `state` (ok, pending, firing or resolved), `firing`, `pending` and `last_change_at`, and the evaluator's heartbeat `last_evaluated_at` and `last_eval_error` (`query_timeout`, `query_rejected`, `store_unavailable`, `unknown` or empty). |
 
 **Rule types:** `error_rate` (error and fatal share of the window, with `min_logs`), `log_volume` (`above` or `below` a count; below 1 is silence), `new_group` (first seen in the window with `min_events`; once per group), `regression` (a resolved group seen again; once per resolution), `new_groups_per_hour` (guard against group explosions). Limits: interval 30 s–1 h, window 1 min–24 h, 50 rules and 10 channels per project.
 

@@ -284,7 +284,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b to K2.1)
+## As built (I2b to K2.2)
 
 What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
@@ -346,6 +346,19 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
   - **Fields** (K2.1): number fields sit in a grid that wraps (`auto-fit`, at least 14rem per column). Labels are short and stay on one line ("Threshold (%)", "Minimum logs"), so a row's inputs line up; the explanation is the help text under the input. A duration is one compact group: a 5rem number and a 7.5rem unit.
   - **Radio options** (K2.1, also in the API key dialog): the name on one line and the muted description on the next, never one run-on sentence.
   - **No channel yet** (K2.1): the rule dialog and the empty Rules tab offer "Create a channel"; after the first channel a notice line says "Channel created. Create a rule that notifies it." with a Create rule button. Create stays disabled with "Choose at least one channel." next to it until a channel is chosen.
+    - K2.2: the notice also has Dismiss and goes away once the project has a rule.
+    - With a channel, the empty Rules state reads "No alert rules yet. Create a rule to be notified."
+  - **Delivery failures** (K2.2): a failed delivery is described by a plain sentence built from the HTTP status code and a fixed category, for example "The receiver answered with HTTP 400." or "The receiver did not answer in time.". LogSage never shows what a receiver answered.
+  - **Heartbeat** (K2.2): the Rules table has a Checked column ("Checked 20 s ago", "Not checked yet"), and the rule page shows the same line under its state.
+    - An enabled rule not evaluated for three intervals (at least 2 minutes) shows "! Not being checked. Is the evaluator running?" in warn amber in place of a calm "ok". Other states keep their mark next to it.
+    - A failed last check adds a muted sentence, for example "The last check failed: the query timed out.".
+  - **Refresh** (K2.2): the Rules table, the nav count and the rule page refresh every 30 s while the tab is visible. The nav and the table share one query, so they never disagree. Relative times count from the last refresh.
+  - **Send test after a 429** (K2.2): the channel's button stays disabled until the Retry-After has passed, so one click is one request.
+- **Nav at narrow widths** (K2.2): nav labels never wrap. Below 900 px the header and nav gaps shrink, and if the links still do not fit, the nav scrolls sideways inside itself; no link is hidden.
+- **CSRF rejections** (K2.2): every request other than GET sends `Content-Type: application/json`, with or without a body.
+  - The DELETE requests (delete rule, delete channel) did not send it, so the API's CSRF check refused them with 403, and the UI showed the permission message.
+  - The API now answers a CSRF refusal with its own message. The dashboard shows "The request was rejected by the browser security check. Reload the page and try again." and keeps "You do not have permission to do this..." for a missing role.
+  - The shared test mocks apply the same rule, so a mutation without the header fails its test.
   - **Failed deliveries** on Activity sit in a white box with an error-red left bar and the heading "Failed deliveries"; the bar repeats the word.
   - **The rule page** follows the group page: a "All alert rules" link, the name as the heading, the state, the facts line, then Current state, Timeline (a list, newest first) and Deliveries (a table).
   - **Narrow screens:** below 900 px the tables scroll sideways inside their frame, as on API keys and Error groups; long names and conditions wrap.

@@ -118,7 +118,7 @@ This builds and starts the evaluator (`cmd/alerts`) and a webhook sink (`cmd/ale
 1. Open http://localhost:8083/projects/demo/alerts, go to Channels and create a Webhook channel with the sink URL. Copy the signing secret, then run `dev.ps1 alerts -AskSecret` and paste it (hidden input) so the sink checks signatures.
 2. On Rules, create an Error rate rule (for example 20% over 2 minutes) and a New error group rule, both notifying the channel.
 3. Run `dev.ps1 alerts-demo`. It sends log messages with new templates (for New error group) and a three-minute burst of `payments` errors (for Error rate).
-4. Watch the header say "Alerts, 2 firing", open a rule for its timeline and deliveries, and read `.dev\alertsink.log`: each delivery says `verified=true`. After the burst the rules resolve.
+4. Watch the header say "Alerts, 2 firing", open a rule for its timeline and deliveries, and read `.dev\alertsink.log`: each delivery says `verified=true`. After the burst the rules resolve. A failed delivery shows only its HTTP status code and a plain sentence; LogSage never stores or shows what a receiver answered. The Rules table says when each rule was last checked; "Not being checked" means the evaluator (`dev.ps1 alerts`) is not running.
 
 `dev.ps1 status` shows the processes; `dev.ps1 down` stops them.
 
