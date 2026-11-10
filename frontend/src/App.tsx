@@ -23,6 +23,8 @@ export function newQueryClient(opts: { retries?: number } = {}): QueryClient {
           count < retries && err instanceof ApiError && (err.kind === 'network' || err.kind === 'server'),
         refetchOnWindowFocus: false,
       },
+      // Writes are never retried automatically (a test send, a delete...): only reads are.
+      mutations: { retry: false },
     },
   })
 }

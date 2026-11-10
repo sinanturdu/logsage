@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COPY_FALLBACK } from '../explorer/RowDetail'
@@ -175,5 +175,42 @@ describe('channels', () => {
     await user.click(within(dialog).getByRole('switch', { name: 'Include one sample log message' }))
     await user.click(within(dialog).getByRole('button', { name: 'Save channel' }))
     await waitFor(() => expect(requests.find((r) => r.method === 'PUT')?.body).toEqual({ name: 'pager', include_sample: true }))
+  })
+})
+
+describe('test send is never retried', () => {
+  it('one click is one request; after a 429 the button waits for Retry-After', async () => {
+    const { user, table, requests } = await channelsTab({
+      [`POST ${B}/channels/c2/test`]: () => json(429, { error: 'too many requests' }, { 'Retry-After': '45' }),
+    })
+    const row = within(table).getAllByRole('row')[2] as HTMLElement
+    const button = within(row).getByRole('button', { name: 'Send a test to pager' })
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await user.click(button)
+      await waitFor(() => expect(within(row).getByRole('status').textContent).toContain('Try again in 45 seconds'))
+      const posts = () => requests.filter((r) => r.method === 'POST').length
+      expect(posts()).toBe(1) // no automatic retry
+      expect(button.hasAttribute('disabled')).toBe(true)
+      await user.click(button)
+      expect(posts()).toBe(1)
+      await act(() => vi.advanceTimersByTimeAsync(44_000))
+      expect(button.hasAttribute('disabled')).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(1_000))
+      expect(button.hasAttribute('disabled')).toBe(false)
+      expect(posts()).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('the client sends a refused POST once, whatever the status', async () => {
+    const { testChannel } = await import('./api')
+    for (const status of [400, 403, 404, 409, 429, 500, 503]) {
+      const f = vi.fn(async () => json(status, { error: 'x' }, { 'Retry-After': '1' }))
+      vi.stubGlobal('fetch', f)
+      await expect(testChannel('shop', 'c1')).rejects.toBeTruthy()
+      expect(f).toHaveBeenCalledTimes(1)
+    }
   })
 })

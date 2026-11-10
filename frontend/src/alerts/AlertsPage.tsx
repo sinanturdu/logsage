@@ -326,6 +326,14 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
   const noop = useCallback(() => {}, [])
   const [selected, setSelected] = useRowKeys(channels.length, noop, table)
 
+  // After a 429 the channel's Send test waits for the Retry-After: one
+  // click is one request, never a burst of refused ones. Never retried.
+  const [limited, setLimited] = useState<ReadonlySet<string>>(new Set())
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  useEffect(() => {
+    const all = timers.current
+    return () => all.forEach((t) => clearTimeout(t))
+  }, [])
   const sendTest = async (c: Channel) => {
     setTesting(c.id)
     setResult(null)
@@ -333,8 +341,24 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
       await testChannel(slug, c.id)
       setResult({ id: c.id, text: 'Test queued. It is marked as a test ("test": true, event alert.test) and appears in the delivery history.' })
     } catch (err) {
-      const text = err instanceof ApiError && err.kind === 'rate_limited' ? TEST_LIMIT(err.retryAfter ?? 600) : writeError(err)
-      setResult({ id: c.id, text })
+      const rateLimited = err instanceof ApiError && err.kind === 'rate_limited'
+      const wait = rateLimited ? (err.retryAfter ?? 600) : 0
+      setResult({ id: c.id, text: rateLimited ? TEST_LIMIT(wait) : writeError(err) })
+      if (rateLimited) {
+        setLimited((s) => new Set(s).add(c.id))
+        clearTimeout(timers.current.get(c.id))
+        timers.current.set(
+          c.id,
+          setTimeout(() => {
+            timers.current.delete(c.id)
+            setLimited((s) => {
+              const next = new Set(s)
+              next.delete(c.id)
+              return next
+            })
+          }, wait * 1000),
+        )
+      }
     } finally {
       setTesting('')
     }
@@ -399,7 +423,13 @@ function ChannelsTab({ slug, canManage, rules, channels, now, onCreate }: { slug
                     <td>{c.include_sample ? 'Included' : 'Not included'}</td>
                     {canManage && (
                       <td className="actions">
-                        <button type="button" className="button button-quiet" disabled={testing === c.id} aria-label={`Send a test to ${c.name}`} onClick={() => void sendTest(c)}>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          disabled={testing === c.id || limited.has(c.id)}
+                          aria-label={`Send a test to ${c.name}`}
+                          onClick={() => void sendTest(c)}
+                        >
                           {testing === c.id ? 'Sending…' : 'Send test'}
                         </button>
                         {c.kind === 'webhook' && (
