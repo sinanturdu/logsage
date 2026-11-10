@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { vi } from 'vitest'
+import { csrfGate } from './csrf'
 import { App, newQueryClient } from '../App'
 import { ConfigContext, DEFAULT_CONFIG, type PublicConfig } from '../config'
 
@@ -26,6 +27,8 @@ export function mockApi(routes: Record<string, Handler>) {
     vi.fn(async (url: string, init?: RequestInit) => {
       const key = `${init?.method ?? 'GET'} ${url}`
       calls.push({ key, init })
+      const blocked = csrfGate(url, init)
+      if (blocked) return blocked
       const h = routes[key]
       return h ? h(init) : json(404, { error: 'not found' })
     }),

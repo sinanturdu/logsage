@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { csrfGate } from '../test/csrf'
 import { facets } from '../explorer/testing'
 import { alice, json, project } from '../test/util'
 import type { AlertEvent, Channel, Delivery, Rule, StateRecord } from './api'
@@ -122,6 +123,8 @@ export function mockAlerts(routes: Record<string, AHandler>, role: 'owner' | 'ad
       const method = init?.method ?? 'GET'
       const r = { path: u.pathname, params: u.searchParams, method, body: init?.body ? JSON.parse(String(init.body)) : undefined }
       requests.push(r)
+      const blocked = csrfGate(url, init)
+      if (blocked) return blocked
       const h = all[`${method} ${u.pathname}`]
       return h ? h(r) : json(404, { error: 'not found' })
     }),

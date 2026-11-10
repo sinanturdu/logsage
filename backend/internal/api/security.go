@@ -128,6 +128,10 @@ func safeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
+// csrfRejected is the 403 body of the CSRF check. It differs from a missing
+// role ("forbidden"), so the dashboard can say which one happened.
+const csrfRejected = "csrf: rejected by the browser security check"
+
 // secure wraps next with the response headers, CORS, CSRF and body limit.
 func (s *Server) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +149,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 			m := r.Header.Get("Access-Control-Request-Method")
 			if !cors || (m != http.MethodGet && m != http.MethodPost) {
-				writeError(w, http.StatusForbidden)
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": csrfRejected})
 				return
 			}
 			h.Set("Access-Control-Allow-Methods", "GET, POST")
@@ -155,7 +159,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 			return
 		}
 		if !safeMethod(r.Method) && (!isJSON(r) || !s.origins.trusted(r)) {
-			writeError(w, http.StatusForbidden)
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": csrfRejected})
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)

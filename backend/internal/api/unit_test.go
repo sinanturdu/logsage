@@ -182,12 +182,18 @@ func TestSecureMiddleware(t *testing.T) {
 		{name: "preflight foreign", method: "OPTIONS", org: "https://evil.example", hdr: map[string]string{"Access-Control-Request-Method": "POST"}, want: http.StatusForbidden},
 		{name: "preflight bad method", method: "OPTIONS", org: "https://app.example.com", hdr: map[string]string{"Access-Control-Request-Method": "DELETE"}, want: http.StatusForbidden, wantACAO: "https://app.example.com"},
 		{name: "DELETE is state-changing", method: "DELETE", org: "https://evil.example", want: http.StatusForbidden},
+		{name: "DELETE same host without content type", method: "DELETE", org: "http://localhost:8083", want: http.StatusForbidden},
+		{name: "DELETE same host JSON", method: "DELETE", ctype: "application/json", org: "http://localhost:8083", want: http.StatusTeapot},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := do(tt.method, tt.ctype, tt.org, tt.hdr)
 			if w.Code != tt.want {
 				t.Fatalf("status = %d, want %d", w.Code, tt.want)
+			}
+			// A CSRF refusal says so; a missing role says "forbidden" (TestAlertsRoleMatrix and others).
+			if tt.want == http.StatusForbidden && !strings.Contains(w.Body.String(), `"error":"csrf: rejected by the browser security check"`) {
+				t.Errorf("body = %s", w.Body.String())
 			}
 			if got := w.Header().Get("Access-Control-Allow-Origin"); got != tt.wantACAO {
 				t.Errorf("ACAO = %q, want %q", got, tt.wantACAO)

@@ -288,6 +288,10 @@ func TestAlertsRoleMatrix(t *testing.T) {
 		if status != c.want {
 			t.Errorf("create channel as %s: %d %s", c.token, status, body)
 		}
+		// A missing role is "forbidden", never the CSRF message (the dashboard tells them apart).
+		if status == 403 && strings.TrimSpace(body) != `{"error":"forbidden"}` {
+			t.Errorf("viewer 403 body = %q", body)
+		}
 	}
 }
 
