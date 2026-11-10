@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query'
 import { ApiError, errorMessage, request } from '../api/client'
+import { NAV_POLL_MS } from '../poll'
 import type { EvalError } from './heartbeat'
 import type { RuleBody, RuleParams, RuleType } from './model'
 
@@ -122,7 +123,7 @@ export function failureSentence(d: Pick<Delivery, 'response_status' | 'error_cat
 }
 
 export const HISTORY_PAGE = 50
-export const NAV_POLL_MS = 30_000
+export { NAV_POLL_MS }
 
 const base = (slug: string) => `/api/projects/${encodeURIComponent(slug)}/alerts`
 export const alertsKey = (slug: string) => ['alerts', slug] as const
@@ -155,9 +156,13 @@ const POLL = { refetchOnWindowFocus: true, refetchIntervalInBackground: false, r
 
 const fetchRules = (slug: string, signal: AbortSignal) => request<{ rules: Rule[] }>('GET', `${base(slug)}/rules`, { signal })
 
+/** Shared by the nav count and the Rules table; the header's one poll refreshes it (ADR 0027). */
+const NAV = { refetchOnWindowFocus: false, staleTime: 10_000 } as const
+
 /**
  * The rules, shared by the Rules table and the nav count (one query, one
- * cache entry, polled every 30 s), so the two never disagree.
+ * cache entry, refreshed every 30 s by the header's shared poll), so the
+ * two never disagree.
  */
 export function useRules(slug: string) {
   return useQuery({
@@ -165,7 +170,7 @@ export function useRules(slug: string) {
     queryFn: ({ signal }) => fetchRules(slug, signal),
     select: (d) => d.rules,
     retry,
-    ...POLL,
+    ...NAV,
   })
 }
 
@@ -212,7 +217,7 @@ export function useFiringCount(slug: string, enabled: boolean) {
     queryFn: ({ signal }) => fetchRules(slug, signal),
     select: (d) => firingCount(d.rules),
     retry,
-    ...POLL,
+    ...NAV,
   })
 }
 

@@ -103,7 +103,7 @@ describe('project switcher', () => {
 })
 
 describe('shell', () => {
-  it('has the focus order skip link, logo, project, Logs, Error groups, Alerts, API keys, Commands, account', async () => {
+  it('has the focus order skip link, logo, project, Logs, Error groups, Alerts, Incidents, API keys, Commands, account', async () => {
     mockApi({ 'GET /api/auth/me': me, 'GET /api/projects': () => json(200, { projects: [project('shop', 'Shop')] }) })
     renderApp('/projects/shop/logs')
     await screen.findByLabelText('Project')
@@ -121,6 +121,8 @@ describe('shell', () => {
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Error groups' }))
     await user.tab()
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Alerts' }))
+    await user.tab()
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Incidents' }))
     await user.tab()
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'API keys' }))
     await user.tab()

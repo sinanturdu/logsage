@@ -24,16 +24,16 @@ describe('header nav links', () => {
     expect(navRules.join('\n')).not.toMatch(/level-warn|orange|#[0-9a-f]{3,6}/i)
   })
 
-  it('renders the four links alike, with the class only on a firing Alerts link', async () => {
+  it('renders the five links alike, with a class only on a firing Alerts link', async () => {
     mockAlerts({ 'GET /api/projects/shop/alerts/rules': () => json(200, { rules: [rule('r1', { state: 'firing', firing: 1 })] }) })
     renderApp('/projects/shop/groups')
     const nav = await screen.findByRole('navigation', { name: 'Project sections' })
     await within(nav).findByRole('link', { name: 'Alerts, 1 firing' })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((a) => a.textContent)).toEqual(['Logs', 'Error groups', 'Alerts, 1 firing', 'API keys'])
-    expect(links.map((a) => a.getAttribute('style'))).toEqual([null, null, null, null])
-    expect(links.map((a) => a.className.replace('active', '').trim())).toEqual(['', '', 'nav-firing', ''])
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null])
+    expect(links.map((a) => a.textContent)).toEqual(['Logs', 'Error groups', 'Alerts, 1 firing', 'Incidents', 'API keys'])
+    expect(links.map((a) => a.getAttribute('style'))).toEqual([null, null, null, null, null])
+    expect(links.map((a) => a.className.replace('active', '').trim())).toEqual(['', '', 'nav-firing', '', ''])
+    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null, null])
   })
 })
 

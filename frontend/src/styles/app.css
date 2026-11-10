@@ -427,6 +427,8 @@ table.alerts tr.failed td { background: var(--white); }
 .checked-line { margin: 0 0 var(--space-3); font-size: var(--text-md); }
 .dstatus-failed { color: var(--level-error); font-weight: 700; }
 .dstatus-cancelled { color: var(--pencil); }
+/* Open incidents: ink and bold, the words carry it (no alarm color: the Alerts count already uses red). */
+.project-nav a.nav-open, .project-nav a.nav-open:visited, .project-nav a.nav-open:hover { color: var(--ink); font-weight: 700; }
 /* The firing count keeps its red in every state; the current page still shows the pen underline. */
 .project-nav a.nav-firing, .project-nav a.nav-firing:visited, .project-nav a.nav-firing:hover { color: var(--level-error); font-weight: 700; }
 .switch { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 2px 0; font: inherit; color: var(--ink); cursor: pointer; }

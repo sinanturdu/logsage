@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router'
 import { useProjects } from '../api/projects'
-import { useFiringCount } from '../alerts/api'
+import { rulesKey, useFiringCount } from '../alerts/api'
+import { summaryKey, useSummary } from '../incidents/api'
+import { useSharedPoll } from '../poll'
 import { copyText } from '../explorer/clipboard'
 import { BridgeContext, type ExplorerBridge } from '../palette/bridge'
 import { CommandPalette } from '../palette/CommandPalette'
@@ -14,10 +16,8 @@ import { ShortcutsHelp } from './ShortcutsHelp'
 export const LINK_COPIED = 'Copied the link to this view.'
 export const linkFallback = (url: string) => `Copy is not available here. Select the link and copy it with Ctrl+C: ${url}`
 
-/** "Alerts", or "Alerts, 2 firing" from the states endpoint (polled every 30 s while the tab is visible). */
-function AlertsLink({ slug, base }: { slug: string; base: string }) {
-  const projects = useProjects()
-  const member = projects.data?.some((p) => p.slug === slug) ?? false
+/** "Alerts", or "Alerts, 2 firing" (enabled rules with a firing key). */
+function AlertsLink({ slug, base, member }: { slug: string; base: string; member: boolean }) {
   const firing = useFiringCount(slug, member)
   const n = firing.data ?? 0
   return (
@@ -27,17 +27,35 @@ function AlertsLink({ slug, base }: { slug: string; base: string }) {
   )
 }
 
-/** Logs, error groups, alerts and API keys of the current project. */
+/** "Incidents", or "Incidents, 2 open" from the summary endpoint. */
+function IncidentsLink({ slug, base, member }: { slug: string; base: string; member: boolean }) {
+  const summary = useSummary(slug, member)
+  const n = summary.data?.open ?? 0
+  return (
+    <NavLink to={`${base}/incidents`} className={n > 0 ? 'nav-open' : ''}>
+      {n > 0 ? `Incidents, ${n} open` : 'Incidents'}
+    </NavLink>
+  )
+}
+
+/**
+ * Logs, error groups, alerts, incidents and API keys of the current project.
+ * The two counts share one poll (every 30 s while the tab is visible).
+ */
 function ProjectNav() {
   const m = useMatch('/projects/:slug/*')
-  const slug = m?.params.slug
+  const slug = m?.params.slug ?? ''
+  const projects = useProjects()
+  const member = slug !== '' && (projects.data?.some((p) => p.slug === slug) ?? false)
+  useSharedPoll([rulesKey(slug), summaryKey(slug)], member)
   if (!slug) return null
   const base = `/projects/${encodeURIComponent(slug)}`
   return (
     <nav className="project-nav" aria-label="Project sections">
       <NavLink to={`${base}/logs`}>Logs</NavLink>
       <NavLink to={`${base}/groups`}>Error groups</NavLink>
-      <AlertsLink slug={slug} base={base} />
+      <AlertsLink slug={slug} base={base} member={member} />
+      <IncidentsLink slug={slug} base={base} member={member} />
       <NavLink to={`${base}/keys`}>API keys</NavLink>
     </nav>
   )

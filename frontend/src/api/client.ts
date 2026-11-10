@@ -82,7 +82,7 @@ type RequestOptions = {
   anonymous?: boolean
 }
 
-export async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, opts: RequestOptions = {}): Promise<T> {
+export async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const init: RequestInit = { method, credentials: 'same-origin', headers }
   if (opts.signal) init.signal = opts.signal
