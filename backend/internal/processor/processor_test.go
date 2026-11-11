@@ -13,6 +13,33 @@ import (
 	"time"
 )
 
+// A cancel that lands after a flush and before the next read ends Run with
+// an empty batch: the unread entry stays in the stream, unacked, for the
+// next consumer. This is the window TestFlushBySize used to race into.
+func TestCancelBeforeReadLeavesEntryUnacked(t *testing.T) {
+	h := newHarness(t, testOptions())
+	h.stream.push(entries("1-0", "2-0", "3-0", "4-0")...)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.stream.onReadNew = func(call int64) {
+		if call == 2 { // the read after the first full batch was flushed
+			cancel()
+		}
+	}
+	if err := h.p.Run(ctx); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := h.store.batchSizes(); !reflect.DeepEqual(got, []int{3}) {
+		t.Errorf("batches = %v, want [3]", got)
+	}
+	if got := h.stream.ackedIDs(); !reflect.DeepEqual(got, []string{"1-0", "2-0", "3-0"}) {
+		t.Errorf("acked = %v, want the first batch only", got)
+	}
+	if got := h.stream.queued(); got != 1 {
+		t.Errorf("queued = %d, want 1 (4-0 still unread)", got)
+	}
+}
+
 func TestFlushBySize(t *testing.T) {
 	h := newHarness(t, testOptions()) // BatchSize 3, FlushInterval 1h
 	h.stream.push(entries("1-0", "2-0", "3-0", "4-0", "5-0", "6-0", "7-0")...)
@@ -22,6 +49,11 @@ func TestFlushBySize(t *testing.T) {
 	if got := h.store.batchSizes(); !reflect.DeepEqual(got, []int{3, 3}) {
 		t.Fatalf("batches = %v, want [3 3] before shutdown", got)
 	}
+	// The seventh entry is read only after the second flush. Cancelling
+	// before that read leaves it unread in the stream (correct, see
+	// TestCancelBeforeReadLeavesEntryUnacked), so wait until ReadNew has
+	// handed it over; from there the loop adds it before checking ctx.
+	waitFor(t, "the seventh entry read", func() bool { return h.stream.queued() == 0 })
 	if err := stop(); err != nil {
 		t.Fatal(err)
 	}

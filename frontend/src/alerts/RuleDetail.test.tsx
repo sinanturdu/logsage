@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commandsFor } from '../palette/commands'
-import { json, renderApp } from '../test/util'
+import { json, renderApp, settle } from '../test/util'
 import { NAV_POLL_MS } from './api'
 import { channel, delivery, event, firingState, mockAlerts, rule } from './testing'
 
@@ -138,19 +138,20 @@ describe('nav firing count and the rules table: one shared query', () => {
   const firing = (id: string, n = 1) => rule(id, { state: 'firing', firing: n })
 
   it('says "Alerts, 2 firing", polls every 30 s while visible, pauses while hidden and respects 429', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.useFakeTimers()
     let rules = [firing('a', 2), firing('b'), rule('c', { state: 'pending', pending: 1 }), rule('d', { enabled: false, firing: 1, state: 'firing' })]
     let limited = false
     const { requests } = mockAlerts({
       [`GET ${B}/rules`]: () => (limited ? json(429, { error: 'slow' }, { 'Retry-After': '90' }) : json(200, { rules })),
     })
-    renderApp('/projects/shop/logs')
-    expect(await screen.findByRole('link', { name: 'Alerts, 2 firing' })).toBeTruthy()
+    const { client } = renderApp('/projects/shop/logs')
+    const shows = (name: string) => () => screen.queryByRole('link', { name }) !== null
+    await settle(client, 'the first count', shows('Alerts, 2 firing'))
     const polls = () => requests.filter((q) => q.path === `${B}/rules`).length
     expect(polls()).toBe(1)
     rules = [firing('a')]
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
-    expect(await screen.findByRole('link', { name: 'Alerts, 1 firing' })).toBeTruthy()
+    await settle(client, 'the second count', shows('Alerts, 1 firing'))
     expect(polls()).toBe(2)
 
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
@@ -161,11 +162,12 @@ describe('nav firing count and the rules table: one shared query', () => {
     rules = []
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
-    expect(await screen.findByRole('link', { name: 'Alerts' })).toBeTruthy()
+    await settle(client, 'the poll on show', shows('Alerts'))
     expect(polls()).toBe(3)
 
     limited = true
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
+    await settle(client, 'the 429 answers')
     expect(polls()).toBe(4)
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS * 2))
     expect(polls()).toBe(4) // waits the 90 s of Retry-After
@@ -174,40 +176,41 @@ describe('nav firing count and the rules table: one shared query', () => {
   })
 
   it('stays "Alerts" and stops polling when alerts are off', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.useFakeTimers()
     const { requests } = mockAlerts({ [`GET ${B}/rules`]: () => json(503, { error: 'alerts are disabled: set ALERTS_ENABLED=true and ALERTS_SECRET_KEY' }) })
-    renderApp('/projects/shop/logs')
-    await waitFor(() => expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(1))
+    const { client } = renderApp('/projects/shop/logs')
+    await settle(client, 'the first request', () => requests.filter((q) => q.path === `${B}/rules`).length === 1)
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS * 3))
     expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(1)
     expect(screen.getByRole('link', { name: 'Alerts' })).toBeTruthy()
   })
 
   it('the Rules table refreshes itself with the nav, so they never disagree', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.useFakeTimers()
     let rules = [rule('a', { name: 'A' }), rule('b', { name: 'B' }), rule('c', { name: 'C' })]
     const { requests } = mockAlerts({ [`GET ${B}/rules`]: () => json(200, { rules }) })
-    renderApp('/projects/shop/alerts')
-    expect(await screen.findByText('3 rules, 0 firing.')).toBeTruthy()
+    const { client } = renderApp('/projects/shop/alerts')
+    await settle(client, 'the table', () => screen.queryByText('3 rules, 0 firing.') !== null)
     expect(screen.getByRole('link', { name: 'Alerts' })).toBeTruthy()
     rules = [firing('a'), firing('b'), firing('c')].map((r, i) => ({ ...r, name: ['A', 'B', 'C'][i] as string }))
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
-    expect(await screen.findByText('3 rules, 3 firing.')).toBeTruthy()
+    await settle(client, 'the refreshed table', () => screen.queryByText('3 rules, 3 firing.') !== null)
     expect(screen.getByRole('link', { name: 'Alerts, 3 firing' })).toBeTruthy()
     // One request per refresh serves both: the table and the nav share the query.
     expect(requests.filter((q) => q.path === `${B}/rules`).length).toBe(2)
   })
 
   it('the rule page refreshes itself too', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.useFakeTimers()
     let r = rule('r1', { name: 'Errors' })
     mockAlerts({ [`GET ${B}/rules/r1`]: () => json(200, { rule: r }) })
-    renderApp('/projects/shop/alerts/rules/r1')
-    await screen.findByRole('heading', { level: 1 })
+    const { client } = renderApp('/projects/shop/alerts/rules/r1')
+    await settle(client, 'the rule page', () => screen.queryByRole('heading', { level: 1 }) !== null)
     expect(document.querySelector('.astate')?.textContent).toBe('○ ok')
     r = { ...r, state: 'firing', firing: 1 }
     await act(() => vi.advanceTimersByTimeAsync(NAV_POLL_MS))
-    await waitFor(() => expect(document.querySelector('.astate')?.textContent).toBe('◉ firing'))
+    await settle(client, 'the refreshed rule')
+    expect(document.querySelector('.astate')?.textContent).toBe('◉ firing')
   })
 })
 
