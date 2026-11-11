@@ -113,6 +113,10 @@ export function RuleDetailPage() {
           <dd>{parseGoDuration(r.repeat) ? `every ${dur(r.repeat)}` : 'never'}</dd>
         </div>
         <div>
+          <dt>Incidents</dt>
+          <dd>{r.open_incident ? `opens a ${r.incident_severity} severity incident when it fires` : 'does not open incidents'}</dd>
+        </div>
+        <div>
           <dt>Notifies</dt>
           <dd>
             <LogText text={r.channels.map((c) => chs.find((x) => x.id === c)?.name ?? 'deleted channel').join(', ')} mono={false} />

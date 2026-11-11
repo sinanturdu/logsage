@@ -28,7 +28,7 @@ describe('group routes', () => {
       'GET /api/projects': () => json(200, { projects: [project('shop')] }),
     })
 
-  it('header nav lists Logs, Error groups, Alerts and API keys', async () => {
+  it('header nav lists Logs, Error groups, Alerts, Incidents and API keys', async () => {
     setup()
     renderApp('/projects/shop/keys')
     const nav = await screen.findByRole('navigation', { name: 'Project sections' })
@@ -36,6 +36,7 @@ describe('group routes', () => {
       ['Logs', '/projects/shop/logs'],
       ['Error groups', '/projects/shop/groups'],
       ['Alerts', '/projects/shop/alerts'],
+      ['Incidents', '/projects/shop/incidents'],
       ['API keys', '/projects/shop/keys'],
     ])
   })

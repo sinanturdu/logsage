@@ -27,6 +27,9 @@ type Incident struct {
 	AllAlertsResolved bool       `json:"all_alerts_resolved"`
 	EventsDropped     int        `json:"events_dropped"`
 	Version           int        `json:"version"`
+	// How many alert states and error groups are linked (L2: the list shows them).
+	AlertCount int `json:"alert_count"`
+	GroupCount int `json:"group_count"`
 	ProjectID         string     `json:"-"`
 }
 

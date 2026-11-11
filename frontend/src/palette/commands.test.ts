@@ -10,6 +10,7 @@ describe('commandsFor', () => {
     expect(labels(ctx())).toEqual([
       'Go to Error groups',
       'Go to Alerts',
+      'Go to Incidents',
       'Go to API keys',
       'Switch project: shop',
       'Last 15 minutes',
@@ -51,6 +52,7 @@ describe('commandsFor', () => {
       'Go to Logs',
       'Go to Error groups',
       'Go to Alerts',
+      'Go to Incidents',
       'Switch project: shop',
       'Copy link to this view',
       'Change password...',
@@ -94,7 +96,7 @@ describe('defaultCommands', () => {
   })
 
   it('on the keys page and with one project: no explorer commands, no switch', () => {
-    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Go to Error groups', 'Go to Alerts', 'Show keyboard shortcuts'])
+    expect(labels(ctx({ section: 'keys', explorer: null, projects: ['demo'] }))).toEqual(['Go to Logs', 'Go to Error groups', 'Go to Alerts', 'Go to Incidents', 'Show keyboard shortcuts'])
   })
 
   it('puts up to two recent commands first, at most 8 in all, and always keeps the shortcuts help', () => {
@@ -144,5 +146,27 @@ describe('error groups commands', () => {
     const l = labels(ctx())
     expect(l).toContain('Go to Error groups')
     expect(l.some((x) => /groups (of|by)|new groups/.test(x))).toBe(false)
+  })
+})
+
+describe('incident commands', () => {
+  const base = { slug: 'shop', projects: ['shop'], explorer: null }
+  const labels = (c: Parameters<typeof commandsFor>[0]) => commandsFor(c).map((x) => x.label)
+  it('Go to Incidents and, for owners and admins, Create incident', () => {
+    const c = commandsFor({ ...base, section: 'logs', canManageAlerts: true })
+    expect(c.find((x) => x.id === 'go-incidents')?.action).toEqual({ type: 'navigate', to: '/projects/shop/incidents' })
+    expect(c.find((x) => x.id === 'create-incident')?.action).toEqual({ type: 'navigate', to: '/projects/shop/incidents?create=1' })
+    expect(labels({ ...base, section: 'logs', canManageAlerts: false })).not.toContain('Create incident...')
+    expect(labels({ ...base, section: 'incidents' })).not.toContain('Go to Incidents')
+  })
+  it('on an incident page: the actions its role and status allow, and the link for everyone', () => {
+    const at = (canManage: boolean, status: 'open' | 'acknowledged' | 'resolved') => labels({ ...base, section: 'incidents', incident: { canManage, status } })
+    expect(at(true, 'open')).toEqual(expect.arrayContaining(['Acknowledge incident...', 'Resolve incident...', 'Assign to me', 'Copy link to this incident', 'Go to Incidents']))
+    expect(at(true, 'acknowledged')).not.toContain('Acknowledge incident...')
+    expect(at(true, 'resolved')).toEqual(expect.arrayContaining(['Reopen incident...']))
+    expect(at(true, 'resolved')).not.toContain('Resolve incident...')
+    const viewer = at(false, 'open')
+    for (const l of ['Acknowledge incident...', 'Resolve incident...', 'Assign to me', 'Reopen incident...']) expect(viewer).not.toContain(l)
+    expect(viewer).toContain('Copy link to this incident')
   })
 })

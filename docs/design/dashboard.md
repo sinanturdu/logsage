@@ -284,7 +284,7 @@ The per-service baseline can start simply: the error rate over the selected rang
 - **Widths checked:** 1440, 1100 and 768 in a browser, again after the polish round. No horizontal scroll; the keyboard paths were tested with scripted key presses.
 - **Fixed after the check:** the facets were hidden on tablets (now above the list), the band did not match the heading (now both show the selection), and the browser restored a stale trace value (`autocomplete="off"`).
 
-## As built (I2b to K2.2)
+## As built (I2b to L2)
 
 What the dashboard does differently from B2 and its polish round, and why. Details are in ADR 0017 to ADR 0020.
 
@@ -362,6 +362,20 @@ What the dashboard does differently from B2 and its polish round, and why. Detai
   - **Failed deliveries** on Activity sit in a white box with an error-red left bar and the heading "Failed deliveries"; the bar repeats the word.
   - **The rule page** follows the group page: a "All alert rules" link, the name as the heading, the state, the facts line, then Current state, Timeline (a list, newest first) and Deliveries (a table).
   - **Narrow screens:** below 900 px the tables scroll sideways inside their frame, as on API keys and Error groups; long names and conditions wrap.
+- **Incidents** (L2, ADR 0027):
+  - **Placement:** a fifth header link, "Incidents", between Alerts and API keys, reading "Incidents, 2 open" in ink and bold. Red stays reserved for the Alerts firing count. One shared timer refreshes both counts.
+  - **Status marks:** ▶ open (bold), ◧ acknowledged, ◇ resolved (pencil), always with the word. They differ from the alert state shapes (○ ◐ ◉ ✓ ⊘), the level shapes (○ ● ▲ ■ ◆) and the group status shapes (□ – ✓).
+  - **Severity:** four bars and the word (▰▰▰▰ critical in bold error red, ▰▱▱▱ low). The bars give the rank without relying on color.
+  - **The list** is a dense table like Rules and Error groups: number, title (with an "All alerts resolved" outlined badge and "recurrence of #N"), severity, status, services, assignee, opened, last activity, and link counts. The filters sit in one wrapping toolbar row. The summary line counts only what is loaded.
+  - **The detail:**
+    - The number and title as the heading, the marks, a facts line, the summary, Open in Logs and the actions in one row.
+    - The sections sit in two columns (linked alerts and groups, then suggestions and the timeline) and stack below 900 px.
+    - The timeline is a list with a thin left rule; comments sit in white boxes with a pen-colored rule.
+  - **The 409 flow** keeps the dialog and its input open with a warn-ruled notice and a Reload button. The "All linked alerts are resolved" prompt is a calm pen-ruled notice with Resolve; nothing resolves by itself.
+  - **Suggestions** are a short list under the sentence "Suggestions are the biggest error groups on the affected services during this incident. They are not confirmed causes."
+  - **Deviations:**
+    - No merge hint: a "merge feature is planned" line was left out, because promising an unscheduled feature does not help a responder.
+    - The rule page does not list the rule's incidents, because the API has no filter by rule.
 
 ## Frontend plan for I2
 

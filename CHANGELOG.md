@@ -5,6 +5,13 @@ All notable changes to LogSage. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- Incidents UI (v0.3 package L2, ADR 0027):
+  - Incidents in the header nav with "Incidents, N open"; the Alerts and Incidents counts share one poll (every 30 s while the tab is visible, waiting out a 429).
+  - A list with filters in the URL (status, severity, assignee, service, title search, opened range), status and severity marks, "All alerts resolved" and "recurrence of #N", link counts, Load more, `j`, `k`, `Enter` and `/`, and Create incident for owners and admins.
+  - An incident page: acknowledge, resolve and reopen with a note, assign (from the members, or to me), edit with the version check (a conflict keeps what you typed and offers a reload), and a prompt when all linked alerts are resolved. It shows the linked alerts and groups, suggested groups that say they are not confirmed causes, a timeline with one sentence per event type and repeat counts, comments, and Open in Logs.
+  - Alert rules: "Open an incident when this rule fires" with an incident severity, in the form, the preview, the Rules table and the rule page.
+  - Palette: Go to Incidents, Create incident, and on an incident page Acknowledge, Resolve, Reopen, Assign to me and Copy link.
+  - API: incident list rows carry `alert_count` and `group_count`.
 - Incidents backend (v0.3 package L1, ADR 0026):
   - Alert rules can open incidents (`open_incident`, `incident_severity`). In the evaluator's transaction, a firing alert joins the incident already linked to its rule and key, or an open incident active in the last 30 minutes that shares a service; otherwise it reopens one resolved within the last hour or opens a new one, a "recurrence of #N" when there was an earlier one. Project-wide rules only join project-wide incidents. No automatic resolve; `all_alerts_resolved` tells when every linked alert has cleared.
   - A timeline with a closed list of events (opened, alert firing, resolved and closed, all alerts resolved, group linked and unlinked, status, severity, assignment, comments, reopened). Payloads hold ids and templates only, never a raw log message. Flapping alerts count on one event.

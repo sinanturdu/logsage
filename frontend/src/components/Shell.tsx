@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router'
 import { useProjects } from '../api/projects'
-import { useFiringCount } from '../alerts/api'
+import { rulesKey, useFiringCount } from '../alerts/api'
+import { summaryKey, useSummary } from '../incidents/api'
+import { useSharedPoll } from '../poll'
 import { copyText } from '../explorer/clipboard'
 import { BridgeContext, type ExplorerBridge } from '../palette/bridge'
 import { CommandPalette } from '../palette/CommandPalette'
-import { commandsFor, defaultCommands, type Command, type ExplorerContext, type GroupsContext } from '../palette/commands'
+import { commandsFor, defaultCommands, type Command, type ExplorerContext, type GroupsContext, type IncidentContext } from '../palette/commands'
 import { shortcutFor } from '../shortcuts'
 import { AccountDialogs, AccountMenu, useSignOut, type AccountDialog } from './AccountMenu'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -14,10 +16,8 @@ import { ShortcutsHelp } from './ShortcutsHelp'
 export const LINK_COPIED = 'Copied the link to this view.'
 export const linkFallback = (url: string) => `Copy is not available here. Select the link and copy it with Ctrl+C: ${url}`
 
-/** "Alerts", or "Alerts, 2 firing" from the states endpoint (polled every 30 s while the tab is visible). */
-function AlertsLink({ slug, base }: { slug: string; base: string }) {
-  const projects = useProjects()
-  const member = projects.data?.some((p) => p.slug === slug) ?? false
+/** "Alerts", or "Alerts, 2 firing" (enabled rules with a firing key). */
+function AlertsLink({ slug, base, member }: { slug: string; base: string; member: boolean }) {
   const firing = useFiringCount(slug, member)
   const n = firing.data ?? 0
   return (
@@ -27,17 +27,35 @@ function AlertsLink({ slug, base }: { slug: string; base: string }) {
   )
 }
 
-/** Logs, error groups, alerts and API keys of the current project. */
+/** "Incidents", or "Incidents, 2 open" from the summary endpoint. */
+function IncidentsLink({ slug, base, member }: { slug: string; base: string; member: boolean }) {
+  const summary = useSummary(slug, member)
+  const n = summary.data?.open ?? 0
+  return (
+    <NavLink to={`${base}/incidents`} className={n > 0 ? 'nav-open' : ''}>
+      {n > 0 ? `Incidents, ${n} open` : 'Incidents'}
+    </NavLink>
+  )
+}
+
+/**
+ * Logs, error groups, alerts, incidents and API keys of the current project.
+ * The two counts share one poll (every 30 s while the tab is visible).
+ */
 function ProjectNav() {
   const m = useMatch('/projects/:slug/*')
-  const slug = m?.params.slug
+  const slug = m?.params.slug ?? ''
+  const projects = useProjects()
+  const member = slug !== '' && (projects.data?.some((p) => p.slug === slug) ?? false)
+  useSharedPoll([rulesKey(slug), summaryKey(slug)], member)
   if (!slug) return null
   const base = `/projects/${encodeURIComponent(slug)}`
   return (
     <nav className="project-nav" aria-label="Project sections">
       <NavLink to={`${base}/logs`}>Logs</NavLink>
       <NavLink to={`${base}/groups`}>Error groups</NavLink>
-      <AlertsLink slug={slug} base={base} />
+      <AlertsLink slug={slug} base={base} member={member} />
+      <IncidentsLink slug={slug} base={base} member={member} />
       <NavLink to={`${base}/keys`}>API keys</NavLink>
     </nav>
   )
@@ -49,6 +67,7 @@ export function Shell() {
   // The explorer's state when the palette opened (read from the bridge in an event, not during render).
   const [explorerCtx, setExplorerCtx] = useState<ExplorerContext | null>(null)
   const [groupsCtx, setGroupsCtx] = useState<GroupsContext | null>(null)
+  const [incidentCtx, setIncidentCtx] = useState<IncidentContext | null>(null)
   const [account, setAccount] = useState<AccountDialog>(null)
   const [notice, setNotice] = useState('')
   // Recent commands, in memory only (never in storage).
@@ -66,6 +85,7 @@ export function Shell() {
   const openPalette = useCallback(() => {
     setExplorerCtx(bridge.current?.ctx ?? null)
     setGroupsCtx(bridge.current?.groups ?? null)
+    setIncidentCtx(bridge.current?.incident ?? null)
     setPalette(true) // one boolean: opening again never stacks a second palette
   }, [])
   const closePalette = useCallback(() => setPalette(false), [])
@@ -77,7 +97,7 @@ export function Shell() {
   const { pathname } = useLocation()
   const projects = useProjects()
   const { signOut } = useSignOut()
-  const m = /^\/projects\/([^/]+)\/(logs|keys|groups|alerts)/.exec(pathname)
+  const m = /^\/projects\/([^/]+)\/(logs|keys|groups|alerts|incidents)/.exec(pathname)
   // Any route change closes the palette.
   const [path, setPath] = useState(pathname)
   if (path !== pathname) {
@@ -146,12 +166,14 @@ export function Shell() {
   const commands = palette
     ? commandsFor({
         slug: m ? decodeURIComponent(m[1] ?? '') : null,
-        section: m?.[2] === 'logs' || m?.[2] === 'keys' || m?.[2] === 'groups' || m?.[2] === 'alerts' ? m[2] : 'other',
+        section: m?.[2] === 'logs' || m?.[2] === 'keys' || m?.[2] === 'groups' || m?.[2] === 'alerts' || m?.[2] === 'incidents' ? m[2] : 'other',
         projects: projects.data?.map((p) => p.slug) ?? [],
         canManageAlerts: projects.data?.some((p) => m !== null && p.slug === decodeURIComponent(m[1] ?? '') && (p.role === 'owner' || p.role === 'admin')) ?? false,
         explorer: m?.[2] === 'logs' ? explorerCtx : null,
         // Only on the list itself, not on a group's page.
         groups: m?.[2] === 'groups' && /^\/projects\/[^/]+\/groups\/?$/.test(pathname) ? groupsCtx : null,
+        // Only on an incident's page.
+        incident: /^\/projects\/[^/]+\/incidents\/[0-9]+\/?$/.test(pathname) ? incidentCtx : null,
       })
     : []
 

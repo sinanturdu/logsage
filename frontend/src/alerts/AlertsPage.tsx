@@ -257,6 +257,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                 <th scope="col">Last change</th>
                 <th scope="col">Enabled</th>
                 <th scope="col">Channels</th>
+                <th scope="col">Incident</th>
                 {canManage && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -292,6 +293,7 @@ function RulesTab({ slug, canManage, rules, channels, now, onCreate, onCreateCha
                   <td className="wrap">
                     <ChannelNames ids={r.channels} channels={channels} />
                   </td>
+                  <td>{r.open_incident ? `opens ${r.incident_severity}` : <span className="muted">no</span>}</td>
                   {canManage && (
                     <td className="actions">
                       <button type="button" className="button button-quiet" aria-label={`Edit rule ${r.name}`} onClick={() => setEditing(r)}>
