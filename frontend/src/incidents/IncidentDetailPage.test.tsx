@@ -105,8 +105,8 @@ describe('incident detail', () => {
   })
 
   it('on 409 keeps what the user typed and offers a reload', async () => {
-    const { state } = setup()
-    renderApp('/projects/shop/incidents/7')
+    const { state, requests } = setup()
+    const { client } = renderApp('/projects/shop/incidents/7')
     await heading()
     const first = state.incidents[0]
     if (first) first.version = 4 // someone else changed it
@@ -121,10 +121,11 @@ describe('incident detail', () => {
     expect((within(dialog).getByLabelText('Title') as HTMLInputElement).value).toBe('My careful new title')
     await user.click(within(dialog).getByRole('button', { name: 'Reload' }))
     expect((within(dialog).getByLabelText('Title') as HTMLInputElement).value).toBe('My careful new title')
-    await waitFor(async () => {
-      await user.click(within(dialog).getByRole('button', { name: 'Save' }))
-      expect(screen.queryByRole('dialog')).toBeNull()
-    })
+    // Save once, after the reload has answered (Save reads the version from the cache).
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(requests.filter((r) => r.method === 'PATCH').map((r) => (r.body as { version: number }).version)).toEqual([1, 4]) // the 409, then the save
     expect((await heading()).textContent).toBe('#7 My careful new title')
   })
 
