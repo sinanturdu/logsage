@@ -57,6 +57,7 @@ type fakeStream struct {
 	info        StreamInfo
 	infoErr     error
 	readNewCall atomic.Int64
+	onReadNew   func(call int64) // optional, runs at the start of each ReadNew (1-based call number)
 }
 
 func (f *fakeStream) EnsureGroup(context.Context) error {
@@ -83,7 +84,13 @@ func (f *fakeStream) ReadPending(_ context.Context, after string, count int64) (
 }
 
 func (f *fakeStream) ReadNew(ctx context.Context, count int64, block time.Duration) ([]Entry, error) {
-	f.readNewCall.Add(1)
+	call := f.readNewCall.Add(1)
+	if f.onReadNew != nil {
+		f.onReadNew(call)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err // like the Redis client: a cancelled call reads nothing
+	}
 	f.mu.Lock()
 	if f.readErr != nil {
 		err := f.readErr
@@ -165,6 +172,13 @@ func (f *fakeStream) ackedIDs() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.acked...)
+}
+
+// queued is how many pushed entries ReadNew has not handed out yet.
+func (f *fakeStream) queued() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.queue)
 }
 
 // fakeStore is an in-memory Store that can fail inserts.
