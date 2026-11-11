@@ -1,8 +1,8 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COPY_FALLBACK } from '../explorer/RowDetail'
-import { json, renderApp } from '../test/util'
+import { json, renderApp, settle } from '../test/util'
 import { NOT_ALLOWED_ADDRESS, URL_CREDENTIALS } from './api'
 import { SAMPLE_WARNING, SECRET_ONCE } from './ChannelDialogs'
 import { channel, delivery, mockAlerts, rule } from './testing'
@@ -180,19 +180,21 @@ describe('channels', () => {
 
 describe('test send is never retried', () => {
   it('one click is one request; after a 429 the button waits for Retry-After', async () => {
-    const { user, table, requests } = await channelsTab({
+    const { table, requests, client } = await channelsTab({
       [`POST ${B}/channels/c2/test`]: () => json(429, { error: 'too many requests' }, { 'Retry-After': '45' }),
     })
     const row = within(table).getAllByRole('row')[2] as HTMLElement
     const button = within(row).getByRole('button', { name: 'Send a test to pager' })
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // The clock moves only when the test says so. fireEvent, not user-event:
+    // user-event's wrapper waits on a timer that Vitest's fake clock never runs.
+    vi.useFakeTimers()
     try {
-      await user.click(button)
-      await waitFor(() => expect(within(row).getByRole('status').textContent).toContain('Try again in 45 seconds'))
+      fireEvent.click(button)
+      await settle(client, 'the 429 answer', () => (within(row).queryByRole('status')?.textContent ?? '').includes('Try again in 45 seconds'))
       const posts = () => requests.filter((r) => r.method === 'POST').length
       expect(posts()).toBe(1) // no automatic retry
       expect(button.hasAttribute('disabled')).toBe(true)
-      await user.click(button)
+      fireEvent.click(button)
       expect(posts()).toBe(1)
       await act(() => vi.advanceTimersByTimeAsync(44_000))
       expect(button.hasAttribute('disabled')).toBe(true)

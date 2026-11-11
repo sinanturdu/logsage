@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
+import type { QueryClient } from '@tanstack/react-query'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { vi } from 'vitest'
 import { csrfGate } from './csrf'
@@ -56,6 +57,23 @@ function LocationProbe() {
       <button type="button" data-testid="history-back" hidden onClick={() => void navigate(-1)} />
     </>
   )
+}
+
+/**
+ * For tests on plain fake timers (vi.useFakeTimers() without
+ * shouldAdvanceTime, which lets real time move the fake clock and so decide
+ * timing assertions): runs promises, React updates and due timers until no
+ * request is in flight and `cond` holds. Each round steps the clock by 1 ms,
+ * because fake timers give a 0 ms timer set during a tick a 1 ms delay (React
+ * Query notifies through those), so how far the clock moves depends only on
+ * the code under test. The bound counts rounds, never real time.
+ */
+export async function settle(client: QueryClient, what: string, cond: () => boolean = () => true) {
+  for (let i = 0; i < 1000; i++) {
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    if (client.isFetching() === 0 && client.isMutating() === 0 && cond()) return
+  }
+  throw new Error(`fake timers: never settled: ${what}`)
 }
 
 export function renderApp(path: string, opts: { retries?: number; config?: PublicConfig } = { retries: 0 }) {
